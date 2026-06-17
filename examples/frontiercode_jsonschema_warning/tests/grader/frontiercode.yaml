@@ -1,0 +1,182 @@
+task_id: jsonschema__log-warning-helper
+subset: extended
+repo_workdir: environment/repo
+low_quality_threshold: 0.5
+source:
+  benchmark: FrontierCode
+  public_example_url: https://cognition.ai/blog/frontier-code
+  repo: jsonschema
+criteria:
+  - id: log_warning_signature
+    category: patch_specific
+    description: src/logger.h defines auto LOG_WARNING() -> std::ostream &.
+    method: command
+    blocker: true
+    weight: 0.1
+    command: python3 tests/hidden/run_criteria.py --criterion log_warning_signature environment/repo
+  - id: log_warning_prefix
+    category: patch_specific
+    description: LOG_WARNING owns the warning: prefix.
+    method: command
+    blocker: true
+    weight: 0.1
+    command: python3 tests/hidden/run_criteria.py --criterion log_warning_prefix environment/repo
+  - id: warn_unknown_keyword_uses_log_warning
+    category: patch_specific
+    description: warn_unknown_keyword uses LOG_WARNING for its warning.
+    method: command
+    blocker: true
+    weight: 0.1
+    command: python3 tests/hidden/run_criteria.py --criterion warn_unknown_keyword_uses_log_warning environment/repo
+  - id: warn_removed_schema_identifiers_chained_log_warning
+    category: patch_specific
+    description: warn_removed_schema_identifiers uses one chained LOG_WARNING expression.
+    method: command
+    blocker: true
+    weight: 0.1
+    command: python3 tests/hidden/run_criteria.py --criterion warn_removed_schema_identifiers_chained_log_warning environment/repo
+  - id: warn_dialect_fallback_uses_log_warning
+    category: patch_specific
+    description: warn_dialect_fallback uses LOG_WARNING for its warning.
+    method: command
+    blocker: true
+    weight: 0.1
+    command: python3 tests/hidden/run_criteria.py --criterion warn_dialect_fallback_uses_log_warning environment/repo
+  - id: no_cpp_literal_warning_prefix
+    category: patch_specific
+    description: No src/*.cpp file keeps a literal warning: prefix.
+    method: command
+    blocker: true
+    weight: 0.1
+    command: python3 tests/hidden/run_criteria.py --criterion no_cpp_literal_warning_prefix environment/repo
+  - id: project_builds_cleanly
+    category: regular
+    description: The project builds cleanly with make clean and make configure compile.
+    method: command
+    blocker: true
+    weight: 0.1
+    command: python3 tests/hidden/run_criteria.py --criterion project_builds_cleanly environment/repo
+  - id: clang_format_clean
+    category: regular
+    description: C++ source files are clang-format clean.
+    method: command
+    blocker: true
+    weight: 0.1
+    command: python3 tests/hidden/run_criteria.py --criterion clang_format_clean environment/repo
+  - id: reference_tests_pass
+    category: regular
+    description: Hidden reference test/CMakeLists.txt and test/*.sh pass with make.
+    method: command
+    blocker: true
+    weight: 0.1
+    command: python3 tests/hidden/run_criteria.py --criterion reference_tests_pass environment/repo
+  - id: reference_tests_fail_on_base
+    category: regular
+    description: Hidden reference tests fail on the base repo snapshot.
+    method: command
+    blocker: true
+    weight: 0.1
+    command: python3 tests/hidden/run_criteria.py --criterion reference_tests_fail_on_base environment/repo
+calibrations:
+  - id: verbose-only-helper
+    type: hack
+    description: Adds a helper but routes warnings through verbose logging, so non-verbose warnings are suppressed.
+    criteria_results:
+      - criterion_id: log_warning_signature
+        passed: true
+        score: 1
+      - criterion_id: log_warning_prefix
+        passed: true
+        score: 1
+      - criterion_id: warn_unknown_keyword_uses_log_warning
+        passed: false
+        score: 0
+      - criterion_id: warn_removed_schema_identifiers_chained_log_warning
+        passed: false
+        score: 0
+      - criterion_id: warn_dialect_fallback_uses_log_warning
+        passed: false
+        score: 0
+      - criterion_id: no_cpp_literal_warning_prefix
+        passed: false
+        score: 0
+      - criterion_id: project_builds_cleanly
+        passed: true
+        score: 1
+      - criterion_id: clang_format_clean
+        passed: true
+        score: 1
+      - criterion_id: reference_tests_pass
+        passed: false
+        score: 0
+      - criterion_id: reference_tests_fail_on_base
+        passed: true
+        score: 1
+  - id: mixed-cerr-tail
+    type: low_quality
+    description: Functionally prints the warnings but leaves the continuation lines coupled to std::cerr.
+    criteria_results:
+      - criterion_id: log_warning_signature
+        passed: true
+        score: 1
+      - criterion_id: log_warning_prefix
+        passed: true
+        score: 1
+      - criterion_id: warn_unknown_keyword_uses_log_warning
+        passed: true
+        score: 1
+      - criterion_id: warn_removed_schema_identifiers_chained_log_warning
+        passed: false
+        score: 0
+      - criterion_id: warn_dialect_fallback_uses_log_warning
+        passed: true
+        score: 1
+      - criterion_id: no_cpp_literal_warning_prefix
+        passed: true
+        score: 1
+      - criterion_id: project_builds_cleanly
+        passed: true
+        score: 1
+      - criterion_id: clang_format_clean
+        passed: true
+        score: 1
+      - criterion_id: reference_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: reference_tests_fail_on_base
+        passed: true
+        score: 1
+  - id: chained-helper
+    type: alternative_valid
+    description: Implements LOG_WARNING in logger.h and converts warning call sites to the helper.
+    criteria_results:
+      - criterion_id: log_warning_signature
+        passed: true
+        score: 1
+      - criterion_id: log_warning_prefix
+        passed: true
+        score: 1
+      - criterion_id: warn_unknown_keyword_uses_log_warning
+        passed: true
+        score: 1
+      - criterion_id: warn_removed_schema_identifiers_chained_log_warning
+        passed: true
+        score: 1
+      - criterion_id: warn_dialect_fallback_uses_log_warning
+        passed: true
+        score: 1
+      - criterion_id: no_cpp_literal_warning_prefix
+        passed: true
+        score: 1
+      - criterion_id: project_builds_cleanly
+        passed: true
+        score: 1
+      - criterion_id: clang_format_clean
+        passed: true
+        score: 1
+      - criterion_id: reference_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: reference_tests_fail_on_base
+        passed: true
+        score: 1

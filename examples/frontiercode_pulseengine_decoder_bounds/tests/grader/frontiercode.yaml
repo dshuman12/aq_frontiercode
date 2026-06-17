@@ -1,0 +1,124 @@
+task_id: pulseengine__decoder-length-bounds
+subset: extended
+repo_workdir: environment/repo
+base_commit: e3f09a5c8fdc11f2470dbe81e9d46604a7a1a92f
+low_quality_threshold: 0.5
+source:
+  repo: PulseEngine
+  original_zip_sha256: 38d28a79e0b45c1e14acd51071b1978c18403c631e495cbb95326e6111c166a4
+  patched_zip_sha256: 81ac3cc93ccc4437e45e8b6c30edd7f74b81c6d5aaf8fa2ef14f43bb98ba6390
+  pr_summary: Harden decoder string and byte length checks against overflow before narrowing to size_t.
+criteria:
+  - id: hidden_decoder_bounds_tests
+    category: patch_specific
+    description: Hidden decoder tests reject pathological string and byte lengths without exceptions or out-of-bounds reads.
+    method: command
+    blocker: true
+    weight: 0.35
+    command: python3 tests/hidden/run_criteria.py --criterion hidden_decoder_bounds_tests environment/repo
+    timeout_seconds: 300
+  - id: submitted_tests_fail_on_base
+    category: regular
+    description: The submitted visible tests capture the decoder length bug because they fail against the hidden base snapshot.
+    method: command
+    blocker: true
+    weight: 0.2
+    command: python3 tests/hidden/run_criteria.py --criterion submitted_tests_fail_on_base environment/repo
+    timeout_seconds: 300
+  - id: visible_regression_tests_pass
+    category: regular
+    description: The visible C++ regression tests still build and pass after the patch.
+    method: command
+    blocker: true
+    weight: 0.2
+    command: python3 tests/hidden/run_criteria.py --criterion visible_regression_tests_pass environment/repo
+    timeout_seconds: 300
+  - id: no_unsafe_length_addition
+    category: patch_specific
+    description: Decoder length validation no longer uses overflowing pos_ + length checks for strings or byte arrays.
+    method: command
+    blocker: true
+    weight: 0.1
+    command: python3 tests/hidden/run_criteria.py --criterion no_unsafe_length_addition environment/repo
+  - id: codec_scope_is_local
+    category: regular
+    description: The patch stays in the codec decoder and relevant codec tests.
+    method: command
+    blocker: true
+    weight: 0.1
+    command: python3 tests/hidden/run_criteria.py --criterion codec_scope_is_local environment/repo
+  - id: code_quality
+    category: regular
+    description: The implementation is idiomatic C++17, simple, and consistent with local Result<T> error handling.
+    method: llm_prompt
+    blocker: false
+    weight: 0.05
+    threshold: 0.6
+    prompt: Score whether the diff fixes decoder length overflow cleanly, keeps normal decoding semantics intact, avoids broad rewrites, and follows the repository's existing C++17 Result<T> style.
+calibrations:
+  - id: no-visible-regression-test
+    type: low_quality
+    description: Fixes the decoder but does not add a visible test that fails on the broken base.
+    criteria_results:
+      - criterion_id: hidden_decoder_bounds_tests
+        passed: true
+        score: 1
+      - criterion_id: submitted_tests_fail_on_base
+        passed: false
+        score: 0
+      - criterion_id: visible_regression_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: no_unsafe_length_addition
+        passed: true
+        score: 1
+      - criterion_id: codec_scope_is_local
+        passed: true
+        score: 1
+      - criterion_id: code_quality
+        passed: true
+        score: 0.7
+  - id: catch-exception-around-allocation
+    type: hack
+    description: Masks the symptom with exception handling while leaving the overflowing pos_ + length check in place.
+    criteria_results:
+      - criterion_id: hidden_decoder_bounds_tests
+        passed: true
+        score: 1
+      - criterion_id: submitted_tests_fail_on_base
+        passed: true
+        score: 1
+      - criterion_id: visible_regression_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: no_unsafe_length_addition
+        passed: false
+        score: 0
+      - criterion_id: codec_scope_is_local
+        passed: true
+        score: 1
+      - criterion_id: code_quality
+        passed: false
+        score: 0.2
+  - id: remaining-bytes-check
+    type: alternative_valid
+    description: Compares the decoded uint64 length with the remaining buffer before narrowing and adds codec regression tests.
+    criteria_results:
+      - criterion_id: hidden_decoder_bounds_tests
+        passed: true
+        score: 1
+      - criterion_id: submitted_tests_fail_on_base
+        passed: true
+        score: 1
+      - criterion_id: visible_regression_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: no_unsafe_length_addition
+        passed: true
+        score: 1
+      - criterion_id: codec_scope_is_local
+        passed: true
+        score: 1
+      - criterion_id: code_quality
+        passed: true
+        score: 0.9

@@ -1,0 +1,223 @@
+task_id: jsonschema__log-warning-helper-blog-example
+subset: extended
+repo_workdir: environment/repo
+low_quality_threshold: 0.5
+source:
+  benchmark: FrontierCode
+  public_example_url: https://cognition.ai/blog/frontier-code
+  repo: jsonschema
+criteria:
+  - id: resolver_custom_resolver_uses_log_warning
+    category: patch_specific
+    description: src/resolver.h uses LOG_WARNING to print the multi-line warning in the CustomResolver constructor.
+    method: command
+    blocker: true
+    weight: 0.08
+    command: python3 tests/hidden/run_criteria.py --criterion resolver_custom_resolver_uses_log_warning environment/repo
+  - id: command_bundle_without_id_uses_log_warning
+    category: patch_specific
+    description: src/command_bundle.cc uses LOG_WARNING to print the multi-line warning in the options.contains("without-id") conditional.
+    method: command
+    blocker: true
+    weight: 0.08
+    command: python3 tests/hidden/run_criteria.py --criterion command_bundle_without_id_uses_log_warning environment/repo
+  - id: log_warning_function_contract
+    category: patch_specific
+    description: src/logger.h implements auto LOG_WARNING() -> std::ostream & with no arguments, stderr output, and a pre-printed warning: prefix.
+    method: command
+    blocker: true
+    weight: 0.08
+    command: python3 tests/hidden/run_criteria.py --criterion log_warning_function_contract environment/repo
+  - id: command_lint_disable_lint_rules_uses_log_warning
+    category: patch_specific
+    description: src/command_lint.cc uses LOG_WARNING for the single-line warning in disable_lint_rules.
+    method: command
+    blocker: true
+    weight: 0.08
+    command: python3 tests/hidden/run_criteria.py --criterion command_lint_disable_lint_rules_uses_log_warning environment/repo
+  - id: command_validate_schema_template_uses_log_warning
+    category: patch_specific
+    description: src/command_validate.cc uses LOG_WARNING for the single-line warning in get_schema_template.
+    method: command
+    blocker: true
+    weight: 0.08
+    command: python3 tests/hidden/run_criteria.py --criterion command_validate_schema_template_uses_log_warning environment/repo
+  - id: command_validate_empty_jsonl_uses_log_warning
+    category: patch_specific
+    description: src/command_validate.cc uses LOG_WARNING for the single-line The JSONL file is empty warning.
+    method: command
+    blocker: true
+    weight: 0.08
+    command: python3 tests/hidden/run_criteria.py --criterion command_validate_empty_jsonl_uses_log_warning environment/repo
+  - id: project_builds_cleanly
+    category: regular
+    description: make -C ~/repos/jsonschema builds cleanly.
+    method: command
+    blocker: true
+    weight: 0.08
+    command: python3 tests/hidden/run_criteria.py --criterion project_builds_cleanly environment/repo
+  - id: clang_format_test_clean
+    category: regular
+    description: clang_format_test reports that the code is clang-format clean.
+    method: command
+    blocker: true
+    weight: 0.08
+    command: python3 tests/hidden/run_criteria.py --criterion clang_format_test_clean environment/repo
+  - id: reference_tests_pass
+    category: regular
+    description: The implementation passes the hidden reference test/CMakeLists.txt and test/*.sh suite.
+    method: command
+    blocker: true
+    weight: 0.08
+    command: python3 tests/hidden/run_criteria.py --criterion reference_tests_pass environment/repo
+  - id: reference_tests_fail_on_base
+    category: regular
+    description: Restoring everything except the reference tests to the base commit makes make fail, proving the tests exercise the change.
+    method: command
+    blocker: true
+    weight: 0.08
+    command: python3 tests/hidden/run_criteria.py --criterion reference_tests_fail_on_base environment/repo
+  - id: scope_confined_to_warning_sites
+    category: regular
+    description: The patch changes only the logging implementation and warning call sites under src/, without unrelated rewrites or excessive churn. It does not modify hidden or reference tests.
+    method: scope
+    blocker: true
+    weight: 0.08
+    scope:
+      allowed_paths:
+        - src/
+      denied_paths:
+        - test/
+        - tests/
+        - docs/
+      max_files: 8
+      max_changed_lines: 250
+  - id: code_quality_idiomatic_logging
+    category: regular
+    description: The LOG_WARNING conversion is idiomatic, consistent, and maintainable - all warning paths use LOG_WARNING with no leftover std::cerr warning code, call-site conversions match the surrounding style, and the helper reads as something a maintainer would merge without rework.
+    method: llm_prompt
+    blocker: false
+    weight: 0.12
+    threshold: 0.6
+    prompt: Score from 0 to 1 whether the warning-to-LOG_WARNING conversion is idiomatic and consistent across every call site, with no mixed std::cerr and LOG_WARNING warning paths left behind, and a clean readable implementation that conforms to the codebase's logging conventions.
+calibrations:
+  - id: mixed-cerr-multiline
+    type: low_quality
+    description: Implements LOG_WARNING and fixes single-line warnings, but leaves multi-line continuations coupled to std::cerr.
+    criteria_results:
+      - criterion_id: resolver_custom_resolver_uses_log_warning
+        passed: false
+        score: 0
+      - criterion_id: command_bundle_without_id_uses_log_warning
+        passed: false
+        score: 0
+      - criterion_id: log_warning_function_contract
+        passed: true
+        score: 1
+      - criterion_id: command_lint_disable_lint_rules_uses_log_warning
+        passed: true
+        score: 1
+      - criterion_id: command_validate_schema_template_uses_log_warning
+        passed: true
+        score: 1
+      - criterion_id: command_validate_empty_jsonl_uses_log_warning
+        passed: true
+        score: 1
+      - criterion_id: project_builds_cleanly
+        passed: true
+        score: 1
+      - criterion_id: clang_format_test_clean
+        passed: true
+        score: 1
+      - criterion_id: reference_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: reference_tests_fail_on_base
+        passed: true
+        score: 1
+      - criterion_id: scope_confined_to_warning_sites
+        passed: true
+        score: 1
+      - criterion_id: code_quality_idiomatic_logging
+        passed: false
+        score: 0.4
+  - id: verbose-only-helper
+    type: hack
+    description: Adds a helper that still routes warnings through verbose logging, so non-verbose warnings disappear.
+    criteria_results:
+      - criterion_id: resolver_custom_resolver_uses_log_warning
+        passed: false
+        score: 0
+      - criterion_id: command_bundle_without_id_uses_log_warning
+        passed: false
+        score: 0
+      - criterion_id: log_warning_function_contract
+        passed: false
+        score: 0
+      - criterion_id: command_lint_disable_lint_rules_uses_log_warning
+        passed: false
+        score: 0
+      - criterion_id: command_validate_schema_template_uses_log_warning
+        passed: false
+        score: 0
+      - criterion_id: command_validate_empty_jsonl_uses_log_warning
+        passed: false
+        score: 0
+      - criterion_id: project_builds_cleanly
+        passed: true
+        score: 1
+      - criterion_id: clang_format_test_clean
+        passed: true
+        score: 1
+      - criterion_id: reference_tests_pass
+        passed: false
+        score: 0
+      - criterion_id: reference_tests_fail_on_base
+        passed: true
+        score: 1
+      - criterion_id: scope_confined_to_warning_sites
+        passed: true
+        score: 1
+      - criterion_id: code_quality_idiomatic_logging
+        passed: false
+        score: 0.2
+  - id: chained-helper
+    type: alternative_valid
+    description: Implements LOG_WARNING in logger.h and converts every warning call site, including multi-line warnings, to idiomatic chained LOG_WARNING expressions.
+    criteria_results:
+      - criterion_id: resolver_custom_resolver_uses_log_warning
+        passed: true
+        score: 1
+      - criterion_id: command_bundle_without_id_uses_log_warning
+        passed: true
+        score: 1
+      - criterion_id: log_warning_function_contract
+        passed: true
+        score: 1
+      - criterion_id: command_lint_disable_lint_rules_uses_log_warning
+        passed: true
+        score: 1
+      - criterion_id: command_validate_schema_template_uses_log_warning
+        passed: true
+        score: 1
+      - criterion_id: command_validate_empty_jsonl_uses_log_warning
+        passed: true
+        score: 1
+      - criterion_id: project_builds_cleanly
+        passed: true
+        score: 1
+      - criterion_id: clang_format_test_clean
+        passed: true
+        score: 1
+      - criterion_id: reference_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: reference_tests_fail_on_base
+        passed: true
+        score: 1
+      - criterion_id: scope_confined_to_warning_sites
+        passed: true
+        score: 1
+      - criterion_id: code_quality_idiomatic_logging
+        passed: true
+        score: 1

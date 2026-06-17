@@ -1,0 +1,227 @@
+diff --git a/eslint.config.mjs b/eslint.config.mjs
+new file mode 100644
+index 0000000..678eff3
+--- /dev/null
++++ b/eslint.config.mjs
+@@ -0,0 +1,14 @@
++export default [
++  {
++    ignores: [
++      "**/node_modules/**",
++      "**/.next/**",
++      "**/coverage/**",
++      "**/dist/**",
++      "**/build/**",
++      "**/*.tsbuildinfo",
++      "frontend/**",
++      "backend/**",
++    ],
++  },
++];
+\ No newline at end of file
+diff --git a/frontend/src/lib/api-client.test.ts b/frontend/src/lib/api-client.test.ts
+index 6911d1d..f39daeb 100644
+--- a/frontend/src/lib/api-client.test.ts
++++ b/frontend/src/lib/api-client.test.ts
+@@ -1,5 +1,5 @@
+-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+-import { ApiError, api, hlsUrl, streamUrl, subtitleUrl } from "./api-client";
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import { ApiError, api, hlsUrl, streamUrl, subtitleUrl } from './api-client';
+ 
+ const origFetch = globalThis.fetch;
+ 
+@@ -16,83 +16,75 @@ function mockJson(status: number, body: unknown) {
+   (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+     ok: status >= 200 && status < 300,
+     status,
+-    statusText: "",
++    statusText: '',
+     json: async () => body,
+     text: async () => JSON.stringify(body),
+   } as unknown as Response);
+ }
+ 
+-describe("api.get", () => {
+-  it("calls fetch with the prefixed URL and credentials: include", async () => {
+-    mockJson(200, { hello: "world" });
+-    const res = await api.get<{ hello: string }>("/courses");
+-    expect(res.hello).toBe("world");
++describe('api.get', () => {
++  it('calls fetch with the prefixed URL and credentials: include', async () => {
++    mockJson(200, { hello: 'world' });
++    const res = await api.get<{ hello: string }>('/courses');
++    expect(res.hello).toBe('world');
+     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+     const [url, init] = fetchMock.mock.calls[0]!;
+     expect(url).toMatch(/\/api\/v1\/courses$/);
+-    expect((init as RequestInit).credentials).toBe("include");
++    expect((init as RequestInit).credentials).toBe('include');
+   });
+ });
+ 
+-describe("api.post / put / patch", () => {
+-  it("serializes the body as JSON and sets content-type", async () => {
++describe('api.post / put / patch', () => {
++  it('serializes the body as JSON and sets content-type', async () => {
+     mockJson(200, { ok: true });
+-    await api.post("/x", { name: "n" });
+-    const init = (
+-      globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+-    ).mock.calls[0]![1] as RequestInit;
+-    expect(init.method).toBe("POST");
+-    expect(init.body).toBe(JSON.stringify({ name: "n" }));
+-    expect((init.headers as Headers).get("Content-Type")).toBe("application/json");
++    await api.post('/x', { name: 'n' });
++    const init = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock
++      .calls[0]![1] as RequestInit;
++    expect(init.method).toBe('POST');
++    expect(init.body).toBe(JSON.stringify({ name: 'n' }));
++    expect((init.headers as Headers).get('Content-Type')).toBe('application/json');
+   });
+ 
+-  it("omits Content-Type when body is undefined", async () => {
++  it('omits Content-Type when body is undefined', async () => {
+     mockJson(200, { ok: true });
+-    await api.post("/x");
+-    const init = (
+-      globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+-    ).mock.calls[0]![1] as RequestInit;
++    await api.post('/x');
++    const init = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock
++      .calls[0]![1] as RequestInit;
+     expect(init.body).toBeUndefined();
+-    expect((init.headers as Headers).has("Content-Type")).toBe(false);
++    expect((init.headers as Headers).has('Content-Type')).toBe(false);
+   });
+ 
+-  it("returns undefined for 204 No Content", async () => {
+-    (
+-      globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+-    ).mockResolvedValue({
++  it('returns undefined for 204 No Content', async () => {
++    (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+       ok: true,
+       status: 204,
+       json: async () => null,
+-      text: async () => "",
++      text: async () => '',
+     } as unknown as Response);
+-    expect(await api.del("/x")).toBeUndefined();
++    expect(await api.del('/x')).toBeUndefined();
+   });
+ 
+-  it("throws ApiError on non-ok response", async () => {
+-    (
+-      globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+-    ).mockResolvedValue({
++  it('throws ApiError on non-ok response', async () => {
++    (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+       ok: false,
+       status: 401,
+-      statusText: "Unauthorized",
+-      text: async () => "nope",
++      statusText: 'Unauthorized',
++      text: async () => 'nope',
+     } as unknown as Response);
+-    await expect(api.get("/x")).rejects.toBeInstanceOf(ApiError);
++    await expect(api.get('/x')).rejects.toBeInstanceOf(ApiError);
+   });
+ });
+ 
+-describe("URL helpers", () => {
+-  it("streamUrl points at the legacy raw mp4 endpoint", () => {
+-    expect(streamUrl("ep-1")).toMatch(/\/episodes\/ep-1\/stream$/);
++describe('URL helpers', () => {
++  it('streamUrl points at the legacy raw mp4 endpoint via the same-origin proxy', () => {
++    expect(streamUrl('ep-1')).toBe('/stream/ep-1/stream');
+   });
+ 
+-  it("hlsUrl points at the master playlist", () => {
+-    expect(hlsUrl("ep-1")).toMatch(/\/episodes\/ep-1\/hls\/master\.m3u8$/);
++  it('hlsUrl points at the master playlist via the same-origin proxy', () => {
++    expect(hlsUrl('ep-1')).toBe('/stream/ep-1/hls/master.m3u8');
+   });
+ 
+-  it("subtitleUrl encodes the language tag", () => {
+-    expect(subtitleUrl("ep-1", "en-US")).toMatch(
+-      /\/episodes\/ep-1\/subtitles\/en-US$/,
+-    );
++  it('subtitleUrl encodes the language tag', () => {
++    expect(subtitleUrl('ep-1', 'en-US')).toBe('/stream/ep-1/subtitles/en-US');
+   });
+ });
+diff --git a/frontend/src/lib/api-client.ts b/frontend/src/lib/api-client.ts
+index fc9ed83..d66c08e 100644
+--- a/frontend/src/lib/api-client.ts
++++ b/frontend/src/lib/api-client.ts
+@@ -1,27 +1,30 @@
+-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+-const PREFIX = "/api/v1";
++const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
++const PREFIX = '/api/v1';
+ 
+ class ApiError extends Error {
+-  constructor(public status: number, message: string) {
++  constructor(
++    public status: number,
++    message: string,
++  ) {
+     super(message);
+-    this.name = "ApiError";
++    this.name = 'ApiError';
+   }
+ }
+ 
+ async function request<T>(path: string, init?: RequestInit): Promise<T> {
+   const headers = new Headers(init?.headers);
+-  if (init?.body !== undefined && !headers.has("Content-Type")) {
+-    headers.set("Content-Type", "application/json");
++  if (init?.body !== undefined && !headers.has('Content-Type')) {
++    headers.set('Content-Type', 'application/json');
+   }
+   const res = await fetch(`${BASE}${PREFIX}${path}`, {
+     ...init,
+     headers,
+-    cache: "no-store",
+-    credentials: "include",
++    cache: 'no-store',
++    credentials: 'include',
+   });
+ 
+   if (!res.ok) {
+-    const text = await res.text().catch(() => "");
++    const text = await res.text().catch(() => '');
+     throw new ApiError(res.status, text || res.statusText);
+   }
+ 
+@@ -32,22 +35,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
+ export const api = {
+   get: <T>(path: string) => request<T>(path),
+   post: <T>(path: string, body?: unknown) =>
+-    request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
++    request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
+   put: <T>(path: string, body?: unknown) =>
+-    request<T>(path, { method: "PUT", body: body ? JSON.stringify(body) : undefined }),
++    request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }),
+   patch: <T>(path: string, body?: unknown) =>
+-    request<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
+-  del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
++    request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
++  del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+ };
+ 
+ export { ApiError };
+ 
+-// Raw-mp4 fallback for episodes that haven't been transcoded yet.
+-export const streamUrl = (episodeId: string) =>
+-  `${BASE}${PREFIX}/episodes/${episodeId}/stream`;
++export const streamUrl = (episodeId: string) => `/stream/${episodeId}/stream`;
+ 
+-export const hlsUrl = (episodeId: string) =>
+-  `${BASE}${PREFIX}/episodes/${episodeId}/hls/master.m3u8`;
++export const hlsUrl = (episodeId: string) => `/stream/${episodeId}/hls/master.m3u8`;
+ 
+ export const subtitleUrl = (episodeId: string, language: string) =>
+-  `${BASE}${PREFIX}/episodes/${episodeId}/subtitles/${encodeURIComponent(language)}`;
++  `/stream/${episodeId}/subtitles/${encodeURIComponent(language)}`;

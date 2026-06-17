@@ -1,0 +1,31 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build changelog from tags
+        id: changelog
+        run: |
+          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$PREV" ]; then
+            git log --pretty="* %s (%h)" > CHANGES.md
+          else
+            git log "$PREV"..HEAD --pretty="* %s (%h)" > CHANGES.md
+          fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: CHANGES.md
+          generate_release_notes: false

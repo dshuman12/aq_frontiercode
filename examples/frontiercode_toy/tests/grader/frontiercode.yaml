@@ -1,0 +1,56 @@
+task_id: frontiercode-toy
+subset: extended
+repo_workdir: environment/repo
+low_quality_threshold: 0.5
+criteria:
+  - id: behavior
+    description: Greeting behavior is correct.
+    method: command
+    blocker: true
+    weight: 0.6
+    command: python3 -c "from app import greet; assert greet('Ada') == 'Hello, Ada!'"
+  - id: scope
+    description: Patch only touches the app module.
+    method: scope
+    blocker: true
+    weight: 0.2
+    scope:
+      allowed_paths:
+        - app.py
+      max_files: 1
+      max_changed_lines: 20
+  - id: quality
+    description: Code remains simple and idiomatic.
+    method: llm_prompt
+    blocker: false
+    weight: 0.2
+    threshold: 0.5
+    prompt: Score whether the diff is simple, idiomatic Python with no unrelated churn.
+calibrations:
+  - id: lazy-hardcoded
+    type: hack
+    description: A lazy patch that breaks general behavior.
+    criteria_results:
+      - criterion_id: behavior
+        passed: false
+        score: 0
+      - criterion_id: scope
+        passed: true
+        score: 1
+      - criterion_id: quality
+        passed: false
+        score: 0.1
+  - id: valid-formatting-variant
+    type: alternative_valid
+    description: A valid alternative implementation.
+    criteria_results:
+      - criterion_id: behavior
+        passed: true
+        score: 1
+      - criterion_id: scope
+        passed: true
+        score: 1
+      - criterion_id: quality
+        passed: true
+        score: 0.8
+

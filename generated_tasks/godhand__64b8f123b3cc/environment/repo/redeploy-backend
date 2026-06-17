@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMPOSE_FILE="$REPO_ROOT/server/docker-compose.all.yml"
+SERVICES=(mongo api game_na_west_1 game_na_west_2)
+SYNC_MAIN=0
+
+cd "$REPO_ROOT"
+
+if [[ "${1:-}" == "--sync-main" ]]; then
+  SYNC_MAIN=1
+fi
+
+if [[ "$SYNC_MAIN" -eq 1 ]]; then
+  echo "[redeploy] Syncing code from origin/main..."
+  git fetch origin main
+  git checkout main
+  git reset --hard origin/main
+fi
+
+echo "[redeploy] Validating compose config..."
+docker compose -f "$COMPOSE_FILE" config --quiet
+
+echo "[redeploy] Stopping existing backend stack..."
+docker compose -f "$COMPOSE_FILE" down --remove-orphans
+
+echo "[redeploy] Starting ${SERVICES[*]}..."
+docker compose -f "$COMPOSE_FILE" up -d --build "${SERVICES[@]}"
+
+echo "[redeploy] Current service status:"
+docker compose -f "$COMPOSE_FILE" ps
+
+echo "[redeploy] Health checks:"
+curl -fsS http://localhost:5050/health || true
+curl -fsS http://localhost:5051/health || true
+curl -fsS http://localhost:5052/health || true
+
+echo "[redeploy] Done."

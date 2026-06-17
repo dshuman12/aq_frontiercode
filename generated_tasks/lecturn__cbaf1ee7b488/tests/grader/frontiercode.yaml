@@ -1,0 +1,101 @@
+task_id: lecturn__cbaf1ee7b488
+subset: extended
+repo_workdir: environment/repo
+base_commit: 27fd7250017dd7d27a5f97680f26493a58a96c34
+low_quality_threshold: 0.5
+source:
+  repo: lecturn
+  task_row_id: lecturn__cbaf1ee7b488
+  source_archive: project_silver_repos/XwTadDYsj4OsDyurZ3HC__lecturn.zip
+  fix_commit: cbaf1ee7b48809f1c0b37c21caac216744f59a73
+  commit_subject: "fix(player): route media through /stream proxy so the auth cookie ships"
+  reference_test_files: ["frontend/src/lib/api-client.test.ts"]
+criteria:
+  - id: hidden_reference_tests_pass
+    category: patch_specific
+    description: >
+      Hidden reference tests extracted from the fix commit pass after the submitted patch.
+      Reference test files: frontend/src/lib/api-client.test.ts.
+    method: command
+    blocker: true
+    weight: 0.45
+    command: python3 tests/hidden/run_criteria.py --criterion hidden_reference_tests_pass environment/repo
+    timeout_seconds: 600
+  - id: visible_regression_tests_pass
+    category: regular
+    description: >
+      The repository's visible regression workflow still passes after the submitted patch.
+      Generated command: npm test.
+    method: command
+    blocker: true
+    weight: 0.20
+    command: python3 tests/hidden/run_criteria.py --criterion visible_regression_tests_pass environment/repo
+    timeout_seconds: 600
+  - id: scope_matches_reference_intent
+    category: regular
+    description: >
+      The patch stays within the feature and test areas implicated by the source fix commit,
+      avoiding unrelated rewrites or broad file churn.
+    method: command
+    blocker: true
+    weight: 0.20
+    command: python3 tests/hidden/run_criteria.py --criterion scope_matches_reference_intent environment/repo
+  - id: no_hidden_asset_leak
+    category: regular
+    description: >
+      The agent-visible repository does not contain generated hidden tests, grader assets,
+      reference patches, or fix commit identifiers.
+    method: command
+    blocker: true
+    weight: 0.05
+    command: python3 tests/hidden/run_criteria.py --criterion no_hidden_asset_leak environment/repo
+  - id: code_quality
+    category: regular
+    description: The implementation is maintainable, idiomatic for this repository, and avoids unnecessary rewrites.
+    method: llm_prompt
+    blocker: false
+    weight: 0.10
+    threshold: 0.6
+    prompt: >
+      Score whether the diff resolves the requested issue in lecturn with a local,
+      maintainable implementation, keeps visible tests meaningful, and avoids unrelated churn.
+calibrations:
+  - id: no-op-base
+    type: hack
+    description: Leaves the base repository unchanged, so hidden behavior and scope requirements are not satisfied.
+    criteria_results:
+      - criterion_id: hidden_reference_tests_pass
+        passed: false
+        score: 0
+      - criterion_id: visible_regression_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: scope_matches_reference_intent
+        passed: false
+        score: 0
+      - criterion_id: no_hidden_asset_leak
+        passed: true
+        score: 1
+      - criterion_id: code_quality
+        passed: false
+        score: 0.2
+  - id: reference-fix
+    type: alternative_valid
+    description: The source fix commit's patch, stored privately under tests/grader/calibration/reference.patch.
+    patch: calibration/reference.patch
+    criteria_results:
+      - criterion_id: hidden_reference_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: visible_regression_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: scope_matches_reference_intent
+        passed: true
+        score: 1
+      - criterion_id: no_hidden_asset_leak
+        passed: true
+        score: 1
+      - criterion_id: code_quality
+        passed: true
+        score: 0.8

@@ -1,0 +1,76 @@
+{
+  "blocker_failures": [
+    "scope_matches_reference_intent"
+  ],
+  "criteria_results": [
+    {
+      "blocker": true,
+      "category": "patch_specific",
+      "criterion_id": "hidden_reference_tests_pass",
+      "details": "hidden reference tests: `make test-backend-auth` exited 0\nSTDOUT:\n./server/scripts/test.sh server/tests/test_auth_user_flow.py\n...................                                                      [100%]\n19 passed in 3.37s\n\nSTDERR:\n/usr/local/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.21.902) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!\n  warnings.warn(\n",
+      "method": "classical",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.35
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "submitted_tests_fail_on_base",
+      "details": "Submitted tests failed on the broken base snapshot as expected.\nsubmitted tests on base snapshot: `make test-backend-auth` exited 2\nSTDOUT:\n./server/scripts/test.sh server/tests/test_auth_user_flow.py\n..............FFF.........                                               [100%]\n=================================== FAILURES ===================================\n___________ test_auth_csrf_snapshot_returns_logged_in_cookie_values ____________\n\nclient = <starlette.testclient.TestClient object at 0xffffb21f2ea0>\n\n    def test_auth_csrf_snapshot_returns_logged_in_cookie_values(client):\n        register_user(client, email=\"snapshot@example.com\", password=\"StrongPass123\")\n        login_user(client, email=\"snapshot@example.com\", password=\"StrongPass123\")\n        access_csrf = get_auth_csrf(client)\n        refresh_csrf = get_refresh_csrf(client)\n    \n        response = client.get(\"/api/v1/auth/csrf\")\n    \n>       assert response.status_code == 200\nE       assert 404 == 200\nE        +  where 404 = <Response [404 Not Found]>.status_code\n\nserver/tests/test_auth_user_flow.py:260: AssertionError\n---------------------------- Captured stdout setup -----------------------------\n2026-06-17 04:49:03,341 - app - INFO - create_app:41 - Registered error handlers [0.00000s]\n2026-06-17 04:49:03,341 - app - INFO - create_app:46 - Registered middleware [0.00000s]\n2026-06-17 04:49:03,341 - app - INFO - create_app:51 - Initialized auth rate limiter [0.00001s]\n2026-06-17 04:49:03,344 - app - INFO - create_app:60 - Registered routers [0.00s]\n2026-06-17 04:49:03,344 - pymongo - INFO - initialize:39 - Initialized mongomock MongoDB client for testing\n2026-06-17 04:49:03,398 - pymongo - INFO - _seed_mock_users:163 - Seeded default mock users for testing environment\n2026-06-17 04:49:03,399 - app - INFO - create_app:67 - Initialized services [0.05413s]\n2026-06-17 04:49:03,399 - app - INFO - create_app:70 - Total initialization time: [0.05774s]\n------------------------------ Captured log setup ------------------------------\nINFO     app:app.py:41 Registered error handlers [0.00000s]\nINFO     app:app.py:46 Registered middleware [0.00000s]\nINFO     app:app.py:51 Initialized auth rate limiter [0.00001s]\nINFO     app:app.py:60 Registered routers [0.00s]\nINFO     pymongo:mongo.py:39 Initialized mongomock MongoDB client for testing\nINFO     pymongo:mongo.py:163 Seeded default mock users for testing environment\nINFO     app:app.py:67 Initialized services [0.05413s]\nINFO     app:app.py:70 Total initialization time: [0.05774s]\n----------------------------- Captured stdout call -----------------------------\n2026-06-17 04:49:03,400 - app - INFO - issue_anon_csrf_token:24 - Issued anonymous CSRF token\n2026-06-17 04:49:03,455 - app - INFO - register_user:155 - User registered: email=snapshot@example.com\n2026-06-17 04:49:03,456 - app - INFO - issue_anon_csrf_token:24 - Issued anonymous CSRF token\n2026-06-17 04:49:03,512 - app - INFO - create_and_set_tokens:124 - Issued JWT cookies for user_id=6a32273f12efaa66c429533c\n2026-06-17 04:49:03,512 - app - INFO - login_user:188 - User logged in: identifier=snapshot@example.com\n------------------------------ Captured log call -------------------------------\nINFO     app:csrf.py:24 Issued anonymous CSRF token\nINFO     app:auth.py:155 User registered: email=snapshot@example.com\nINFO     app:csrf.py:24 Issued anonymous CSRF token\nINFO     app:jwt.py:124 Issued JWT cookies for user_id=6a32273f12efaa66c429533c\nINFO     app:auth.py:188 User logged in: identifier=snapshot@example.com\n_____ test_auth_csrf_snapshot_allows_valid_refresh_when_access_is_expired ______\n\nclient = <starlette.testclient.TestClient object at 0xffffb21daf60>\n\n    def test_auth_csrf_snapshot_allows_valid_refresh_when_access_is_expired(client):\n        register_user(client, email=\"snapshot-refresh@example.com\", password=\"StrongPass123\")\n        user = login_user(client, email=\"snapshot-refresh@example.com\", password=\"StrongPass123\")\n        access_csrf = get_auth_csrf(client)\n        refresh_csrf = get_refresh_csrf(client)\n        client.cookies.set(\"access_token_cookie\", _expired_access_token(user[\"_id\"], access_csrf))\n    \n        response = client.get(\"/api/v1/auth/csrf\")\n    \n>       assert response.status_code == 200\nE       assert 404 == 200\nE        +  where 404 = <Response [404 Not Found]>.status_code\n\nserver/tests/test_auth_user_flow.py:277: AssertionError\n---------------------------- Captured stdout setup -----------------------------\n2026-06-17 04:49:03,529 - app - INFO - create_app:41 - Registered error handlers [0.00000s]\n2026-06-17 04:49:03,529 - app - INFO - create_app:46 - Registered middleware [0.00000s]\n2026-06-17 04:49:03,529 - app - INFO - create_app:51 - Initialized auth rate limiter [0.00001s]\n2026-06-17 04:49:03,532 - app - INFO - create_app:60 - Registered routers [0.00s]\n2026-06-17 04:49:03,532 - pymongo - INFO - initialize:39 - Initialized mongomock MongoDB client for testing\n2026-06-17 04:49:03,587 - pymongo - INFO - _seed_mock_users:163 - Seeded default mock users for testing environment\n2026-06-17 04:49:03,587 - app - INFO - create_app:67 - Initialized services [0.05515s]\n2026-06-17 04:49:03,587 - app - INFO - create_app:70 - Total initialization time: [0.05872s]\n------------------------------ Captured log setup ------------------------------\nINFO     app:app.py:41 Registered error handlers [0.00000s]\nINFO     app:app.py:46 Registered middleware [0.00000s]\nINFO     app:app.py:51 Initialized auth rate limiter [0.00001s]\nINFO     app:app.py:60 Registered routers [0.00s]\nINFO     pymongo:mongo.py:39 Initialized mongomock MongoDB client for testing\nINFO     pymongo:mongo.py:163 Seeded default mock users for testing environment\nINFO     app:app.py:67 Initialized services [0.05515s]\nINFO     app:app.py:70 Total initialization time: [0.05872s]\n----------------------------- Captured stdout call -----------------------------\n2026-06-17 04:49:03,589 - app - INFO - issue_anon_csrf_token:24 - Issued anonymous CSRF token\n2026-06-17 04:49:03,644 - app - INFO - register_user:155 - User registered: email=snapshot-refresh@example.com\n2026-06-17 04:49:03,645 -\n...<truncated>...\nSTDERR:\n/usr/local/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.21.902) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!\n  warnings.warn(\nmake: *** [Makefile:7: test-backend-auth] Error 1\n",
+      "method": "reverse_classical",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.15
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "visible_regression_tests_pass",
+      "details": "visible regression command: `make test-backend-auth` exited 0\nSTDOUT:\n./server/scripts/test.sh server/tests/test_auth_user_flow.py\n..........................                                               [100%]\n26 passed in 4.05s\n\nSTDERR:\n/usr/local/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.21.902) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!\n  warnings.warn(\n",
+      "method": "command",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.2
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "scope_matches_reference_intent",
+      "details": "Unexpected changed files: frontend/src/pages/game/components/GameCanvas.tsx",
+      "method": "scope",
+      "passed": false,
+      "score": 0.0,
+      "weight": 0.15
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "no_hidden_asset_leak",
+      "details": "No generated hidden asset names or fix commit identifiers were found in the agent-visible repo.",
+      "method": "command",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.05
+    }
+  ],
+  "metadata": {
+    "category_counts": {
+      "patch_specific": {
+        "passed": 1,
+        "total": 1
+      },
+      "regular": {
+        "passed": 3,
+        "total": 4
+      }
+    },
+    "criteria_passed": 4,
+    "criteria_total": 5
+  },
+  "pass": false,
+  "reward": 0.0,
+  "score": 0.0,
+  "submission_id": "",
+  "task_id": "godhand__64b8f123b3cc"
+}
