@@ -1,0 +1,590 @@
+diff --git a/base/server/api/routers/lobby.py b/repo/server/api/routers/lobby.py
+index 01aa022..e7d4b8f 100644
+--- a/base/server/api/routers/lobby.py
++++ b/repo/server/api/routers/lobby.py
+@@ -1,5 +1,6 @@
+ from __future__ import annotations
+ 
++import json
+ from typing import Any
+ from urllib.parse import quote
+ 
+@@ -9,38 +10,17 @@ from fastapi.responses import JSONResponse
+ 
+ from server.api.security.jwt import JWTService
+ from server.api.websockets.lobby_chat import connection_hub
++from server.config import get_app_config
+ from server.external.db.models.game_server_registry import GameServerRegistry
+ from server.external.db.models.lobby import Lobby
+ from server.external.db.models.user import User
+-from server.utils.constants import HttpStatus, ResponseMessages
++from server.utils.constants import HttpStatus, LobbyDefaults, ResponseMessages
+ from server.utils.error_handlers import AuthenticationError
+ 
+ lobby_routes = APIRouter(prefix="/api/v1/lobbies", tags=["lobbies"])
+ 
+ 
+-OFFICIAL_LOBBY_BLUEPRINTS: list[dict[str, Any]] = [
+-    {
+-        "official_key": "na-west-1",
+-        "lobby_name": "NA West 1",
+-        "server_region": "NA West 1",
+-        "server_description": "Official NA West server #1.",
+-        "user_capacity": 12,
+-    },
+-    {
+-        "official_key": "na-west-2",
+-        "lobby_name": "NA West 2",
+-        "server_region": "NA West 2",
+-        "server_description": "Official NA West server #2.",
+-        "user_capacity": 12,
+-    },
+-    {
+-        "official_key": "na-west-3",
+-        "lobby_name": "NA West 3",
+-        "server_region": "NA West 3",
+-        "server_description": "Official NA West server #3.",
+-        "user_capacity": 12,
+-    },
+-]
++OFFICIAL_LOBBY_BLUEPRINTS = LobbyDefaults.OFFICIAL_BLUEPRINTS
+ 
+ 
+ def _normalize_lobby_kind(raw_kind: str) -> str:
+@@ -65,13 +45,121 @@ def _upsert_official_lobbies() -> None:
+         )
+ 
+ 
++def _default_lobby_blueprint() -> dict[str, Any]:
++    for blueprint in OFFICIAL_LOBBY_BLUEPRINTS:
++        if blueprint["official_key"] == LobbyDefaults.DEFAULT_OFFICIAL_KEY:
++            return dict(blueprint)
++    return dict(OFFICIAL_LOBBY_BLUEPRINTS[0])
++
++
++def _get_default_lobby() -> Lobby | None:
++    _upsert_official_lobbies()
++    return Lobby.get_by_official_key(LobbyDefaults.DEFAULT_OFFICIAL_KEY)
++
++
++def _resolve_lobby_route(lobby_id_or_route: str) -> Lobby | None:
++    lobby = Lobby.get_by_id(lobby_id_or_route)
++    if lobby is not None:
++        return lobby
++
++    requested_route = (lobby_id_or_route or "").strip().lower()
++    if requested_route == LobbyDefaults.DEFAULT_ROUTE:
++        return _get_default_lobby()
++
++    return None
++
++
++def _resolve_lobby_route_or_default(lobby_id_or_route: str) -> Lobby | None:
++    lobby = _resolve_lobby_route(lobby_id_or_route)
++    if lobby is not None:
++        return lobby
++
++    requested_route = (lobby_id_or_route or "").strip()
++    if not requested_route or len(requested_route) != 24:
++        return _get_default_lobby()
++
++    return None
++
++
+ def _normalize_match_token(raw: str) -> str:
+     normalized = (raw or "").strip().lower().replace("-", " ").replace("_", " ")
+     return " ".join(normalized.split())
+ 
+ 
++def _legacy_registry_assignments() -> list[dict[str, Any]]:
++    cfg = get_app_config()
++    raw_registry = (cfg.GAME_SERVER_REGISTRY_JSON or "").strip()
++    assignments: list[dict[str, Any]] = []
++
++    if raw_registry:
++        try:
++            parsed = json.loads(raw_registry)
++        except Exception:
++            parsed = None
++
++        if isinstance(parsed, dict):
++            for raw_key, raw_entry in parsed.items():
++                official_key = str(raw_key or "").strip()
++                if not official_key:
++                    continue
++
++                if isinstance(raw_entry, dict):
++                    server_id = str(
++                        raw_entry.get("server_id")
++                        or raw_entry.get("serverId")
++                        or official_key
++                    ).strip()
++                    region = str(raw_entry.get("region") or cfg.DEFAULT_GAME_SERVER_REGION).strip()
++                    game_ws_base_url = str(
++                        raw_entry.get("game_ws_base_url")
++                        or raw_entry.get("gameWsBaseUrl")
++                        or cfg.GAME_WS_PUBLIC_BASE_URL
++                    ).strip()
++                    chat_ws_base_url = str(
++                        raw_entry.get("chat_ws_base_url")
++                        or raw_entry.get("chatWsBaseUrl")
++                        or cfg.CHAT_WS_PUBLIC_BASE_URL
++                    ).strip()
++                    raw_official_keys = raw_entry.get("official_keys") or raw_entry.get("officialKeys")
++                    official_keys = (
++                        [str(item).strip() for item in raw_official_keys if str(item).strip()]
++                        if isinstance(raw_official_keys, list)
++                        else [official_key]
++                    )
++                else:
++                    server_id = official_key
++                    region = cfg.DEFAULT_GAME_SERVER_REGION
++                    game_ws_base_url = str(raw_entry or cfg.GAME_WS_PUBLIC_BASE_URL).strip()
++                    chat_ws_base_url = cfg.CHAT_WS_PUBLIC_BASE_URL
++                    official_keys = [official_key]
++
++                assignments.append(
++                    {
++                        "game_server_id": server_id,
++                        "region": region,
++                        "official_keys": official_keys,
++                        "game_ws_base_url": game_ws_base_url,
++                        "chat_ws_base_url": chat_ws_base_url,
++                    }
++                )
++
++    if assignments:
++        return assignments
++
++    default_blueprint = _default_lobby_blueprint()
++    return [
++        {
++            "game_server_id": cfg.DEFAULT_GAME_SERVER_ID,
++            "region": cfg.DEFAULT_GAME_SERVER_REGION or default_blueprint["server_region"],
++            "official_keys": [LobbyDefaults.DEFAULT_OFFICIAL_KEY],
++            "game_ws_base_url": cfg.GAME_WS_PUBLIC_BASE_URL,
++            "chat_ws_base_url": cfg.CHAT_WS_PUBLIC_BASE_URL,
++        }
++    ]
++
++
+ def _materialize_assignment(lobby: Lobby, assignment: dict[str, Any]) -> dict[str, str]:
+-    default_region = (lobby.server_region or "").strip() or "unknown-region"
++    default_region = (lobby.server_region or "").strip() or LobbyDefaults.UNKNOWN_REGION
+     return {
+         "game_server_id": str(assignment.get("game_server_id") or "").strip(),
+         "game_region": str(assignment.get("region") or "").strip() or default_region,
+@@ -82,32 +170,39 @@ def _materialize_assignment(lobby: Lobby, assignment: dict[str, Any]) -> dict[st
+ 
+ def _select_game_server_assignment(lobby: Lobby) -> dict[str, str] | None:
+     healthy_registry = GameServerRegistry.list_healthy()
+-    if not healthy_registry:
+-        return None
++    routing_candidates: list[dict[str, Any]]
++    if healthy_registry:
++        routing_candidates = [
++            {
++                "game_server_id": entry.server_id,
++                "region": entry.region,
++                "official_keys": entry.official_keys,
++                "game_ws_base_url": entry.game_ws_base_url,
++                "chat_ws_base_url": entry.chat_ws_base_url,
++            }
++            for entry in healthy_registry
++        ]
++    else:
++        routing_candidates = _legacy_registry_assignments()
+ 
+     lobby_official_key = (lobby.official_key or "").strip().lower()
+     lobby_region_token = _normalize_match_token(lobby.server_region or "")
+ 
+-    def _registry_candidate(entry: GameServerRegistry) -> dict[str, Any]:
+-        return {
+-            "game_server_id": entry.server_id,
+-            "region": entry.region,
+-            "official_keys": entry.official_keys,
+-            "game_ws_base_url": entry.game_ws_base_url,
+-            "chat_ws_base_url": entry.chat_ws_base_url,
+-        }
+-
+-    for entry in healthy_registry:
+-        entry_official_keys = [key.strip().lower() for key in (entry.official_keys or []) if key.strip()]
++    for entry in routing_candidates:
++        entry_official_keys = [
++            key.strip().lower() for key in (entry.get("official_keys") or []) if key.strip()
++        ]
+         if lobby_official_key and lobby_official_key in entry_official_keys:
+-            return _materialize_assignment(lobby, _registry_candidate(entry))
++            return _materialize_assignment(lobby, entry)
+ 
+-    for entry in healthy_registry:
+-        entry_region_token = _normalize_match_token(entry.region)
++    for entry in routing_candidates:
++        entry_region_token = _normalize_match_token(entry.get("region") or "")
+         if lobby_region_token and entry_region_token and lobby_region_token == entry_region_token:
+-            return _materialize_assignment(lobby, _registry_candidate(entry))
++            return _materialize_assignment(lobby, entry)
+ 
+-    return _materialize_assignment(lobby, _registry_candidate(healthy_registry[0]))
++    if not routing_candidates:
++        return None
++    return _materialize_assignment(lobby, routing_candidates[0])
+ 
+ 
+ def _ensure_lobby_routing_assignment(lobby: Lobby) -> Lobby | None:
+@@ -232,7 +327,7 @@ async def create_lobby(payload: CreateLobbyRequest, request: Request):
+ 
+ @lobby_routes.get("/{lobby_id}", status_code=HttpStatus.OK)
+ async def get_lobby(lobby_id: str):
+-    lobby = Lobby.get_by_id(lobby_id)
++    lobby = _resolve_lobby_route_or_default(lobby_id)
+     if not lobby:
+         raise HTTPException(status_code=404, detail="Lobby not found")
+ 
+@@ -246,11 +341,12 @@ async def join_lobby(lobby_id: str, request: Request):
+     if not user_id:
+         raise AuthenticationError(ResponseMessages.INVALID_OR_EXPIRED_TOKEN)
+ 
+-    existing = Lobby.get_by_id(lobby_id)
++    existing = _resolve_lobby_route_or_default(lobby_id)
+     if not existing:
+         raise HTTPException(status_code=404, detail="Lobby not found")
++    resolved_lobby_id = existing.id or lobby_id
+ 
+-    updated = Lobby.move_user_to_lobby(lobby_id, user_id=user_id)
++    updated = Lobby.move_user_to_lobby(resolved_lobby_id, user_id=user_id)
+     if not updated:
+         raise HTTPException(status_code=409, detail="Lobby is full")
+     updated = _ensure_lobby_routing_assignment(updated)
+@@ -273,12 +369,17 @@ async def leave_lobby(lobby_id: str, request: Request):
+     if not user_id:
+         raise AuthenticationError(ResponseMessages.INVALID_OR_EXPIRED_TOKEN)
+ 
+-    updated = Lobby.leave(lobby_id, user_id=user_id)
++    existing = _resolve_lobby_route_or_default(lobby_id)
++    if not existing:
++        raise HTTPException(status_code=404, detail="Lobby not found")
++
++    updated = Lobby.leave(existing.id or lobby_id, user_id=user_id)
+     if not updated:
+         raise HTTPException(status_code=404, detail="Lobby not found")
+ 
+     return {"lobby": updated.model_dump(by_alias=True)}
+ 
++
+ @lobby_routes.get("", status_code=HttpStatus.OK)
+ async def list_lobbies(kind: str = Query(default="official")):
+     requested_kind = _normalize_lobby_kind(kind)
+@@ -298,7 +399,11 @@ async def list_lobbies(kind: str = Query(default="official")):
+             continue
+         if requested_kind == "official" and (lobby.official_key or "") not in allowed_official_keys:
+             continue
+-        if is_official and (lobby.official_key or "").strip().lower() not in healthy_official_keys:
++        if (
++            healthy_official_keys
++            and is_official
++            and (lobby.official_key or "").strip().lower() not in healthy_official_keys
++        ):
+             continue
+         if requested_kind == "custom" and is_official:
+             continue
+@@ -309,3 +414,12 @@ async def list_lobbies(kind: str = Query(default="official")):
+         status_code=HttpStatus.OK,
+         content={"lobbies": browser_payload},
+     )
++
++
++@lobby_routes.get("/{lobby_path:path}", status_code=HttpStatus.OK)
++async def get_lobby_route_fallback(lobby_path: str):
++    lobby = _resolve_lobby_route_or_default(lobby_path)
++    if not lobby:
++        raise HTTPException(status_code=404, detail="Lobby not found")
++
++    return {"lobby": lobby.model_dump(by_alias=True)}
+diff --git a/base/server/api/websockets/connection_hub.py b/repo/server/api/websockets/connection_hub.py
+index 4282055..a229977 100644
+--- a/base/server/api/websockets/connection_hub.py
++++ b/repo/server/api/websockets/connection_hub.py
+@@ -23,6 +23,9 @@ class ConnectionHub:
+         self._lock = asyncio.Lock()
+         self._lobbies: dict[str, dict[WebSocket, ConnectionInfo]] = {}
+ 
++    def reset_for_tests(self) -> None:
++        self._lobbies.clear()
++
+     async def connect(
+         self,
+         lobby_id: str,
+diff --git a/base/server/api/websockets/lobby_chat.py b/repo/server/api/websockets/lobby_chat.py
+index 93185da..acba16b 100644
+--- a/base/server/api/websockets/lobby_chat.py
++++ b/repo/server/api/websockets/lobby_chat.py
+@@ -20,6 +20,11 @@ chat_service = ChatService(connection_hub, connection_hub.lobby_size)
+ _MAX_WS_MESSAGE_BYTES = 64 * 1024
+ 
+ 
++def reset_lobby_chat_test_state() -> None:
++    connection_hub.reset_for_tests()
++    chat_service.reset_for_tests()
++
++
+ def _safe_parse_json(text: str) -> dict[str, Any]:
+     val = json.loads(text)
+     if not isinstance(val, dict):
+diff --git a/base/server/api/websockets/lobby_game.py b/repo/server/api/websockets/lobby_game.py
+index fef5fbe..441c4b8 100644
+--- a/base/server/api/websockets/lobby_game.py
++++ b/repo/server/api/websockets/lobby_game.py
+@@ -46,6 +46,21 @@ _lockstep_lock = asyncio.Lock()
+ _lockstep_state_by_lobby: dict[str, LockstepLobbyState] = {}
+ 
+ 
++def reset_lobby_game_test_state() -> None:
++    for task in list(_snapshot_flush_task_by_lobby.values()):
++        if task is not None and not task.done():
++            task.cancel()
++    for state in list(_lockstep_state_by_lobby.values()):
++        if state.task is not None and not state.task.done():
++            state.task.cancel()
++
++    _pending_snapshot_by_lobby.clear()
++    _snapshot_flush_task_by_lobby.clear()
++    _presence_by_lobby.clear()
++    _lockstep_state_by_lobby.clear()
++    game_connection_hub.reset_for_tests()
++
++
+ def _parse_grid_cell(raw: Any, field_name: str) -> dict[str, int] | None:
+     if raw is None:
+         return None
+diff --git a/base/server/application/messaging/chat_service.py b/repo/server/application/messaging/chat_service.py
+index b3c7ba5..59dc01d 100644
+--- a/base/server/application/messaging/chat_service.py
++++ b/repo/server/application/messaging/chat_service.py
+@@ -33,6 +33,9 @@ class ChatService:
+     def get_recent_messages(self, lobby_id: str) -> list[dict[str, Any]]:
+         return list(self._history.get(lobby_id, []))
+ 
++    def reset_for_tests(self) -> None:
++        self._history.clear()
++
+     def _store_message(self, lobby_id: str, payload: dict[str, Any]) -> None:
+         self._history[lobby_id].append(payload)
+ 
+@@ -68,4 +71,4 @@ class ChatService:
+         )
+         payload = message.to_payload()
+         self._store_message(lobby_id, payload)
+-        await self._broadcaster.broadcast(lobby_id, payload)
+\ No newline at end of file
++        await self._broadcaster.broadcast(lobby_id, payload)
+diff --git a/base/server/external/db/models/lobby.py b/repo/server/external/db/models/lobby.py
+index 743bc6c..157bba6 100644
+--- a/base/server/external/db/models/lobby.py
++++ b/repo/server/external/db/models/lobby.py
+@@ -122,6 +122,15 @@ class Lobby(Timestamped):
+         doc = cls.collection().find_one({"_id": oid})
+         return cls.from_mongo(doc)
+ 
++    @classmethod
++    def get_by_official_key(cls, official_key: str) -> Optional["Lobby"]:
++        resolved_key = (official_key or "").strip()
++        if not resolved_key:
++            return None
++        cls.ensure_indexes()
++        doc = cls.collection().find_one({"official_key": resolved_key})
++        return cls.from_mongo(doc)
++
+     @classmethod
+     def join(cls, lobby_id: str, user_id: str) -> Optional["Lobby"]:
+         """
+diff --git a/base/server/external/db/mongo.py b/repo/server/external/db/mongo.py
+index 89812c3..e1f7300 100755
+--- a/base/server/external/db/mongo.py
++++ b/repo/server/external/db/mongo.py
+@@ -128,12 +128,13 @@ class MongoDBClient:
+             cls._client = None
+ 
+     @classmethod
+-    def reset_mock(cls):
+-        """Drop all mock data (only valid in mock mode)."""
+-        if not cls._is_mock:
+-            raise RuntimeError("reset_mock() can only be used in mock mode")
+-        cls._client = mongomock.MongoClient()
+-        cls._db_name = "testdb"
++    def reset_mock(cls):
++        """Drop all mock data (only valid in mock mode)."""
++        if not cls._is_mock:
++            raise RuntimeError("reset_mock() can only be used in mock mode")
++        cls._client = mongomock.MongoClient()
++        cls._db_name = "godhand"
++        cls._seed_mock_users()
+ 
+     @classmethod
+     def _seed_mock_users(cls) -> None:
+diff --git a/base/server/tests/conftest.py b/repo/server/tests/conftest.py
+index 3ff3f55..f7b346d 100644
+--- a/base/server/tests/conftest.py
++++ b/repo/server/tests/conftest.py
+@@ -16,6 +16,8 @@ os.environ["SECRET_KEY"] = "test-secret-key-32-bytes-minimum"
+ os.environ["JWT_SECRET_KEY"] = "test-jwt-secret-key-32-bytes-min"
+ 
+ from server.app import create_app
++from server.api.websockets.lobby_chat import reset_lobby_chat_test_state
++from server.api.websockets.lobby_game import reset_lobby_game_test_state
+ 
+ 
+ @pytest.fixture(autouse=True)
+@@ -133,6 +135,8 @@ def _reset_mongo_mock(_test_env: None) -> None:
+     """
+     Ensure each test has a clean in-memory Mongo database when mongomock is used.
+     """
++    reset_lobby_chat_test_state()
++    reset_lobby_game_test_state()
+     try:
+         MongoDBClient.reset_mock()
+     except Exception:
+diff --git a/base/server/tests/test_lobby_api.py b/repo/server/tests/test_lobby_api.py
+index ed1685c..0d5ae7e 100644
+--- a/base/server/tests/test_lobby_api.py
++++ b/repo/server/tests/test_lobby_api.py
+@@ -2,6 +2,7 @@ from __future__ import annotations
+ 
+ from fastapi.testclient import TestClient
+ from server.app import create_app
++from server.utils.constants import LobbyDefaults
+ 
+ from server.tests.conftest import (
+     register_user,
+@@ -110,3 +111,87 @@ def test_list_lobbies_defaults_to_official_servers():
+         assert first_lobby["kind"] == "official"
+         assert isinstance(first_lobby["players"], list)
+         assert "playerCount" in first_lobby
++
++
++def test_get_default_lobby_route_resolves_default_official_lobby():
++    app = create_app()
++    with TestClient(app) as client:
++        response = client.get(f"/api/v1/lobbies/{LobbyDefaults.DEFAULT_ROUTE}")
++        assert response.status_code == 200, response.text
++
++        default_blueprint = next(
++            item
++            for item in LobbyDefaults.OFFICIAL_BLUEPRINTS
++            if item["official_key"] == LobbyDefaults.DEFAULT_OFFICIAL_KEY
++        )
++        lobby = response.json()["lobby"]
++        assert lobby["lobby_kind"] == LobbyDefaults.DEFAULT_KIND
++        assert lobby["official_key"] == LobbyDefaults.DEFAULT_OFFICIAL_KEY
++        assert lobby["lobby_name"] == default_blueprint["lobby_name"]
++
++
++def test_unmatched_lobby_route_falls_back_to_default_lobby():
++    app = create_app()
++    with TestClient(app) as client:
++        default_response = client.get(f"/api/v1/lobbies/{LobbyDefaults.DEFAULT_ROUTE}")
++        assert default_response.status_code == 200, default_response.text
++        default_lobby_id = default_response.json()["lobby"]["_id"]
++
++        unmatched_response = client.get("/api/v1/lobbies/unmatched-lobby-route")
++        assert unmatched_response.status_code == 200, unmatched_response.text
++        unmatched_lobby = unmatched_response.json()["lobby"]
++        assert unmatched_lobby["_id"] == default_lobby_id
++        assert unmatched_lobby["official_key"] == LobbyDefaults.DEFAULT_OFFICIAL_KEY
++
++        nested_unmatched_response = client.get("/api/v1/lobbies/unmatched/route")
++        assert nested_unmatched_response.status_code == 200, nested_unmatched_response.text
++        nested_unmatched_lobby = nested_unmatched_response.json()["lobby"]
++        assert nested_unmatched_lobby["_id"] == default_lobby_id
++        assert nested_unmatched_lobby["official_key"] == LobbyDefaults.DEFAULT_OFFICIAL_KEY
++
++
++def test_missing_object_id_lobby_route_still_returns_not_found():
++    app = create_app()
++    with TestClient(app) as client:
++        response = client.get("/api/v1/lobbies/507f1f77bcf86cd799439011")
++        assert response.status_code == 404, response.text
++
++
++def test_default_lobby_join_uses_resolved_default_lobby_and_fallback_urls():
++    app = create_app()
++    with TestClient(app) as client:
++        me = create_and_login(client, "default-joiner@example.com")
++
++        csrf = get_auth_csrf(client)
++        response = client.post(
++            f"/api/v1/lobbies/{LobbyDefaults.DEFAULT_ROUTE}/join",
++            headers={"X-CSRF-TOKEN": csrf},
++        )
++        assert response.status_code == 200, response.text
++
++        payload = response.json()
++        lobby = payload["lobby"]
++        assert lobby["official_key"] == LobbyDefaults.DEFAULT_OFFICIAL_KEY
++        assert me["_id"] in lobby["players"]
++        assert payload["gameWsUrl"].endswith(f"/api/v1/ws/game/{lobby['_id']}")
++        assert payload["chatWsUrl"].endswith(f"/api/v1/ws/lobby/{lobby['_id']}")
++
++
++def test_repeated_default_and_unmatched_routes_are_idempotent():
++    app = create_app()
++    with TestClient(app) as client:
++        responses = [
++            client.get(f"/api/v1/lobbies/{LobbyDefaults.DEFAULT_ROUTE}"),
++            client.get("/api/v1/lobbies/unmatched-lobby-route"),
++            client.get("/api/v1/lobbies?kind=official"),
++            client.get(f"/api/v1/lobbies/{LobbyDefaults.DEFAULT_ROUTE}"),
++        ]
++        for response in responses:
++            assert response.status_code == 200, response.text
++
++        first_default_id = responses[0].json()["lobby"]["_id"]
++        second_default_id = responses[3].json()["lobby"]["_id"]
++        listed_ids = {lobby["id"] for lobby in responses[2].json()["lobbies"]}
++
++        assert first_default_id == second_default_id
++        assert first_default_id in listed_ids
+diff --git a/base/server/utils/constants.py b/repo/server/utils/constants.py
+index b0c3fc1..0b786cd 100755
+--- a/base/server/utils/constants.py
++++ b/repo/server/utils/constants.py
+@@ -69,6 +69,39 @@ class HttpStatus:
+     TOO_MANY_REQUESTS = 429
+     UNPROCESSABLE_ENTITY = 422
+     INTERNAL_SERVER_ERROR = 500
++    SERVICE_UNAVAILABLE = 503
++
++
++class LobbyDefaults:
++    """Default lobby route and official lobby values."""
++
++    DEFAULT_ROUTE = "default"
++    DEFAULT_KIND = "official"
++    DEFAULT_OFFICIAL_KEY = "na-west-1"
++    UNKNOWN_REGION = "unknown-region"
++    OFFICIAL_BLUEPRINTS = (
++        {
++            "official_key": "na-west-1",
++            "lobby_name": "NA West 1",
++            "server_region": "NA West 1",
++            "server_description": "Official NA West server #1.",
++            "user_capacity": 12,
++        },
++        {
++            "official_key": "na-west-2",
++            "lobby_name": "NA West 2",
++            "server_region": "NA West 2",
++            "server_description": "Official NA West server #2.",
++            "user_capacity": 12,
++        },
++        {
++            "official_key": "na-west-3",
++            "lobby_name": "NA West 3",
++            "server_region": "NA West 3",
++            "server_description": "Official NA West server #3.",
++            "user_capacity": 12,
++        },
++    )
+ 
+ 
+ class TokenExpiry:

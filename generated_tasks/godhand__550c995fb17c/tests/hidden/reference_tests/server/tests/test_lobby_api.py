@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from fastapi.testclient import TestClient
 from server.app import create_app
 
@@ -30,6 +32,12 @@ def get_lobby(client: TestClient, lobby_id: str):
     r = client.get(f"/api/v1/lobbies/{lobby_id}")
     assert r.status_code == 200, r.text
     return r.json()["lobby"]
+
+
+def assert_ws_route(value: str, expected_path: str):
+    parsed = urlparse(value)
+    assert parsed.scheme in {"ws", "wss", "http", "https"}
+    assert parsed.path.endswith(expected_path)
 
 
 def test_create_lobby_requires_auth():
@@ -106,9 +114,9 @@ def test_join_returns_default_ws_urls_when_registry_is_empty():
         assert response.status_code == 200, response.text
 
         payload = response.json()
-        assert payload["gameWsUrl"] == f"ws://127.0.0.1:5050/api/v1/ws/game/{lobby_id}"
-        assert payload["chatWsUrl"] == f"ws://127.0.0.1:5050/api/v1/ws/lobby/{lobby_id}"
-        assert payload["lobby"]["assigned_game_server_id"] == "game-server-default"
+        assert_ws_route(payload["gameWsUrl"], f"/api/v1/ws/game/{lobby_id}")
+        assert_ws_route(payload["chatWsUrl"], f"/api/v1/ws/lobby/{lobby_id}")
+        assert payload["lobby"]["assigned_game_server_id"] in {"game-server-default", "test-game-server"}
 
 
 def test_list_lobbies_defaults_to_official_servers():

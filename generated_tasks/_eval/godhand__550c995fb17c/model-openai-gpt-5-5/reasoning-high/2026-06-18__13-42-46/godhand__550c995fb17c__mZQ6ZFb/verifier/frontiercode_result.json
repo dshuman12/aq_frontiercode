@@ -1,0 +1,226 @@
+{
+  "blocker_failures": [
+    "hidden_reference_tests_pass"
+  ],
+  "criteria_results": [
+    {
+      "blocker": true,
+      "category": "patch_specific",
+      "criterion_id": "hidden_reference_tests_pass",
+      "details": "hidden reference tests: `make test-backend` exited 2\nSTDOUT:\n./server/scripts/test.sh\n................................FFF.FFFF.F..........F.FF                 [100%]\n=================================== FAILURES ===================================\n___________________________ test_join_and_leave_flow ___________________________\n\n    def test_join_and_leave_flow():\n        \"\"\"\n        Verifies:\n          - POST /api/v1/lobbies/{lobby_id}/join adds the user to players\n          - POST /api/v1/lobbies/{lobby_id}/leave removes the user\n          - join returns 200 with {\"lobby\": ...}\n        \"\"\"\n        app = create_app()\n        with TestClient(app) as client:\n            owner = create_and_login(client, \"owner2@example.com\")\n            lobby = create_lobby(client, \"join-leave-lobby\", user_capacity=4)\n            lobby_id = lobby[\"_id\"]\n    \n            # second user registers and logs in\n            bob = create_and_login(client, \"bob@example.com\")\n    \n            # bob joins\n            csrf = get_auth_csrf(client)\n            r = client.post(f\"/api/v1/lobbies/{lobby_id}/join\", headers={\"X-CSRF-TOKEN\": csrf})\n>           assert r.status_code == 200, r.text\nE           AssertionError: {\"detail\":\"No healthy game server is available for this lobby.\",\"path\":\"/api/v1/lobbies/6a3459fb5d5d4ddc8824eb9c/join\",\"method\":\"POST\",\"url\":\"http://testserver/api/v1/lobbies/6a3459fb5d5d4ddc8824eb9c/join\"}\nE           assert 503 == 200\nE            +  where 503 = <Response [503 Service Unavailable]>.status_code\n\nserver/tests/test_lobby_api.py:83: AssertionError\n----------------------------- Captured stdout call -----------------------------\n2026-06-18 20:50:02,869 - app - INFO - create_app:39 - Registered error handlers [0.00001s]\n2026-06-18 20:50:02,870 - app - INFO - create_app:44 - Registered middleware [0.00004s]\n2026-06-18 20:50:02,870 - app - INFO - create_app:49 - Initialized auth rate limiter [0.00001s]\n2026-06-18 20:50:02,873 - app - INFO - create_app:58 - Registered routers [0.00s]\n2026-06-18 20:50:02,873 - pymongo - INFO - initialize:39 - Initialized mongomock MongoDB client for testing\n2026-06-18 20:50:02,933 - pymongo - INFO - _seed_mock_users:163 - Seeded default mock users for testing environment\n2026-06-18 20:50:02,933 - app - INFO - create_app:63 - Initialized services [0.05963s]\n2026-06-18 20:50:02,933 - app - INFO - create_app:66 - Total initialization time: [0.06366s]\n2026-06-18 20:50:02,934 - app - INFO - issue_anon_csrf_token:24 - Issued anonymous CSRF token\n2026-06-18 20:50:02,994 - app - INFO - register_user:155 - User registered: email=owner2@example.com\n2026-06-18 20:50:02,995 - app - INFO - issue_anon_csrf_token:24 - Issued anonymous CSRF token\n2026-06-18 20:50:03,056 - app - INFO - create_and_set_tokens:124 - Issued JWT cookies for user_id=6a3459fa5d5d4ddc8824eb9b\n2026-06-18 20:50:03,056 - app - INFO - login_user:188 - User logged in: identifier=owner2@example.com\n2026-06-18 20:50:03,057 - app - INFO - issue_anon_csrf_token:24 - Issued anonymous CSRF token\n2026-06-18 20:50:03,120 - app - INFO - register_user:155 - User registered: email=bob@example.com\n2026-06-18 20:50:03,121 - app - INFO - issue_anon_csrf_token:24 - Issued anonymous CSRF token\n2026-06-18 20:50:03,180 - app - INFO - create_and_set_tokens:124 - Issued JWT cookies for user_id=6a3459fb5d5d4ddc8824eb9d\n2026-06-18 20:50:03,180 - app - INFO - login_user:188 - User logged in: identifier=bob@example.com\n------------------------------ Captured log call -------------------------------\nINFO     app:app.py:39 Registered error handlers [0.00001s]\nINFO     app:app.py:44 Registered middleware [0.00004s]\nINFO     app:app.py:49 Initialized auth rate limiter [0.00001s]\nINFO     app:app.py:58 Registered routers [0.00s]\nINFO     pymongo:mongo.py:39 Initialized mongomock MongoDB client for testing\nINFO     pymongo:mongo.py:163 Seeded default mock users for testing environment\nINFO     app:app.py:63 Initialized services [0.05963s]\nINFO     app:app.py:66 Total initialization time: [0.06366s]\nINFO     app:csrf.py:24 Issued anonymous CSRF token\nINFO     app:auth.py:155 User registered: email=owner2@example.com\nINFO     app:csrf.py:24 Issued anonymous CSRF token\nINFO     app:jwt.py:124 Issued JWT cookies for user_id=6a3459fa5d5d4ddc8824eb9b\nINFO     app:auth.py:188 User logged in: identifier=owner2@example.com\nINFO     app:csrf.py:24 Issued anonymous CSRF token\nINFO     app:auth.py:155 User registered: email=bob@example.com\nINFO     app:csrf.py:24 Issued anonymous CSRF token\nINFO     app:jwt.py:124 Issued JWT cookies for user_id=6a3459fb5d5d4ddc8824eb9d\nINFO     app:auth.py:188 User logged in: identifier=bob@example.com\n___________ test_join_returns_default_ws_urls_when_registry_is_empty ___________\n\n    def test_join_returns_default_ws_urls_when_registry_is_empty():\n        app = create_app()\n        with TestClient(app) as client:\n            create_and_login(client, \"owner3@example.com\")\n            lobby = create_lobby(client, \"default-routing-lobby\", user_capacity=4)\n            lobby_id = lobby[\"_id\"]\n    \n            create_and_login(client, \"joiner3@example.com\")\n            csrf = get_auth_csrf(client)\n            response = client.post(f\"/api/v1/lobbies/{lobby_id}/join\", headers={\"X-CSRF-TOKEN\": csrf})\n>           assert response.status_code == 200, response.text\nE           AssertionError: {\"detail\":\"No healthy game server is available for this lobby.\",\"path\":\"/api/v1/lobbies/6a3459fb5d5d4ddc8824eba0/join\",\"method\":\"POST\",\"url\":\"http://testserver/api/v1/lobbies/6a3459fb5d5d4ddc8824eba0/join\"}\nE           assert 503 == 200\nE            +  where 503 = <Response [503 Service Unavailable]>.status_code\n\nserver/tests/test_lobby_api.py:114: AssertionError\n----------------------------- Captured stdout call -----------------------------\n2026-06-18 20:50:03,197 - app - INFO - create_app:39 - Registered error handlers [0.00001s]\n2026-06-18 20:50:03,197 - app - INFO - create_app:44 - Registered middleware [0.00004s]\n2026-06-18 20:50:03,197 - app - INFO - create_app:49 - Initialized auth rate limiter\n...<truncated>...\nSTDERR:\n/usr/local/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.21.902) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!\n  warnings.warn(\nmake: *** [Makefile:4: test-backend] Error 1\n",
+      "method": "classical",
+      "passed": false,
+      "score": 0.0,
+      "weight": 0.35
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "submitted_tests_fail_on_base",
+      "details": "Submitted tests failed on the broken base snapshot as expected.\nsubmitted tests on base snapshot: `make test-backend` exited 2\nSTDOUT:\n./server/scripts/test.sh\n\nSTDERR:\n/usr/local/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.21.902) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!\n  warnings.warn(\nImportError while loading conftest '/tmp/frontiercode-reverse-classical-y467ug4k/repo/server/tests/conftest.py'.\nserver/tests/conftest.py:13: in <module>\n    from server.utils.constants import LobbyDefaults\nE   ImportError: cannot import name 'LobbyDefaults' from 'server.utils.constants' (/tmp/frontiercode-reverse-classical-y467ug4k/repo/server/utils/constants.py)\nmake: *** [Makefile:4: test-backend] Error 4\n",
+      "method": "reverse_classical",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.15
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "visible_regression_tests_pass",
+      "details": "visible regression command: `make test-backend` exited 0\nSTDOUT:\n./server/scripts/test.sh\n............................................................             [100%]\n60 passed in 10.78s\n\nSTDERR:\n/usr/local/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.21.902) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!\n  warnings.warn(\n",
+      "method": "command",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.2
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "scope_matches_reference_intent",
+      "details": "Changed files stay within the generated reference scope: server/api/routers/lobby.py, server/api/websockets/connection_hub.py, server/api/websockets/lobby_chat.py, server/api/websockets/lobby_game.py, server/application/messaging/chat_service.py, server/tests/conftest.py, server/tests/test_lobby_api.py, server/utils/constants.py",
+      "method": "scope",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.15
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "no_hidden_asset_leak",
+      "details": "No generated hidden asset names or fix commit identifiers were found in the agent-visible repo.",
+      "method": "command",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.05
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "behavior_core_requirement",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "behavior_edge_cases",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "behavior_error_handling",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "behavior_backward_compatibility",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "regression_visible_tests_meaningful",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "regression_reference_area_preserved",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "test_coverage_positive_path",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "test_coverage_negative_path",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "test_integration_with_existing_workflow",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "scope_minimal_patch",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "scope_no_unrelated_public_api_changes",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "maintainability_idiomatic_design",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "maintainability_simple_control_flow",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "dependency_and_environment_fit",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "observable_output_contracts",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    }
+  ],
+  "metadata": {
+    "category_counts": {
+      "patch_specific": {
+        "passed": 5,
+        "total": 6
+      },
+      "regular": {
+        "passed": 14,
+        "total": 14
+      }
+    },
+    "criteria_passed": 19,
+    "criteria_total": 20
+  },
+  "pass": false,
+  "reward": 0.0,
+  "score": 0.0,
+  "submission_id": "",
+  "task_id": "godhand__550c995fb17c"
+}
