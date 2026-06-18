@@ -1694,6 +1694,8 @@ def build_instruction_prompt(
         "You write concise FrontierCode Harbor instruction.md files for coding agents. "
         "Match the style of the provided example: direct maintainer request, concrete test "
         "guidance, lint guidance when the repo supports it, and style constraints. "
+        "Make the task clear enough that a reviewer can tell what behavior, edge cases, "
+        "and repo-specific workflow matter without overprescribing one implementation. "
         "Return only Markdown for instruction.md. Use ASCII only."
     )
     test_dirs = sorted({parent_prefix(path).rstrip("/") for path in reference_test_files if parent_prefix(path)})
@@ -1739,8 +1741,10 @@ Required output:
 - The full instruction.md should be 1500-3000 characters, ideally around 2000 characters. Treat this as an important size target: avoid going over 3000 unless extra non-redundant task-specific constraints are genuinely needed.
 - Do not repeat the same workflow, scope limit, or task requirement in multiple sections. Every sentence should add meaningful information for completing or patching the task.
 - Include practical limitations and boundaries when useful: files or areas to avoid, compatibility constraints, environment assumptions, generated-output churn to avoid, or behaviors that must remain unchanged.
-- Include the visible test command.
-- Mention relevant public test directories when useful.
+- Include the visible test command and the repo's real validation workflow.
+- Mention relevant public test directories when useful, and say what behavior or edge cases those tests should cover.
+- Describe success criteria in terms of observable behavior, not just one exact patch shape.
+- Prefer clear reviewer-facing guidance over brittle implementation hints.
 - Do not mention the spreadsheet, task generation, fix commit, base commit, hidden tests, grader files, reference patches, answer keys, or private evaluation assets.
 - Do not include commit SHAs.
 - Do not say "source metadata", "reference", "oracle", or "hidden".

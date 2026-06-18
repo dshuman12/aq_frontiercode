@@ -18,9 +18,9 @@ The task package is the agent-visible task surface. It should include:
 - `instruction.md` with the concise task description.
 - The repository snapshot and correct base commit under `environment/repo/`.
 - Setup and runtime assumptions, including any Harbor image or Dockerfile.
-- Visible testing, lint, and style guidelines.
+- Visible testing, lint, and style guidelines, including exact commands and the public test areas that matter.
 - AGENTS-style repository conventions when applicable.
-- Any visible tests or test directories the agent may edit.
+- Any visible tests or test directories the agent may edit, plus enough guidance to explain what behaviors or edge cases those tests should cover.
 - The Harbor task metadata in `task.toml`.
 
 A task is expected to use this file layout:
@@ -99,6 +99,32 @@ calibrations:
 
 There is intentionally no `solution/` folder. Calibration examples and private
 rubric assets live under `tests/grader/`.
+
+## Rubric quality control loop
+
+The rubric should be hardened the same way a good test suite is hardened: not
+just by writing one prompt, but by checking that it separates correct solutions
+from bad ones and that it does not unfairly reject valid alternatives.
+
+1. **Design** — Prefer deterministic checks for objective behavior and use prompt
+   criteria only for qualities that genuinely require judgment such as style,
+   readability, or architecture.
+2. **Hack report** — Try adversarial or lazy solutions that look plausible but
+   do not actually solve the task. If one slips through, strengthen the relevant
+   command, hidden test, scope rule, or rubric prompt.
+3. **False-negative check** — Try multiple valid implementations that differ in
+   structure, naming, or style. If a genuinely good solution is rejected, the
+   rubric is too brittle.
+4. **Calibration** — Use several examples spanning low, medium, and high
+   quality so reviewers can see how the rubric resolves partial or near-miss
+   solutions.
+5. **Review and re-review** — A maintainer/domain expert should inspect the
+   task, then a second reviewer should challenge the rubric again. Send the task
+   back for revision whenever a reviewer finds a gap, a shortcut, or a false
+   negative.
+
+This loop is the practical reason why task QA should look at both the public
+instructions and the hidden calibration evidence together.
 
 ## Grader
 
