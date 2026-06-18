@@ -1,0 +1,256 @@
+name: Slack Deploy Notification
+description: Post or update a Slack message for deployment status
+
+inputs:
+  status:
+    description: "Deployment status (started | success | failure | cancelled)"
+    required: true
+  version:
+    description: "Release version being deployed"
+    required: true
+  slack-token:
+    description: "Slack Bot OAuth token"
+    required: true
+  service:
+    description: "Service name (defaults to repository name)"
+    required: false
+    default: ""
+  message-ts:
+    description: "Timestamp of existing Slack message to update"
+    required: false
+    default: ""
+  channel-id:
+    description: "Channel ID returned from initial post (required for updates)"
+    required: false
+    default: ""
+  channel:
+    description: "Slack channel to post to"
+    required: false
+    default: "team-engineering"
+  start-time:
+    description: "Unix epoch from the started step (used to calculate duration)"
+    required: false
+    default: ""
+  commit-count:
+    description: "Number of recent commits to include in thread (0 to disable)"
+    required: false
+    default: "10"
+  release-tag:
+    description: "Git tag for this release (used to derive commit range from previous tag)"
+    required: false
+    default: ""
+  error-details:
+    description: "Error details on failure"
+    required: false
+    default: ""
+
+outputs:
+  message-ts:
+    description: "Timestamp of the posted/updated Slack message"
+    value: ${{ steps.post.outputs.message-ts || steps.update.outputs.message-ts }}
+  channel-id:
+    description: "Channel ID of the posted message"
+    value: ${{ steps.post.outputs.channel-id }}
+  start-time:
+    description: "Unix epoch recorded when the started message was posted"
+    value: ${{ steps.post.outputs.start-time }}
+
+runs:
+  using: composite
+  steps:
+    - name: Post new message
+      id: post
+      if: inputs.message-ts == ''
+      shell: bash
+      env:
+        SLACK_TOKEN: ${{ inputs.slack-token }}
+        SERVICE: ${{ inputs.service || github.event.repository.name }}
+      run: |
+        RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+        PAYLOAD=$(cat <<'TEMPLATE'
+        {
+          "channel": "${{ inputs.channel }}",
+          "blocks": [
+            {
+              "type": "header",
+              "text": { "type": "plain_text", "text": ":rocket: Prod Deployment Started", "emoji": true }
+            },
+            { "type": "divider" },
+            {
+              "type": "section",
+              "fields": [
+                { "type": "mrkdwn", "text": "*Service:*\n${{ inputs.service || github.event.repository.name }}" },
+                { "type": "mrkdwn", "text": "*Version:*\n${{ inputs.version }}" },
+                { "type": "mrkdwn", "text": "*Status:*\n:hourglass_flowing_sand: In Progress" },
+                { "type": "mrkdwn", "text": "*Triggered by:*\n${{ github.actor }}" }
+              ]
+            },
+            { "type": "divider" },
+            {
+              "type": "context",
+              "elements": [
+                { "type": "mrkdwn", "text": ":link: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View workflow run>" }
+              ]
+            }
+          ]
+        }
+        TEMPLATE
+        )
+
+        RESPONSE=$(curl -s -X POST https://slack.com/api/chat.postMessage \
+          -H "Authorization: Bearer ${SLACK_TOKEN}" \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD")
+
+        OK=$(echo "$RESPONSE" | jq -r '.ok')
+        if [ "$OK" != "true" ]; then
+          echo "::warning::Slack postMessage failed: $(echo "$RESPONSE" | jq -r '.error')"
+          exit 0
+        fi
+
+        TS=$(echo "$RESPONSE" | jq -r '.ts')
+        CHANNEL_ID=$(echo "$RESPONSE" | jq -r '.channel')
+        echo "message-ts=$TS" >> "$GITHUB_OUTPUT"
+        echo "channel-id=$CHANNEL_ID" >> "$GITHUB_OUTPUT"
+        echo "start-time=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+    - name: Update existing message
+      id: update
+      if: inputs.message-ts != ''
+      shell: bash
+      env:
+        SLACK_TOKEN: ${{ inputs.slack-token }}
+      run: |
+        RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+        if [ "${{ inputs.status }}" = "success" ]; then
+          STATUS_EMOJI=":white_check_mark:"
+          STATUS_TEXT="Success"
+          HEADER=":white_check_mark: Prod Deployment Succeeded"
+        elif [ "${{ inputs.status }}" = "cancelled" ]; then
+          STATUS_EMOJI=":no_entry_sign:"
+          STATUS_TEXT="Cancelled"
+          HEADER=":no_entry_sign: Prod Deployment Cancelled"
+        else
+          STATUS_EMOJI=":x:"
+          STATUS_TEXT="Failed"
+          HEADER=":x: Prod Deployment Failed"
+        fi
+
+        PAYLOAD=$(cat <<TEMPLATE
+        {
+          "channel": "${{ inputs.channel-id }}",
+          "ts": "${{ inputs.message-ts }}",
+          "blocks": [
+            {
+              "type": "header",
+              "text": { "type": "plain_text", "text": "${HEADER}", "emoji": true }
+            },
+            { "type": "divider" },
+            {
+              "type": "section",
+              "fields": [
+                { "type": "mrkdwn", "text": "*Service:*\n${{ inputs.service || github.event.repository.name }}" },
+                { "type": "mrkdwn", "text": "*Version:*\n${{ inputs.version }}" },
+                { "type": "mrkdwn", "text": "*Status:*\n${STATUS_EMOJI} ${STATUS_TEXT}" },
+                { "type": "mrkdwn", "text": "*Triggered by:*\n${{ github.actor }}" }
+              ]
+            },
+            { "type": "divider" },
+            {
+              "type": "context",
+              "elements": [
+                { "type": "mrkdwn", "text": ":link: <${RUN_URL}|View workflow run>" }
+              ]
+            }
+          ]
+        }
+        TEMPLATE
+        )
+
+        RESPONSE=$(curl -s -X POST https://slack.com/api/chat.update \
+          -H "Authorization: Bearer ${SLACK_TOKEN}" \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD")
+
+        OK=$(echo "$RESPONSE" | jq -r '.ok')
+        if [ "$OK" != "true" ]; then
+          echo "::warning::Slack chat.update failed: $(echo "$RESPONSE" | jq -r '.error')"
+          exit 0
+        fi
+
+        echo "message-ts=${{ inputs.message-ts }}" >> "$GITHUB_OUTPUT"
+
+    - name: Post thread details
+      if: inputs.message-ts != ''
+      shell: bash
+      env:
+        SLACK_TOKEN: ${{ inputs.slack-token }}
+        ERROR_DETAILS: ${{ inputs.error-details }}
+      run: |
+        RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        RELEASE_URL="${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ inputs.version }}"
+
+        if [ "${{ inputs.status }}" = "success" ]; then
+          LINES=":label: *Version:* ${{ inputs.version }}"
+
+          if [ -n "${{ inputs.start-time }}" ]; then
+            NOW=$(date +%s)
+            ELAPSED=$(( NOW - ${{ inputs.start-time }} ))
+            MINS=$(( ELAPSED / 60 ))
+            SECS=$(( ELAPSED % 60 ))
+            LINES="$LINES
+        :stopwatch: *Duration:* ${MINS}m ${SECS}s"
+          fi
+
+          BLOCKS=$(jq -n --arg text "$LINES" \
+            '[{ type: "section", text: { type: "mrkdwn", text: $text } }]')
+
+          RELEASE_TAG="${{ inputs.release-tag }}"
+          if [ -n "$RELEASE_TAG" ]; then
+            PREV_TAG=$(git tag --list 'v*.*.*' --sort=-v:refname | grep -v "^${RELEASE_TAG}$" | head -n 1 || true)
+            if [ -n "$PREV_TAG" ]; then
+              COMMITS=$(git log --format='• %s' "${PREV_TAG}..${RELEASE_TAG}" 2>/dev/null | sed 's/^• \([a-z-]*\(([^)]*)\)\{0,1\}:\)/• *\1*/' || echo "")
+            else
+              COMMITS=$(git log --format='• %s' "$RELEASE_TAG" 2>/dev/null | sed 's/^• \([a-z-]*\(([^)]*)\)\{0,1\}:\)/• *\1*/' || echo "")
+            fi
+          elif [ "${{ inputs.commit-count }}" -gt 0 ] 2>/dev/null; then
+            COMMITS=$(git log --format='• %s' -"${{ inputs.commit-count }}" 2>/dev/null | sed 's/^• \([a-z-]*\(([^)]*)\)\{0,1\}:\)/• *\1*/' || echo "")
+          else
+            COMMITS=""
+          fi
+          if [ -n "$COMMITS" ]; then
+            BLOCKS=$(echo "$BLOCKS" | jq --arg commits "$COMMITS" \
+              '. + [{ type: "section", text: { type: "mrkdwn", text: (":memo: *Commits:*\n" + $commits) } }]')
+          fi
+
+          BLOCKS=$(echo "$BLOCKS" | jq --arg url "$RELEASE_URL" \
+            '. + [{ type: "context", elements: [{ type: "mrkdwn", text: (":package: <" + $url + "|View release>") }] }]')
+        else
+          BLOCKS='[]'
+
+          if [ -n "$ERROR_DETAILS" ]; then
+            BLOCKS=$(echo "$BLOCKS" | jq --arg err "$ERROR_DETAILS" \
+              '. + [{ type: "section", text: { type: "mrkdwn", text: (":warning: *Error:*\n" + $err) } }]')
+          fi
+
+          BLOCKS=$(echo "$BLOCKS" | jq --arg url "$RUN_URL" \
+            '. + [{ type: "context", elements: [{ type: "mrkdwn", text: (":link: <" + $url + "|View failed workflow run>") }] }]')
+        fi
+
+        PAYLOAD=$(jq -n \
+          --arg channel "${{ inputs.channel-id }}" \
+          --arg thread_ts "${{ inputs.message-ts }}" \
+          --argjson blocks "$BLOCKS" \
+          '{ channel: $channel, thread_ts: $thread_ts, blocks: $blocks }')
+
+        RESPONSE=$(curl -s -X POST https://slack.com/api/chat.postMessage \
+          -H "Authorization: Bearer ${SLACK_TOKEN}" \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD")
+
+        OK=$(echo "$RESPONSE" | jq -r '.ok')
+        if [ "$OK" != "true" ]; then
+          echo "::warning::Slack thread reply failed: $(echo "$RESPONSE" | jq -r '.error')"
+        fi

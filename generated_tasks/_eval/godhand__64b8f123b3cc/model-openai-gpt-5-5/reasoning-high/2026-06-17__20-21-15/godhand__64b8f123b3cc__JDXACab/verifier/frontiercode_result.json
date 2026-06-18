@@ -1,0 +1,227 @@
+{
+  "blocker_failures": [
+    "hidden_reference_tests_pass",
+    "scope_matches_reference_intent"
+  ],
+  "criteria_results": [
+    {
+      "blocker": true,
+      "category": "patch_specific",
+      "criterion_id": "hidden_reference_tests_pass",
+      "details": "hidden reference tests: `make test-backend-auth` exited 2\nSTDOUT:\n./server/scripts/test.sh server/tests/test_auth_user_flow.py\n..............F....                                                      [100%]\n=================================== FAILURES ===================================\n___________________ test_csrf_endpoint_returns_cookie_tokens ___________________\n\nclient = <starlette.testclient.TestClient object at 0xffff8c80eae0>\n\n    def test_csrf_endpoint_returns_cookie_tokens(client):\n        register_user(client, email=\"csrfsnapshot@example.com\", password=\"StrongPass123\")\n        login_user(client, email=\"csrfsnapshot@example.com\", password=\"StrongPass123\")\n    \n        response = client.get(\"/api/v1/auth/csrf\")\n>       assert response.status_code == 200\nE       assert 404 == 200\nE        +  where 404 = <Response [404 Not Found]>.status_code\n\nserver/tests/test_auth_user_flow.py:262: AssertionError\n---------------------------- Captured stdout setup -----------------------------\n2026-06-18 03:29:10,423 - app - INFO - create_app:41 - Registered error handlers [0.00001s]\n2026-06-18 03:29:10,423 - app - INFO - create_app:46 - Registered middleware [0.00000s]\n2026-06-18 03:29:10,423 - app - INFO - create_app:51 - Initialized auth rate limiter [0.00001s]\n2026-06-18 03:29:10,428 - app - INFO - create_app:60 - Registered routers [0.01s]\n2026-06-18 03:29:10,428 - pymongo - INFO - initialize:39 - Initialized mongomock MongoDB client for testing\n2026-06-18 03:29:10,503 - pymongo - INFO - _seed_mock_users:163 - Seeded default mock users for testing environment\n2026-06-18 03:29:10,503 - app - INFO - create_app:67 - Initialized services [0.07452s]\n2026-06-18 03:29:10,503 - app - INFO - create_app:70 - Total initialization time: [0.08009s]\n------------------------------ Captured log setup ------------------------------\nINFO     app:app.py:41 Registered error handlers [0.00001s]\nINFO     app:app.py:46 Registered middleware [0.00000s]\nINFO     app:app.py:51 Initialized auth rate limiter [0.00001s]\nINFO     app:app.py:60 Registered routers [0.01s]\nINFO     pymongo:mongo.py:39 Initialized mongomock MongoDB client for testing\nINFO     pymongo:mongo.py:163 Seeded default mock users for testing environment\nINFO     app:app.py:67 Initialized services [0.07452s]\nINFO     app:app.py:70 Total initialization time: [0.08009s]\n----------------------------- Captured stdout call -----------------------------\n2026-06-18 03:29:10,506 - app - INFO - issue_anon_csrf_token:46 - Issued anonymous CSRF token\n2026-06-18 03:29:10,581 - app - INFO - register_user:160 - User registered: email=csrfsnapshot@example.com\n2026-06-18 03:29:10,582 - app - INFO - issue_anon_csrf_token:46 - Issued anonymous CSRF token\n2026-06-18 03:29:10,659 - app - INFO - create_and_set_tokens:124 - Issued JWT cookies for user_id=6a336606aec12adc9b57bade\n2026-06-18 03:29:10,659 - app - INFO - login_user:193 - User logged in: identifier=csrfsnapshot@example.com\n------------------------------ Captured log call -------------------------------\nINFO     app:csrf.py:46 Issued anonymous CSRF token\nINFO     app:auth.py:160 User registered: email=csrfsnapshot@example.com\nINFO     app:csrf.py:46 Issued anonymous CSRF token\nINFO     app:jwt.py:124 Issued JWT cookies for user_id=6a336606aec12adc9b57bade\nINFO     app:auth.py:193 User logged in: identifier=csrfsnapshot@example.com\n=========================== short test summary info ============================\nFAILED server/tests/test_auth_user_flow.py::test_csrf_endpoint_returns_cookie_tokens - assert 404 == 200\n +  where 404 = <Response [404 Not Found]>.status_code\n1 failed, 18 passed in 4.40s\n\nSTDERR:\n/usr/local/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.21.902) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!\n  warnings.warn(\nmake: *** [Makefile:7: test-backend-auth] Error 1\n",
+      "method": "classical",
+      "passed": false,
+      "score": 0.0,
+      "weight": 0.35
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "submitted_tests_fail_on_base",
+      "details": "Submitted tests failed on the broken base snapshot as expected.\nsubmitted tests on base snapshot: `make test-backend-auth` exited 2\nSTDOUT:\n./server/scripts/test.sh server/tests/test_auth_user_flow.py\n...................FFFFFFFFFF...                                         [100%]\n=================================== FAILURES ===================================\n_ test_access_state_changing_auth_rejects_missing_csrf[post-/api/v1/auth/google/link/start-None] _\n\nclient = <starlette.testclient.TestClient object at 0xffffa292c0e0>\nmethod = 'post', path = '/api/v1/auth/google/link/start', body = None\n\n    @pytest.mark.parametrize((\"method\", \"path\", \"body\"), ACCESS_CSRF_ENDPOINTS)\n    def test_access_state_changing_auth_rejects_missing_csrf(client, method, path, body):\n        email = f\"missing-{path.strip('/').replace('/', '-')}@example.com\"\n        register_user(client, email=email, password=\"StrongPass123\")\n        login_user(client, email=email, password=\"StrongPass123\")\n    \n        response = _state_changing_auth_request(client, method, path, json=body)\n        assert response.status_code == 401\n>       assert response.json()[\"detail\"] == ResponseMessages.CSRF_TOKEN_INVALID\nE       AssertionError: assert 'Invalid or expired token' == 'Invalid or m...ng CSRF token'\nE         \nE         - Invalid or missing CSRF token\nE         + Invalid or expired token\n\nserver/tests/test_auth_user_flow.py:329: AssertionError\n---------------------------- Captured stdout setup -----------------------------\n2026-06-18 03:29:16,092 - app - INFO - create_app:41 - Registered error handlers [0.00000s]\n2026-06-18 03:29:16,092 - app - INFO - create_app:46 - Registered middleware [0.00000s]\n2026-06-18 03:29:16,092 - app - INFO - create_app:51 - Initialized auth rate limiter [0.00001s]\n2026-06-18 03:29:16,097 - app - INFO - create_app:60 - Registered routers [0.01s]\n2026-06-18 03:29:16,097 - pymongo - INFO - initialize:39 - Initialized mongomock MongoDB client for testing\n2026-06-18 03:29:16,171 - pymongo - INFO - _seed_mock_users:163 - Seeded default mock users for testing environment\n2026-06-18 03:29:16,171 - app - INFO - create_app:67 - Initialized services [0.07357s]\n2026-06-18 03:29:16,171 - app - INFO - create_app:70 - Total initialization time: [0.07921s]\n------------------------------ Captured log setup ------------------------------\nINFO     app:app.py:41 Registered error handlers [0.00000s]\nINFO     app:app.py:46 Registered middleware [0.00000s]\nINFO     app:app.py:51 Initialized auth rate limiter [0.00001s]\nINFO     app:app.py:60 Registered routers [0.01s]\nINFO     pymongo:mongo.py:39 Initialized mongomock MongoDB client for testing\nINFO     pymongo:mongo.py:163 Seeded default mock users for testing environment\nINFO     app:app.py:67 Initialized services [0.07357s]\nINFO     app:app.py:70 Total initialization time: [0.07921s]\n----------------------------- Captured stdout call -----------------------------\n2026-06-18 03:29:16,173 - app - INFO - issue_anon_csrf_token:24 - Issued anonymous CSRF token\n2026-06-18 03:29:16,248 - app - INFO - register_user:155 - User registered: email=missing-api-v1-auth-google-link-start@example.com\n2026-06-18 03:29:16,249 - app - INFO - issue_anon_csrf_token:24 - Issued anonymous CSRF token\n2026-06-18 03:29:16,324 - app - INFO - create_and_set_tokens:124 - Issued JWT cookies for user_id=6a33660c64e74cfd74e5bded\n2026-06-18 03:29:16,324 - app - INFO - login_user:188 - User logged in: identifier=missing-api-v1-auth-google-link-start@example.com\n------------------------------ Captured log call -------------------------------\nINFO     app:csrf.py:24 Issued anonymous CSRF token\nINFO     app:auth.py:155 User registered: email=missing-api-v1-auth-google-link-start@example.com\nINFO     app:csrf.py:24 Issued anonymous CSRF token\nINFO     app:jwt.py:124 Issued JWT cookies for user_id=6a33660c64e74cfd74e5bded\nINFO     app:auth.py:188 User logged in: identifier=missing-api-v1-auth-google-link-start@example.com\n_ test_access_state_changing_auth_rejects_missing_csrf[post-/api/v1/auth/google/unlink-None] _\n\nclient = <starlette.testclient.TestClient object at 0xffffa27f58e0>\nmethod = 'post', path = '/api/v1/auth/google/unlink', body = None\n\n    @pytest.mark.parametrize((\"method\", \"path\", \"body\"), ACCESS_CSRF_ENDPOINTS)\n    def test_access_state_changing_auth_rejects_missing_csrf(client, method, path, body):\n        email = f\"missing-{path.strip('/').replace('/', '-')}@example.com\"\n        register_user(client, email=email, password=\"StrongPass123\")\n        login_user(client, email=email, password=\"StrongPass123\")\n    \n        response = _state_changing_auth_request(client, method, path, json=body)\n        assert response.status_code == 401\n>       assert response.json()[\"detail\"] == ResponseMessages.CSRF_TOKEN_INVALID\nE       AssertionError: assert 'Invalid or expired token' == 'Invalid or m...ng CSRF token'\nE         \nE         - Invalid or missing CSRF token\nE         + Invalid or expired token\n\nserver/tests/test_auth_user_flow.py:329: AssertionError\n---------------------------- Captured stdout setup -----------------------------\n2026-06-18 03:29:16,349 - app - INFO - create_app:41 - Registered error handlers [0.00001s]\n2026-06-18 03:29:16,349 - app - INFO - create_app:46 - Registered middleware [0.00000s]\n2026-06-18 03:29:16,349 - app - INFO - create_app:51 - Initialized auth rate limiter [0.00001s]\n2026-06-18 03:29:16,354 - app - INFO - create_app:60 - Registered routers [0.01s]\n2026-06-18 03:29:16,354 - pymongo - INFO - initialize:39 - Initialized mongomock MongoDB client for testing\n2026-06-18 03:29:16,427 - pymongo - INFO - _seed_mock_users:163 - Seeded default mock users for testing environment\n2026-06-18 03:29:16,427 - app - INFO - create_app:67 - Initialized services [0.07310s]\n2026-06-18 03:29:16,427 - app - INFO - create_app:70 - Total initialization time: [0.07853s]\n------------------------------ Captured log setup ------------------------------\nINFO     app:app.py:41 Registered error handlers [0.00001s]\nINFO     app:app.py:46 Registered middleware [0.00000s]\nINFO     app:app.py:51 Initialized auth rate limiter [0.00001s\n...<truncated>...\nSTDERR:\n/usr/local/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.21.902) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!\n  warnings.warn(\nmake: *** [Makefile:7: test-backend-auth] Error 1\n",
+      "method": "reverse_classical",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.15
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "visible_regression_tests_pass",
+      "details": "visible regression command: `make test-backend-auth` exited 0\nSTDOUT:\n./server/scripts/test.sh server/tests/test_auth_user_flow.py\n................................                                         [100%]\n32 passed in 6.96s\n\nSTDERR:\n/usr/local/lib/python3.12/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.21.902) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!\n  warnings.warn(\n",
+      "method": "command",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.2
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "scope_matches_reference_intent",
+      "details": "Unexpected changed files: server/api/security/csrf.py",
+      "method": "scope",
+      "passed": false,
+      "score": 0.0,
+      "weight": 0.15
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "no_hidden_asset_leak",
+      "details": "No generated hidden asset names or fix commit identifiers were found in the agent-visible repo.",
+      "method": "command",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.05
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "behavior_core_requirement",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "behavior_edge_cases",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "behavior_error_handling",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "behavior_backward_compatibility",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "regression_visible_tests_meaningful",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "regression_reference_area_preserved",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "test_coverage_positive_path",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "test_coverage_negative_path",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "test_integration_with_existing_workflow",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "scope_minimal_patch",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "scope_no_unrelated_public_api_changes",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "maintainability_idiomatic_design",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "maintainability_simple_control_flow",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "dependency_and_environment_fit",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "observable_output_contracts",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    }
+  ],
+  "metadata": {
+    "category_counts": {
+      "patch_specific": {
+        "passed": 5,
+        "total": 6
+      },
+      "regular": {
+        "passed": 13,
+        "total": 14
+      }
+    },
+    "criteria_passed": 18,
+    "criteria_total": 20
+  },
+  "pass": false,
+  "reward": 0.0,
+  "score": 0.0,
+  "submission_id": "",
+  "task_id": "godhand__64b8f123b3cc"
+}

@@ -1,0 +1,319 @@
+diff --git a/base/server/api/security/cookies.py b/repo/server/api/security/cookies.py
+index 1c65ab2..e5ed5dc 100755
+--- a/base/server/api/security/cookies.py
++++ b/repo/server/api/security/cookies.py
+@@ -1,7 +1,8 @@
+-from fastapi import Response
+-from server.config import get_app_config
+-
+-class CookieUtils:
++from fastapi import Response
++from server.config import get_app_config
++
++
++class CookieUtils:
+     @staticmethod
+     def set_cookie(
+         response: Response,
+@@ -11,33 +12,27 @@ class CookieUtils:
+         max_age: int | None = None,
+         expires: int | None = None,
+         httponly: bool = False,
+-    ) -> None:
+-        cfg = get_app_config()
+-        domain = getattr(cfg, "JWT_COOKIE_DOMAIN", None)
+-        if getattr(cfg, "IS_DEV", False):
+-            domain = None
+-        response.set_cookie(
+-            key=name,
+-            value=value,
+-            max_age=max_age,
+-            expires=expires,
+-            path="/",
+-            domain=domain,
+-            secure=bool(cfg.JWT_COOKIE_SECURE),
+-            httponly=httponly,
+-            samesite=(cfg.JWT_COOKIE_SAMESITE or "Lax"),
+-        )
+-
+-    @staticmethod
+-    def delete_cookie(response: Response, name: str) -> None:
+-        cfg = get_app_config()
+-        domain = getattr(cfg, "JWT_COOKIE_DOMAIN", None)
+-        if getattr(cfg, "IS_DEV", False):
+-            domain = None
+-        response.delete_cookie(
+-            key=name,
+-            path="/",
+-            domain=domain,
+-            secure=bool(cfg.JWT_COOKIE_SECURE),
+-            samesite=(cfg.JWT_COOKIE_SAMESITE or "Lax"),
+-        )
+\ No newline at end of file
++    ) -> None:
++        cfg = get_app_config()
++        response.set_cookie(
++            key=name,
++            value=value,
++            max_age=max_age,
++            expires=expires,
++            path="/",
++            domain=cfg.JWT_COOKIE_DOMAIN,
++            secure=bool(cfg.JWT_COOKIE_SECURE),
++            httponly=httponly,
++            samesite=(cfg.JWT_COOKIE_SAMESITE or "Lax"),
++        )
++
++    @staticmethod
++    def delete_cookie(response: Response, name: str) -> None:
++        cfg = get_app_config()
++        response.delete_cookie(
++            key=name,
++            path="/",
++            domain=cfg.JWT_COOKIE_DOMAIN,
++            secure=bool(cfg.JWT_COOKIE_SECURE),
++            samesite=(cfg.JWT_COOKIE_SAMESITE or "Lax"),
++        )
+diff --git a/base/server/config.py b/repo/server/config.py
+index 61a1ab7..c605cc9 100644
+--- a/base/server/config.py
++++ b/repo/server/config.py
+@@ -9,12 +9,15 @@ from dataclasses import dataclass, field
+ from functools import lru_cache
+ import json
+ import os
++import re
+ from typing import Optional
+ 
+ from dotenv import load_dotenv
+ 
+ load_dotenv()
+ 
++_COOKIE_DOMAIN_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
++
+ 
+ def _join_base_and_path(base_url: str, path: str) -> str:
+     normalized_base = base_url.rstrip("/")
+@@ -77,6 +80,7 @@ class BaseConfig:
+     JWT_SECRET_KEY: str = ""
+     JWT_COOKIE_SECURE: bool = True
+     JWT_COOKIE_SAMESITE: Optional[str] = "Lax"
++    JWT_COOKIE_DOMAIN: Optional[str] = None
+     CSRF_HEADER_NAME: str = "X-CSRF-TOKEN"
+     EMAIL_VERIFY_TOKEN_TTL_HOURS: int = 24
+     AUTH_REQUIRE_EMAIL_VERIFICATION: bool = False
+@@ -124,6 +128,36 @@ class BaseConfig:
+             return default
+         return parsed
+ 
++    @staticmethod
++    def _to_optional_cookie_domain(value: str | None) -> str | None:
++        if value is None:
++            return None
++
++        domain = value.strip().lower()
++        if not domain:
++            return None
++
++        if "://" in domain or "/" in domain or ":" in domain or any(char.isspace() for char in domain):
++            raise ValueError(
++                "Environment variable 'JWT_COOKIE_DOMAIN' must be a bare domain, "
++                "for example '.example.com'"
++            )
++
++        hostname = domain[1:] if domain.startswith(".") else domain
++        if domain.startswith("..") or not hostname or hostname.endswith(".") or "." not in hostname:
++            raise ValueError(
++                "Environment variable 'JWT_COOKIE_DOMAIN' must be a parent domain, "
++                "for example '.example.com'"
++            )
++
++        labels = hostname.split(".")
++        if any(not _COOKIE_DOMAIN_LABEL_RE.match(label) for label in labels):
++            raise ValueError(
++                "Environment variable 'JWT_COOKIE_DOMAIN' contains an invalid domain label"
++            )
++
++        return f".{hostname}" if domain.startswith(".") else hostname
++
+     @classmethod
+     def from_env(cls) -> "BaseConfig":
+         """Create configuration instance from environment variables."""
+@@ -256,6 +290,7 @@ class BaseConfig:
+             JWT_SECRET_KEY=cls._get_required_secret_env("JWT_SECRET_KEY", min_length=32),
+             JWT_COOKIE_SECURE=cls._to_bool(os.getenv("JWT_COOKIE_SECURE"), cls.JWT_COOKIE_SECURE),
+             JWT_COOKIE_SAMESITE=os.getenv("JWT_COOKIE_SAMESITE", cls.JWT_COOKIE_SAMESITE),
++            JWT_COOKIE_DOMAIN=cls._to_optional_cookie_domain(os.getenv("JWT_COOKIE_DOMAIN")),
+             CSRF_HEADER_NAME=os.getenv("CSRF_HEADER_NAME", cls.CSRF_HEADER_NAME),
+             EMAIL_VERIFY_TOKEN_TTL_HOURS=int(
+                 os.getenv("EMAIL_VERIFY_TOKEN_TTL_HOURS", str(cls.EMAIL_VERIFY_TOKEN_TTL_HOURS))
+diff --git a/base/server/tests/conftest.py b/repo/server/tests/conftest.py
+index 66afa74..48cce63 100644
+--- a/base/server/tests/conftest.py
++++ b/repo/server/tests/conftest.py
+@@ -14,6 +14,7 @@ from server.external.db.mongo import MongoDBClient
+ os.environ["FASTAPI_ENV"] = "testing"
+ os.environ["SECRET_KEY"] = "test-secret-key-32-bytes-minimum"
+ os.environ["JWT_SECRET_KEY"] = "test-jwt-secret-key-32-bytes-min"
++os.environ.pop("JWT_COOKIE_DOMAIN", None)
+ 
+ from server.app import create_app
+ 
+@@ -30,6 +31,7 @@ def _test_env(monkeypatch: pytest.MonkeyPatch) -> None:
+     monkeypatch.setenv("SECRET_KEY", "test-secret-key-32-bytes-minimum")
+     monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key-32-bytes-min")
+     monkeypatch.setenv("JWT_COOKIE_SECURE", "false")
++    monkeypatch.delenv("JWT_COOKIE_DOMAIN", raising=False)
+     monkeypatch.setenv("AUTH_REQUIRE_EMAIL_VERIFICATION", "false")
+     monkeypatch.setenv("GOOGLE_CLIENT_ID", "test-google-client-id")
+     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "test-google-client-secret")
+diff --git a/base/server/tests/test_auth_user_flow.py b/repo/server/tests/test_auth_user_flow.py
+index 72aa67c..28afa87 100644
+--- a/base/server/tests/test_auth_user_flow.py
++++ b/repo/server/tests/test_auth_user_flow.py
+@@ -1,5 +1,9 @@
+ from __future__ import annotations
+ 
++from fastapi.testclient import TestClient
++
++from server.app import create_app
++from server.config import reset_settings_cache
+ from server.external.db.models.user import User
+ from server.tests.conftest import (
+     get_anon_csrf,
+@@ -10,6 +14,37 @@ from server.tests.conftest import (
+ )
+ from server.utils.constants import ResponseMessages
+ 
++_AUTH_COOKIE_NAMES = (
++    "access_token_cookie",
++    "refresh_token_cookie",
++    "csrf_access_token",
++    "csrf_refresh_token",
++)
++
++
++def _set_cookie_headers_for(response, cookie_name: str) -> list[str]:
++    return [
++        header
++        for header in response.headers.get_list("set-cookie")
++        if header.startswith(f"{cookie_name}=")
++    ]
++
++
++def _assert_cookie_domain(
++    response,
++    cookie_names: tuple[str, ...],
++    expected_domain: str | None,
++) -> None:
++    for cookie_name in cookie_names:
++        headers = _set_cookie_headers_for(response, cookie_name)
++        assert headers, f"Missing Set-Cookie header for {cookie_name}"
++        for header in headers:
++            normalized_header = header.lower()
++            if expected_domain is None:
++                assert "domain=" not in normalized_header
++            else:
++                assert f"domain={expected_domain.lower()}" in normalized_header
++
+ 
+ def test_register_success_returns_user_without_tokens(client):
+     anon_csrf = get_anon_csrf(client)
+@@ -87,6 +122,97 @@ def test_login_with_email_identifier_succeeds(client):
+     assert client.cookies.get("refresh_token_cookie")
+ 
+ 
++def test_auth_cookies_do_not_set_domain_when_unconfigured(client):
++    csrf_response = client.get("/api/v1/auth/csrf-token")
++    assert csrf_response.status_code == 200
++    anon_csrf = csrf_response.json()["csrf_token"]
++    _assert_cookie_domain(csrf_response, ("anon_csrf",), None)
++
++    register_response = client.post(
++        "/api/v1/auth/register",
++        json={
++            "username": "hostonly",
++            "email": "hostonly@example.com",
++            "password": "StrongPass123",
++        },
++        headers={"X-CSRF-TOKEN": anon_csrf},
++    )
++    assert register_response.status_code == 201
++
++    anon_csrf = get_anon_csrf(client)
++    login_response = client.post(
++        "/api/v1/auth/login",
++        json={"identifier": "hostonly@example.com", "password": "StrongPass123"},
++        headers={"X-CSRF-TOKEN": anon_csrf},
++    )
++    assert login_response.status_code == 200
++    _assert_cookie_domain(login_response, _AUTH_COOKIE_NAMES, None)
++
++    csrf = get_auth_csrf(client)
++    me_response = client.get("/api/v1/auth/me", headers={"X-CSRF-TOKEN": csrf})
++    assert me_response.status_code == 200
++
++
++def test_auth_cookies_use_configured_shared_domain(monkeypatch):
++    monkeypatch.setenv("JWT_COOKIE_DOMAIN", ".example.com")
++    reset_settings_cache()
++
++    app = create_app()
++    with TestClient(app, base_url="http://api.example.com") as domain_client:
++        csrf_response = domain_client.get("/api/v1/auth/csrf-token")
++        assert csrf_response.status_code == 200
++        anon_csrf = csrf_response.json()["csrf_token"]
++        _assert_cookie_domain(csrf_response, ("anon_csrf",), ".example.com")
++
++        register_response = domain_client.post(
++            "/api/v1/auth/register",
++            json={
++                "username": "shareddomain",
++                "email": "shareddomain@example.com",
++                "password": "StrongPass123",
++            },
++            headers={"X-CSRF-TOKEN": anon_csrf},
++        )
++        assert register_response.status_code == 201
++
++        anon_csrf = get_anon_csrf(domain_client)
++        login_response = domain_client.post(
++            "/api/v1/auth/login",
++            json={"identifier": "shareddomain@example.com", "password": "StrongPass123"},
++            headers={"X-CSRF-TOKEN": anon_csrf},
++        )
++        assert login_response.status_code == 200
++        _assert_cookie_domain(login_response, _AUTH_COOKIE_NAMES, ".example.com")
++
++        access_csrf = get_auth_csrf(domain_client)
++        me_response = domain_client.get("/api/v1/auth/me", headers={"X-CSRF-TOKEN": access_csrf})
++        assert me_response.status_code == 200
++
++        refresh_csrf = get_refresh_csrf(domain_client)
++        refresh_response = domain_client.post(
++            "/api/v1/auth/refresh",
++            headers={"X-CSRF-TOKEN": refresh_csrf},
++        )
++        assert refresh_response.status_code == 200
++        _assert_cookie_domain(
++            refresh_response,
++            ("access_token_cookie", "csrf_access_token"),
++            ".example.com",
++        )
++
++        access_csrf = get_auth_csrf(domain_client)
++        logout_response = domain_client.post(
++            "/api/v1/auth/logout",
++            headers={"X-CSRF-TOKEN": access_csrf},
++        )
++        assert logout_response.status_code == 200
++        _assert_cookie_domain(logout_response, _AUTH_COOKIE_NAMES, ".example.com")
++        assert not domain_client.cookies.get("access_token_cookie")
++        assert not domain_client.cookies.get("refresh_token_cookie")
++        assert not domain_client.cookies.get("csrf_access_token")
++        assert not domain_client.cookies.get("csrf_refresh_token")
++
++
+ def test_login_with_username_identifier_succeeds(client):
+     anon_csrf = get_anon_csrf(client)
+     register_response = client.post(

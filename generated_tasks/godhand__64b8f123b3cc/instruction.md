@@ -1,21 +1,25 @@
 # Task description
 
-The authentication CSRF flow and production asset loading have several instabilities that surface in non-localhost and production-built environments. Harden the backend CSRF handling in `server/api/routers/auth.py` (with supporting logic in `server/api/security/csrf.py` and `server/api/security/cookies.py` as needed) so that token issuance, validation, and rejection behave consistently across register, login, and logout. CSRF failures must return clear, predictable error responses, and the existing success paths for both Google OAuth and username/email + password auth must remain unchanged.
+The auth CSRF flow and production asset loading are unstable and need to be hardened. On the backend, the auth router (`server/api/routers/auth.py`) must enforce CSRF validation consistently across state-changing auth endpoints, returning clear errors when a CSRF token is missing or mismatched, and keeping the existing rate-limit and token-validation behavior intact. On the frontend, `frontend/src/lib/authApi.ts` must send and synchronize CSRF tokens correctly so login, registration, and logout requests succeed without spurious failures, preserving the existing HTTPS transport guard for non-localhost environments.
 
-Expose `GET /api/v1/auth/csrf` as a logged-in CSRF snapshot endpoint. It should return the current `csrf_access_token` and `csrf_refresh_token` cookie values, and an empty `anon_csrf` value after login. Preserve the existing error contract for already-authenticated JWT-protected endpoints: malformed, expired, wrong-type, or otherwise rejected authenticated-token flows should continue to return the existing invalid-token response rather than introducing a new response string.
+Production asset loading in the game theme modules (`buildingSprites.ts`, `oreSprites.ts`, `terrainTileset.ts`, `valleyDecorations.ts`) must resolve asset URLs in a way that works under a built/bundled deployment rather than only in dev. Update `ProfileQuickMenu.tsx`, `GameScreen.tsx`, and `LobbyScreen.tsx` only as needed to consume the corrected auth/asset behavior. Keep `server/docs/auth.md` aligned with the resulting CSRF contract.
 
-On the frontend, stabilize how production assets and auth transport are resolved. Audit `frontend/src/lib/authApi.ts` for correct base-URL and credential handling, and ensure the game/theme asset modules (`buildingSprites.ts`, `oreSprites.ts`, `terrainTileset.ts`, `valleyDecorations.ts`) and screens (`GameScreen.tsx`, `LobbyScreen.tsx`, `ProfileQuickMenu.tsx`) load assets reliably under a production build, not only in dev.
-
-Keep `server/docs/auth.md` aligned with any behavioral changes. Do not alter the insecure-auth override or HTTPS enforcement semantics described in the README.
+Do not change the public auth API shape, route paths, or unrelated game simulation logic.
 
 # Test guidelines
 
-Run the visible suite with `make test-backend-auth`. Add or extend cases under `server/tests` (primarily `test_auth_user_flow.py`) to cover the CSRF issuance, validation, and rejection paths you touch, and to lock in that existing auth success flows still pass.
+Run the visible test command:
+
+```bash
+make test-backend-auth
+```
+
+This exercises `server/tests/test_auth_user_flow.py`, covering registration, login, rate-limit `429` responses, and CSRF/token validation. Add or extend tests in `server/tests` so the missing-token and mismatched-token CSRF cases are asserted on the state-changing endpoints. Confirm the full backend suite still passes via `make test-backend`. Tests use the `testing` environment and the mocked Mongo setup from `server/tests/conftest.py`.
 
 # Lint guidelines
 
-For backend changes, keep imports and formatting consistent with the surrounding modules. For frontend changes, run `npm run lint` in `frontend/` and resolve any new findings without disabling rules. Do not fix unrelated pre-existing lint findings outside the task surface just to make lint clean; report them instead.
+Lint the frontend with `cd frontend && npm run lint` (ESLint via `frontend/eslint.config.js`) and resolve any reported issues in the files you touch. Keep TypeScript clean under `npm run build` (`tsc -b`).
 
 # Style guidelines
 
-You are already on the correct starting snapshot. Create your branch from this state. Do not rebase or start from master, main, or any other branch. Leave the legacy email-verification modules untouched, and avoid introducing churn in generated build output or unrelated game-engine files.
+You are already on the correct starting snapshot. Create your branch from this state. Do not rebase or start from master, main, or any other branch. Match the surrounding TypeScript and Python conventions, and avoid introducing churn in generated or bundled output.

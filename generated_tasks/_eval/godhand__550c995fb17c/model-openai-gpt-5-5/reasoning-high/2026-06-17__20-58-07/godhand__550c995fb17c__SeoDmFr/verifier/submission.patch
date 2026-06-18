@@ -1,0 +1,288 @@
+diff --git a/base/server/api/routers/lobby.py b/repo/server/api/routers/lobby.py
+index 01aa022..2d80768 100644
+--- a/base/server/api/routers/lobby.py
++++ b/repo/server/api/routers/lobby.py
+@@ -12,7 +12,7 @@ from server.api.websockets.lobby_chat import connection_hub
+ from server.external.db.models.game_server_registry import GameServerRegistry
+ from server.external.db.models.lobby import Lobby
+ from server.external.db.models.user import User
+-from server.utils.constants import HttpStatus, ResponseMessages
++from server.utils.constants import HttpStatus, LobbyRoutes, ResponseMessages
+ from server.utils.error_handlers import AuthenticationError
+ 
+ lobby_routes = APIRouter(prefix="/api/v1/lobbies", tags=["lobbies"])
+@@ -20,21 +20,21 @@ lobby_routes = APIRouter(prefix="/api/v1/lobbies", tags=["lobbies"])
+ 
+ OFFICIAL_LOBBY_BLUEPRINTS: list[dict[str, Any]] = [
+     {
+-        "official_key": "na-west-1",
++        "official_key": LobbyRoutes.DEFAULT_OFFICIAL_KEY,
+         "lobby_name": "NA West 1",
+         "server_region": "NA West 1",
+         "server_description": "Official NA West server #1.",
+         "user_capacity": 12,
+     },
+     {
+-        "official_key": "na-west-2",
++        "official_key": LobbyRoutes.OFFICIAL_KEYS[1],
+         "lobby_name": "NA West 2",
+         "server_region": "NA West 2",
+         "server_description": "Official NA West server #2.",
+         "user_capacity": 12,
+     },
+     {
+-        "official_key": "na-west-3",
++        "official_key": LobbyRoutes.OFFICIAL_KEYS[2],
+         "lobby_name": "NA West 3",
+         "server_region": "NA West 3",
+         "server_description": "Official NA West server #3.",
+@@ -45,13 +45,17 @@ OFFICIAL_LOBBY_BLUEPRINTS: list[dict[str, Any]] = [
+ 
+ def _normalize_lobby_kind(raw_kind: str) -> str:
+     kind = (raw_kind or "").strip().lower()
+-    if kind in {"official", "custom", "all"}:
++    if kind in {LobbyRoutes.KIND_OFFICIAL, LobbyRoutes.KIND_CUSTOM, LobbyRoutes.KIND_ALL}:
+         return kind
+     raise HTTPException(status_code=HttpStatus.BAD_REQUEST, detail="Invalid lobby kind filter.")
+ 
+ 
+ def _is_official_lobby(lobby: Lobby) -> bool:
+-    return (lobby.lobby_kind or "custom").strip().lower() == "official"
++    return (lobby.lobby_kind or LobbyRoutes.KIND_CUSTOM).strip().lower() == LobbyRoutes.KIND_OFFICIAL
++
++
++def _is_default_lobby_path(raw_path: str) -> bool:
++    return (raw_path or "").strip().strip("/").lower() == LobbyRoutes.DEFAULT_PATH
+ 
+ 
+ def _upsert_official_lobbies() -> None:
+@@ -231,7 +235,10 @@ async def create_lobby(payload: CreateLobbyRequest, request: Request):
+ 
+ 
+ @lobby_routes.get("/{lobby_id}", status_code=HttpStatus.OK)
+-async def get_lobby(lobby_id: str):
++async def get_lobby(lobby_id: str, kind: str = Query(default=LobbyRoutes.DEFAULT_KIND)):
++    if _is_default_lobby_path(lobby_id):
++        return await list_lobbies(kind=kind)
++
+     lobby = Lobby.get_by_id(lobby_id)
+     if not lobby:
+         raise HTTPException(status_code=404, detail="Lobby not found")
+@@ -280,7 +287,7 @@ async def leave_lobby(lobby_id: str, request: Request):
+     return {"lobby": updated.model_dump(by_alias=True)}
+ 
+ @lobby_routes.get("", status_code=HttpStatus.OK)
+-async def list_lobbies(kind: str = Query(default="official")):
++async def list_lobbies(kind: str = Query(default=LobbyRoutes.DEFAULT_KIND)):
+     requested_kind = _normalize_lobby_kind(kind)
+     _upsert_official_lobbies()
+     allowed_official_keys = {item["official_key"] for item in OFFICIAL_LOBBY_BLUEPRINTS}
+@@ -309,3 +316,13 @@ async def list_lobbies(kind: str = Query(default="official")):
+         status_code=HttpStatus.OK,
+         content={"lobbies": browser_payload},
+     )
++
++
++@lobby_routes.get("/", status_code=HttpStatus.OK, include_in_schema=False)
++async def list_lobbies_with_trailing_slash(kind: str = Query(default=LobbyRoutes.DEFAULT_KIND)):
++    return await list_lobbies(kind=kind)
++
++
++@lobby_routes.get("/{lobby_path:path}", status_code=HttpStatus.OK, include_in_schema=False)
++async def fallback_lobbies(lobby_path: str, kind: str = Query(default=LobbyRoutes.DEFAULT_KIND)):
++    return await list_lobbies(kind=kind)
+diff --git a/base/server/external/db/mongo.py b/repo/server/external/db/mongo.py
+index 89812c3..6c6088d 100755
+--- a/base/server/external/db/mongo.py
++++ b/repo/server/external/db/mongo.py
+@@ -3,13 +3,16 @@ MongoDB client initialization and access helpers.
+ Uses `mongomock` when `FASTAPI_ENV=testing` (or `TESTING=True` via config).
+ """
+ 
+-from pymongo import MongoClient
+-from urllib.parse import quote_plus
+-from pymongo.errors import ConnectionFailure, ConfigurationError
+-from server.config import get_app_config
+-import os
+-import mongomock
+-from werkzeug.security import generate_password_hash
++import os
++from urllib.parse import quote_plus
++
++import mongomock
++from pymongo import MongoClient
++from pymongo.errors import ConnectionFailure, ConfigurationError
++from werkzeug.security import generate_password_hash
++
++from server.config import get_app_config
++from server.utils.constants import LobbyRoutes
+ 
+ # logging
+ from server.utils.logging import get_pymongo_logger
+@@ -35,10 +38,11 @@ class MongoDBClient:
+         if(get_app_config().TESTING):
+             cls._is_mock = True
+             cls._client = mongomock.MongoClient()
+-            cls._db_name = "godhand"
+-            pymongo_logger.info("Initialized mongomock MongoDB client for testing")
+-            cls._seed_mock_users()
+-            return
++            cls._db_name = "godhand"
++            pymongo_logger.info("Initialized mongomock MongoDB client for testing")
++            cls._seed_mock_users()
++            cls._seed_mock_game_servers()
++            return
+ 
+         uri = os.getenv("MONGO_URI")
+         if not uri:
+@@ -136,10 +140,10 @@ class MongoDBClient:
+         cls._db_name = "testdb"
+ 
+     @classmethod
+-    def _seed_mock_users(cls) -> None:
+-        """
+-        Seed default users when running in mock mode.
+-        """
++    def _seed_mock_users(cls) -> None:
++        """
++        Seed default users when running in mock mode.
++        """
+         try:
+             from server.external.db.models.user import User
+             User.ensure_indexes()
+@@ -161,5 +165,28 @@ class MongoDBClient:
+                     password=generate_password_hash(user["password"]),
+                 )
+             pymongo_logger.info("Seeded default mock users for testing environment")
+-        except Exception as exc:
+-            pymongo_logger.error(f"Failed to seed mock users: {exc}")
++        except Exception as exc:
++            pymongo_logger.error(f"Failed to seed mock users: {exc}")
++
++    @classmethod
++    def _seed_mock_game_servers(cls) -> None:
++        """
++        Seed a healthy game server when running in mock mode.
++        """
++        try:
++            from server.external.db.models.game_server_registry import GameServerRegistry
++
++            GameServerRegistry.upsert_registration(
++                server_id="test-game-server-default",
++                owner_type="official",
++                region="NA West 1",
++                game_ws_base_url="ws://testserver",
++                chat_ws_base_url="ws://testserver",
++                official_keys=list(LobbyRoutes.OFFICIAL_KEYS),
++                current_players=0,
++                max_players=36,
++                ttl_seconds=60 * 60,
++            )
++            pymongo_logger.info("Seeded default mock game server for testing environment")
++        except Exception as exc:
++            pymongo_logger.error(f"Failed to seed mock game server: {exc}")
+diff --git a/base/server/tests/test_lobby_api.py b/repo/server/tests/test_lobby_api.py
+index ed1685c..b37bf50 100644
+--- a/base/server/tests/test_lobby_api.py
++++ b/repo/server/tests/test_lobby_api.py
+@@ -8,6 +8,7 @@ from server.tests.conftest import (
+     login_user,
+     get_auth_csrf,
+ )
++from server.utils.constants import LobbyRoutes
+ 
+ 
+ def create_and_login(client: TestClient, email: str):
+@@ -110,3 +111,68 @@ def test_list_lobbies_defaults_to_official_servers():
+         assert first_lobby["kind"] == "official"
+         assert isinstance(first_lobby["players"], list)
+         assert "playerCount" in first_lobby
++
++
++def test_default_lobby_path_uses_collection_default_route():
++    app = create_app()
++    with TestClient(app) as client:
++        create_and_login(client, "default-viewer@example.com")
++
++        collection_response = client.get("/api/v1/lobbies")
++        default_response = client.get(f"/api/v1/lobbies/{LobbyRoutes.DEFAULT_PATH}")
++
++        assert collection_response.status_code == 200, collection_response.text
++        assert default_response.status_code == 200, default_response.text
++        assert default_response.json() == collection_response.json()
++
++
++def test_unmatched_lobby_route_falls_back_to_default_collection_route():
++    app = create_app()
++    with TestClient(app) as client:
++        create_and_login(client, "fallback-viewer@example.com")
++
++        default_response = client.get(f"/api/v1/lobbies/{LobbyRoutes.DEFAULT_PATH}")
++        unmatched_response = client.get("/api/v1/lobbies/does/not/match")
++        trailing_slash_response = client.get("/api/v1/lobbies/")
++
++        assert default_response.status_code == 200, default_response.text
++        assert unmatched_response.status_code == 200, unmatched_response.text
++        assert trailing_slash_response.status_code == 200, trailing_slash_response.text
++        assert unmatched_response.json() == default_response.json()
++        assert trailing_slash_response.json() == default_response.json()
++
++
++def test_missing_matched_lobby_id_still_returns_not_found():
++    app = create_app()
++    with TestClient(app) as client:
++        create_and_login(client, "missing-viewer@example.com")
++
++        response = client.get("/api/v1/lobbies/000000000000000000000000")
++
++        assert response.status_code == 404
++        assert response.json()["detail"] == "Lobby not found"
++
++
++def test_lobby_fallback_is_deterministic_when_repeated_and_reordered():
++    app = create_app()
++    with TestClient(app) as client:
++        create_and_login(client, "deterministic-viewer@example.com")
++
++        paths = [
++            "/api/v1/lobbies/does/not/match",
++            f"/api/v1/lobbies/{LobbyRoutes.DEFAULT_PATH}",
++            "/api/v1/lobbies",
++            "/api/v1/lobbies/",
++            f"/api/v1/lobbies/{LobbyRoutes.DEFAULT_PATH}",
++            "/api/v1/lobbies/does/not/match",
++        ]
++
++        payloads = []
++        for path in paths:
++            response = client.get(path)
++            assert response.status_code == 200, response.text
++            payload = response.json()
++            assert "lobbies" in payload
++            payloads.append(payload)
++
++        assert all(payload == payloads[0] for payload in payloads)
+diff --git a/base/server/utils/constants.py b/repo/server/utils/constants.py
+index b0c3fc1..200814d 100755
+--- a/base/server/utils/constants.py
++++ b/repo/server/utils/constants.py
+@@ -69,6 +69,19 @@ class HttpStatus:
+     TOO_MANY_REQUESTS = 429
+     UNPROCESSABLE_ENTITY = 422
+     INTERNAL_SERVER_ERROR = 500
++    SERVICE_UNAVAILABLE = 503
++
++
++class LobbyRoutes:
++    """Lobby route defaults shared by router logic and tests."""
++
++    KIND_OFFICIAL = "official"
++    KIND_CUSTOM = "custom"
++    KIND_ALL = "all"
++    DEFAULT_KIND = KIND_OFFICIAL
++    DEFAULT_PATH = "default"
++    DEFAULT_OFFICIAL_KEY = "na-west-1"
++    OFFICIAL_KEYS = (DEFAULT_OFFICIAL_KEY, "na-west-2", "na-west-3")
+ 
+ 
+ class TokenExpiry:

@@ -1,0 +1,174 @@
+name: Prod Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  prod_deploy:
+    environment: prod
+    env:
+      AWS_ACCOUNT_ID: ${{ secrets.ONMO_PROD_AWS_ACCOUNT_ID }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.ONMO_PROD_AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.ONMO_PROD_AWS_SECRET_ACCESS_KEY }}
+      ONMO_REGISTRY_PACKAGES: ${{ secrets.ONMO_REGISTRY_PACKAGES }}
+      STAGE: "prod"
+
+      TF_VAR_DATADOG_API_KEY: ${{ secrets.DATADOG_PLATFORM_API_KEY }}
+      TF_VAR_DATADOG_APP_KEY: ${{ secrets.DATADOG_PLATFORM_SERVICE_APP_KEY }}
+      TF_VAR_GITHUB_REPO: ${{ github.repository }}
+      TF_VAR_SLACK_CHANNEL: "alerts-prod"
+
+      # SERVICE CONFIG
+      TF_VAR_AWS_ACCOUNT_ID: ${{ secrets.ONMO_PROD_AWS_ACCOUNT_ID }}
+      TF_VAR_SERVICE_NAME: "authentication"
+      TF_VAR_ENVIRONMENT: "prod"
+      TF_VAR_REGION: "eu-west-1"
+
+      # GATEWAY CONFIG
+      TF_VAR_DISABLE_DEFAULT_ENDPOINT: true
+      TF_VAR_THROTTLING_BURST_LIMIT: 6000
+      TF_VAR_THROTTLING_RATE_LIMIT: 2000
+      TF_VAR_CUSTOM_DOMAIN_NAMES: '["auth.onmo.app"]'
+      TF_VAR_WEB_ACL_ARN: ${{ secrets.PROD_WEB_ACL_ARN }}
+      TF_VAR_BASE_PATH: "oidc"
+      TF_VAR_ALERT_EMAIL_LIST: '["joe.kadi@onmo.app", "felix.bait@onmo.app", "ravi.patel@elevationservices.co.uk", "bhavin.bavaria@elevationservices.co.uk"]'
+
+      # LAMBDA ENVIRONMENT VARIABLES
+      TF_VAR_AUTH_TRANSACTIONS_TABLE: "auth-transactions-prod"
+      TF_VAR_AUTH_CODES_TABLE: "auth-codes-prod"
+      TF_VAR_AUTH_TOKENS_TABLE: "auth-tokens-prod"
+      TF_VAR_AUTH_REFRESH_TOKENS_TABLE: "auth-refresh-tokens-prod"
+      TF_VAR_AUTH_HASHES_TABLE: "auth-hashes-prod"
+      TF_VAR_AUTH_KEYS_TABLE: "auth-keys-prod"
+      TF_VAR_USER_TABLE: "mobile-prod"
+      TF_VAR_LEGACY_AUTH_TABLE: "auth-prod"
+      TF_VAR_LEGACY_RSA_TABLE: "authRSA-prod"
+      TF_VAR_LEGACY_AUTH_BACKUP_TABLE: "auth-backup-prod"
+      TF_VAR_LEGACY_RSA_BACKUP_TABLE: "authRSA-backup-prod"
+      TF_VAR_APR_INCREASES_TABLE: "apr-increases-prod"
+      TF_VAR_CUSTOMER_TO_CARD_MAPPING_TABLE: "customer-to-card-mapping-prod"
+      TF_VAR_RATE_LIMITING_TABLE: "rate-limiting-prod"
+      TF_VAR_PINPOINT_PROJECT_ID: ${{ secrets.PINPOINT_PROJECT_ID }}
+      TF_VAR_ONMO_AUTH_URL: "auth.onmo.app"
+      TF_VAR_ONMO_API_URL: "api.onmo.app"
+      TF_VAR_FRONTEND_URL: "https://onmo.app"
+
+      TF_VAR_APR_GATEWAY_ID: "8i2cyyl8g5"
+      TF_VAR_CUSTOMER_CARE_GATEWAY_ID: "8vm3007bol"
+      TF_VAR_API_BROKER_GATEWAY_ID: "5hbms0mi39"
+      TF_VAR_AUTHENTICATION_GATEWAY_ID: "96ijknxkn6"
+      TF_VAR_CARD_SERVICE_OIDC_GATEWAY_ID: "tdxxhicneh"
+      TF_VAR_ACCOUNT_SERVICE_OIDC_GATEWAY_ID: "jjdh6sb9yj"
+      TF_VAR_CUSTOMER_SERVICE_OIDC_GATEWAY_ID: "d9a2wgjga1"
+      TF_VAR_REPAYMENT_SERVICE_GATEWAY_ID: "4mlsnfz14k"
+      TF_VAR_ALERT_SERVICE_OIDC_GATEWAY_ID: "1lbld4myxe"
+      TF_VAR_TRANSACTION_SERVICE_OIDC_GATEWAY_ID: "bpi7nqapc3"
+      TF_VAR_DEVICE_CHANNEL_GATEWAY_ID: "2f657img6j"
+
+      TF_VAR_LOGGING_LEVEL: "INFO"
+      TF_VAR_NON_CONFLICTING_SCOPES_PARAM: "/onmo/auth/prod/non_conflicting_scope_groups"
+      TF_VAR_EXCLUSIVE_SCOPES_PARAM: "/onmo/auth/prod/exclusive_scopes"
+      TF_VAR_AUTH_FLOW_SCOPES_PARAM: "/onmo/auth/prod/auth_flow_scopes"
+      TF_VAR_SCOPE_TO_RESOURCE_MAP_PARAM: "/onmo/auth/prod/scope_to_resource_map"
+      TF_VAR_SCOPE_TO_RESOURCE_MAP_URL_PARAM: "/onmo/auth/prod/scope_to_resource_map_url"
+      TF_VAR_TOKEN_LIFETIMES_PARAM: "/onmo/auth/prod/token_lifetimes"
+      TF_VAR_STAFF_ONMOUUIDS_PARAM: "/onmo/auth/prod/staff_onmouuids"
+      TF_VAR_APP_TESTER_LOGIN_CONFIG: "/onmo/auth/prod/app_tester_login_config"
+      TF_VAR_RATE_LIMITING_PARAM: "/onmo/rate_limiting/prod/domains"
+      TF_VAR_DOWNLOAD_APP_REDIRECT_URL_CONFIG: "/onmo/onboarding/prod/download_app_redirect_url_config"
+
+      TF_VAR_NOTIFICATIONS_SFMC_SECRET_NAME: "salesforce-marketing-cloud-prod"
+      TF_VAR_NOTIFICATIONS_SFMC_TOKEN_URL: "https://mcpck065n3wkw034w95dx55zfzh1.auth.marketingcloudapis.com/v2/token"
+      TF_VAR_NOTIFICATIONS_SFMC_COMMS_URL: "https://mcpck065n3wkw034w95dx55zfzh1.rest.marketingcloudapis.com/interaction/v1/events"
+      TF_VAR_NOTIFICATIONS_SFMC_GRANT_TYPE: "client_credentials"
+      TF_VAR_NOTIFICATIONS_SFMC_CLIENT_ID: "0xw8tgqrljd6maqvkeilyqj9"
+      TF_VAR_NOTIFICATIONS_SFMC_ACCOUNT_ID: "536006153"
+      TF_VAR_NOTIFICATIONS_SFMC_EVENT_KEY_OTP: "APIEvent-059d703d-f2f3-0bca-57aa-a5c986cc3e80"
+
+      TF_VAR_POSTHOG_SECRET_NAME: "onmo-posthog-prod"
+      TF_VAR_POSTHOG_NOTIFICATION_FLAG_KEY: "2025_11_26_notifications_sfmc"
+
+      # AUTH SCOPES
+      TF_VAR_APR_SCOPE: "apr"
+      TF_VAR_CLM_SCOPE: "clm"
+      TF_VAR_CUSTOMER_CARE_SCOPE: "customer-care"
+      TF_VAR_LOAN_ACCOUNT_ID_SCOPE: "loan-account-id" # TODO: deprecate when not in use & replaced with credit-card-account-id
+      TF_VAR_CREDIT_CARD_ACCOUNT_ID_SCOPE: "credit-card-account-id"
+      TF_VAR_CREDIT_CARD_ID_SCOPE: "credit-card-id"
+      TF_VAR_CUSTOMER_PROFILE_SCOPE: "customer-profile"
+      TF_VAR_SUPPORT_SERVICES_SCOPE: "support-services"
+      TF_VAR_AUTH_SERVICES_SCOPE: "auth-services"
+      TF_VAR_CREDIT_CARD_ACCOUNT_SCOPE: "credit-card-account"
+      TF_VAR_DIRECT_DEBIT_SCOPE: "direct-debit"
+      TF_VAR_DEBIT_CARD_ACCOUNT_SCOPE: "debit-card-account"
+      TF_VAR_CREDIT_CARD_DETAILS_SCOPE: "credit-card-details"
+      TF_VAR_CREDIT_CARD_ACTIVATION_SCOPE: "credit-card-activation"
+      TF_VAR_CREDIT_CARD_FREEZE_SCOPE: "credit-card-freeze"
+      TF_VAR_CREDIT_CARD_UNFREEZE_SCOPE: "credit-card-unfreeze"
+      TF_VAR_NAME_CHANGE_SCOPE: "name-change"
+      TF_VAR_EMAIL_ADDRESS_CHANGE_SCOPE: "email-address-change"
+      TF_VAR_MOBILE_NUMBER_CHANGE_SCOPE: "mobile-number-change"
+      TF_VAR_ADDRESS_CHANGE_SCOPE: "address-change"
+      TF_VAR_BIOMETRICS_CHANGE_SCOPE: "biometrics-change"
+      TF_VAR_PASSCODE_CHANGE_SCOPE: "passcode-change"
+      TF_VAR_REPAYMENT_SCOPE: "repayment"
+      TF_VAR_FIRST_TIME_LOGIN_SCOPE: "first-time-login"
+
+      # TEST SCOPES
+      TF_VAR_TEST_OTP_STEP_EXTRA_SCOPE: "test-otp-step"
+      TF_VAR_TEST_BIOMETRICS_STEP_EXTRA_SCOPE: "test-biometrics-step"
+
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Bundle Lambda Handlers
+        run: |
+          for category in src/functions/*; do
+            category_name=$(basename -- "$category")
+            for folder in "$category"/*; do
+              folder_name=$(basename -- "$folder")
+              file="$folder/$folder_name.ts"
+              if [ -f "$file" ]; then
+                npx esbuild $file --bundle --platform=node --target=node20 --outdir=./build/$category_name/$folder_name --external:@aws-sdk/*
+              fi
+            done
+          done
+        working-directory: .
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.4
+          cli_config_credentials_token: ${{ secrets.TERRAFORM_CLOUD_TOKEN }}
+
+      - name: Terraform Format
+        run: terraform fmt -check
+
+      - name: Terraform Init
+        run: |
+          terraform init -upgrade \
+            -backend-config="bucket=onmo-terraform-state-prod" \
+            -backend-config="key=${{ env.TF_VAR_SERVICE_NAME }}/state-file-prod.tfstate" \
+            -backend-config="dynamodb_table=onmo-terraform-state-prod" \
+            -backend-config="region=${{ env.TF_VAR_REGION }}" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform Plan
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -input=false tfplan

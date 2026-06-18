@@ -1,0 +1,476 @@
+diff --git a/base/server/api/routers/lobby.py b/repo/server/api/routers/lobby.py
+index 01aa022..b8ab671 100644
+--- a/base/server/api/routers/lobby.py
++++ b/repo/server/api/routers/lobby.py
+@@ -7,51 +7,44 @@ from fastapi import APIRouter, Request, HTTPException, Query
+ from pydantic import BaseModel, Field
+ from fastapi.responses import JSONResponse
+ 
++from server.config import get_app_config
+ from server.api.security.jwt import JWTService
+ from server.api.websockets.lobby_chat import connection_hub
+ from server.external.db.models.game_server_registry import GameServerRegistry
+ from server.external.db.models.lobby import Lobby
+ from server.external.db.models.user import User
+-from server.utils.constants import HttpStatus, ResponseMessages
++from server.utils.constants import (
++    DEFAULT_LOBBY_KIND,
++    LOBBY_ALLOWED_KINDS,
++    LOBBY_DEFAULT_ROUTE_VALUES,
++    LOBBY_KIND_CUSTOM,
++    LOBBY_KIND_OFFICIAL,
++    OFFICIAL_LOBBY_BLUEPRINTS,
++    HttpStatus,
++    ResponseMessages,
++)
+ from server.utils.error_handlers import AuthenticationError
+ 
+ lobby_routes = APIRouter(prefix="/api/v1/lobbies", tags=["lobbies"])
+ 
+ 
+-OFFICIAL_LOBBY_BLUEPRINTS: list[dict[str, Any]] = [
+-    {
+-        "official_key": "na-west-1",
+-        "lobby_name": "NA West 1",
+-        "server_region": "NA West 1",
+-        "server_description": "Official NA West server #1.",
+-        "user_capacity": 12,
+-    },
+-    {
+-        "official_key": "na-west-2",
+-        "lobby_name": "NA West 2",
+-        "server_region": "NA West 2",
+-        "server_description": "Official NA West server #2.",
+-        "user_capacity": 12,
+-    },
+-    {
+-        "official_key": "na-west-3",
+-        "lobby_name": "NA West 3",
+-        "server_region": "NA West 3",
+-        "server_description": "Official NA West server #3.",
+-        "user_capacity": 12,
+-    },
+-]
+-
+-
+ def _normalize_lobby_kind(raw_kind: str) -> str:
+     kind = (raw_kind or "").strip().lower()
+-    if kind in {"official", "custom", "all"}:
++    if kind in LOBBY_ALLOWED_KINDS:
+         return kind
+     raise HTTPException(status_code=HttpStatus.BAD_REQUEST, detail="Invalid lobby kind filter.")
+ 
+ 
+ def _is_official_lobby(lobby: Lobby) -> bool:
+-    return (lobby.lobby_kind or "custom").strip().lower() == "official"
++    return (lobby.lobby_kind or LOBBY_KIND_CUSTOM).strip().lower() == LOBBY_KIND_OFFICIAL
++
++
++def _normalize_lobby_route(raw_route: str) -> str:
++    return (raw_route or "").strip().strip("/").lower()
++
++
++def _is_default_lobby_route(raw_route: str) -> bool:
++    return _normalize_lobby_route(raw_route) in LOBBY_DEFAULT_ROUTE_VALUES
+ 
+ 
+ def _upsert_official_lobbies() -> None:
+@@ -80,10 +73,21 @@ def _materialize_assignment(lobby: Lobby, assignment: dict[str, Any]) -> dict[st
+     }
+ 
+ 
++def _default_game_server_assignment(lobby: Lobby) -> dict[str, str]:
++    cfg = get_app_config()
++    default_region = (lobby.server_region or "").strip() or cfg.DEFAULT_GAME_SERVER_REGION
++    return {
++        "game_server_id": cfg.DEFAULT_GAME_SERVER_ID,
++        "game_region": default_region,
++        "game_ws_base_url": cfg.GAME_WS_PUBLIC_BASE_URL,
++        "chat_ws_base_url": cfg.CHAT_WS_PUBLIC_BASE_URL,
++    }
++
++
+ def _select_game_server_assignment(lobby: Lobby) -> dict[str, str] | None:
+     healthy_registry = GameServerRegistry.list_healthy()
+     if not healthy_registry:
+-        return None
++        return _default_game_server_assignment(lobby)
+ 
+     lobby_official_key = (lobby.official_key or "").strip().lower()
+     lobby_region_token = _normalize_match_token(lobby.server_region or "")
+@@ -208,6 +212,37 @@ class CreateLobbyRequest(BaseModel):
+     user_capacity: int = Field(default=4, ge=1, le=100)
+ 
+ 
++async def _list_lobbies_response(kind: str) -> JSONResponse:
++    requested_kind = _normalize_lobby_kind(kind)
++    _upsert_official_lobbies()
++    allowed_official_keys = {item["official_key"] for item in OFFICIAL_LOBBY_BLUEPRINTS}
++    healthy_official_keys = {
++        key.strip().lower()
++        for entry in GameServerRegistry.list_healthy()
++        for key in (entry.official_keys or [])
++        if key and key.strip()
++    }
++
++    filtered_lobbies: list[Lobby] = []
++    for lobby in Lobby.get_all():
++        is_official = _is_official_lobby(lobby)
++        if requested_kind == LOBBY_KIND_OFFICIAL and not is_official:
++            continue
++        if requested_kind == LOBBY_KIND_OFFICIAL and (lobby.official_key or "") not in allowed_official_keys:
++            continue
++        if healthy_official_keys and is_official and (lobby.official_key or "").strip().lower() not in healthy_official_keys:
++            continue
++        if requested_kind == LOBBY_KIND_CUSTOM and is_official:
++            continue
++        filtered_lobbies.append(lobby)
++
++    browser_payload = [await _to_lobby_browser_payload(lobby) for lobby in filtered_lobbies]
++    return JSONResponse(
++        status_code=HttpStatus.OK,
++        content={"lobbies": browser_payload},
++    )
++
++
+ @lobby_routes.post("", status_code=HttpStatus.CREATED)
+ async def create_lobby(payload: CreateLobbyRequest, request: Request):
+     claims = JWTService.require_access(request)
+@@ -230,6 +265,17 @@ async def create_lobby(payload: CreateLobbyRequest, request: Request):
+     return {"lobby": lobby.model_dump(by_alias=True)}
+ 
+ 
++@lobby_routes.get("", status_code=HttpStatus.OK)
++async def list_lobbies(kind: str = Query(default=DEFAULT_LOBBY_KIND)):
++    return await _list_lobbies_response(kind)
++
++
++@lobby_routes.get("/default", status_code=HttpStatus.OK, include_in_schema=False)
++@lobby_routes.get("/official", status_code=HttpStatus.OK, include_in_schema=False)
++async def default_lobby_route(kind: str = Query(default=DEFAULT_LOBBY_KIND)):
++    return await _list_lobbies_response(kind)
++
++
+ @lobby_routes.get("/{lobby_id}", status_code=HttpStatus.OK)
+ async def get_lobby(lobby_id: str):
+     lobby = Lobby.get_by_id(lobby_id)
+@@ -279,33 +325,12 @@ async def leave_lobby(lobby_id: str, request: Request):
+ 
+     return {"lobby": updated.model_dump(by_alias=True)}
+ 
+-@lobby_routes.get("", status_code=HttpStatus.OK)
+-async def list_lobbies(kind: str = Query(default="official")):
+-    requested_kind = _normalize_lobby_kind(kind)
+-    _upsert_official_lobbies()
+-    allowed_official_keys = {item["official_key"] for item in OFFICIAL_LOBBY_BLUEPRINTS}
+-    healthy_official_keys = {
+-        key.strip().lower()
+-        for entry in GameServerRegistry.list_healthy()
+-        for key in (entry.official_keys or [])
+-        if key and key.strip()
+-    }
+-
+-    filtered_lobbies: list[Lobby] = []
+-    for lobby in Lobby.get_all():
+-        is_official = _is_official_lobby(lobby)
+-        if requested_kind == "official" and not is_official:
+-            continue
+-        if requested_kind == "official" and (lobby.official_key or "") not in allowed_official_keys:
+-            continue
+-        if is_official and (lobby.official_key or "").strip().lower() not in healthy_official_keys:
+-            continue
+-        if requested_kind == "custom" and is_official:
+-            continue
+-        filtered_lobbies.append(lobby)
+ 
+-    browser_payload = [await _to_lobby_browser_payload(lobby) for lobby in filtered_lobbies]
+-    return JSONResponse(
+-        status_code=HttpStatus.OK,
+-        content={"lobbies": browser_payload},
+-    )
++@lobby_routes.get("/{fallback_path:path}", status_code=HttpStatus.OK, include_in_schema=False)
++async def fallback_lobby_route(fallback_path: str, kind: str = Query(default=DEFAULT_LOBBY_KIND)):
++    segments = [_normalize_lobby_route(segment) for segment in fallback_path.split("/") if segment.strip()]
++    if len(segments) >= 2 and segments[1] in {"join", "leave"}:
++        raise HTTPException(status_code=HttpStatus.METHOD_NOT_ALLOWED, detail="Method not allowed")
++    if not _is_default_lobby_route(fallback_path):
++        return await _list_lobbies_response(DEFAULT_LOBBY_KIND)
++    return await _list_lobbies_response(kind)
+diff --git a/base/server/api/websockets/connection_hub.py b/repo/server/api/websockets/connection_hub.py
+index 4282055..fe0392a 100644
+--- a/base/server/api/websockets/connection_hub.py
++++ b/repo/server/api/websockets/connection_hub.py
+@@ -131,3 +131,6 @@ class ConnectionHub:
+             except Exception:
+                 pass
+         return closed
++
++    def reset_for_tests(self) -> None:
++        self._lobbies.clear()
+diff --git a/base/server/api/websockets/lobby_chat.py b/repo/server/api/websockets/lobby_chat.py
+index 93185da..5433c54 100644
+--- a/base/server/api/websockets/lobby_chat.py
++++ b/repo/server/api/websockets/lobby_chat.py
+@@ -57,6 +57,11 @@ async def reset_lobby_chat_state(lobby_id: str, *, disconnect_reason: str = "Dev
+     return {"closedConnections": closed_connections}
+ 
+ 
++def reset_lobby_chat_state_for_tests() -> None:
++    connection_hub.reset_for_tests()
++    chat_service.reset_for_tests()
++
++
+ @router.websocket("/ws/lobby/{lobby_id}")
+ async def lobby_chat_ws(websocket: WebSocket, lobby_id: str) -> None:
+     try:
+diff --git a/base/server/api/websockets/lobby_game.py b/repo/server/api/websockets/lobby_game.py
+index fef5fbe..766656c 100644
+--- a/base/server/api/websockets/lobby_game.py
++++ b/repo/server/api/websockets/lobby_game.py
+@@ -443,6 +443,20 @@ async def reset_lobby_runtime_state(lobby_id: str, *, disconnect_reason: str = "
+     }
+ 
+ 
++def reset_lobby_runtime_state_for_tests() -> None:
++    for task in _snapshot_flush_task_by_lobby.values():
++        if not task.done():
++            task.cancel()
++    _pending_snapshot_by_lobby.clear()
++    _snapshot_flush_task_by_lobby.clear()
++    _presence_by_lobby.clear()
++    for state in _lockstep_state_by_lobby.values():
++        if state.task and not state.task.done():
++            state.task.cancel()
++    _lockstep_state_by_lobby.clear()
++    game_connection_hub.reset_for_tests()
++
++
+ @router.websocket("/ws/game/{lobby_id}")
+ async def lobby_game_ws(websocket: WebSocket, lobby_id: str) -> None:
+     try:
+diff --git a/base/server/application/messaging/chat_service.py b/repo/server/application/messaging/chat_service.py
+index b3c7ba5..81e3b67 100644
+--- a/base/server/application/messaging/chat_service.py
++++ b/repo/server/application/messaging/chat_service.py
+@@ -68,4 +68,7 @@ class ChatService:
+         )
+         payload = message.to_payload()
+         self._store_message(lobby_id, payload)
+-        await self._broadcaster.broadcast(lobby_id, payload)
+\ No newline at end of file
++        await self._broadcaster.broadcast(lobby_id, payload)
++
++    def reset_for_tests(self) -> None:
++        self._history.clear()
+diff --git a/base/server/tests/conftest.py b/repo/server/tests/conftest.py
+index 3ff3f55..b74212b 100644
+--- a/base/server/tests/conftest.py
++++ b/repo/server/tests/conftest.py
+@@ -18,6 +18,14 @@ os.environ["JWT_SECRET_KEY"] = "test-jwt-secret-key-32-bytes-min"
+ from server.app import create_app
+ 
+ 
++def _reset_realtime_state_for_tests() -> None:
++    from server.api.websockets.lobby_chat import reset_lobby_chat_state_for_tests
++    from server.api.websockets.lobby_game import reset_lobby_runtime_state_for_tests
++
++    reset_lobby_chat_state_for_tests()
++    reset_lobby_runtime_state_for_tests()
++
++
+ @pytest.fixture(autouse=True)
+ def _test_env(monkeypatch: pytest.MonkeyPatch) -> None:
+     """
+@@ -129,12 +137,19 @@ def login_user(client: TestClient, *, email: str, password: str) -> Dict:
+ 
+ 
+ @pytest.fixture(autouse=True)
+-def _reset_mongo_mock(_test_env: None) -> None:
++def _reset_mongo_mock(_test_env: None) -> Iterator[None]:
+     """
+-    Ensure each test has a clean in-memory Mongo database when mongomock is used.
++    Ensure each test has clean in-memory backend state when mongomock is used.
+     """
+     try:
+         MongoDBClient.reset_mock()
+     except Exception:
+         # If the client isn't initialized yet, nothing to reset.
+         pass
++    _reset_realtime_state_for_tests()
++    yield
++    _reset_realtime_state_for_tests()
++    try:
++        MongoDBClient.reset_mock()
++    except Exception:
++        pass
+diff --git a/base/server/tests/test_lobby_api.py b/repo/server/tests/test_lobby_api.py
+index ed1685c..3af878f 100644
+--- a/base/server/tests/test_lobby_api.py
++++ b/repo/server/tests/test_lobby_api.py
+@@ -8,6 +8,7 @@ from server.tests.conftest import (
+     login_user,
+     get_auth_csrf,
+ )
++from server.utils.constants import DEFAULT_LOBBY_KIND, LOBBY_ROUTE_DEFAULT
+ 
+ 
+ def create_and_login(client: TestClient, email: str):
+@@ -50,6 +51,7 @@ def test_create_lobby_sets_owner_and_defaults():
+         assert lobby["user_capacity"] == 4
+         assert lobby["players"] == [me["_id"]]
+         assert lobby["world_snapshot"] is None
++        assert lobby["assigned_game_server_id"] == "game-server-default"
+         assert "_id" in lobby
+ 
+ 
+@@ -110,3 +112,88 @@ def test_list_lobbies_defaults_to_official_servers():
+         assert first_lobby["kind"] == "official"
+         assert isinstance(first_lobby["players"], list)
+         assert "playerCount" in first_lobby
++
++
++def test_lobby_default_route_aliases_match_default_list():
++    app = create_app()
++    with TestClient(app) as client:
++        default_response = client.get("/api/v1/lobbies")
++        route_default_response = client.get(f"/api/v1/lobbies/{LOBBY_ROUTE_DEFAULT}")
++        official_response = client.get(f"/api/v1/lobbies/{DEFAULT_LOBBY_KIND}")
++
++        assert default_response.status_code == 200, default_response.text
++        assert route_default_response.status_code == 200, route_default_response.text
++        assert official_response.status_code == 200, official_response.text
++        assert route_default_response.json() == default_response.json()
++        assert official_response.json() == default_response.json()
++
++
++def test_unmatched_nested_lobby_route_falls_back_to_default_list():
++    app = create_app()
++    with TestClient(app) as client:
++        default_response = client.get("/api/v1/lobbies")
++        unmatched_response = client.get("/api/v1/lobbies/not/a/real/route")
++
++        assert default_response.status_code == 200, default_response.text
++        assert unmatched_response.status_code == 200, unmatched_response.text
++        assert unmatched_response.json() == default_response.json()
++
++
++def test_invalid_single_lobby_id_still_returns_not_found():
++    app = create_app()
++    with TestClient(app) as client:
++        response = client.get("/api/v1/lobbies/not-a-lobby-id")
++
++        assert response.status_code == 404
++        assert response.json()["detail"] == "Lobby not found"
++
++
++def test_known_join_subpath_wrong_method_does_not_fallback():
++    app = create_app()
++    with TestClient(app) as client:
++        create_and_login(client, "wrong-method-owner@example.com")
++        lobby = create_lobby(client, "wrong-method-lobby", user_capacity=4)
++
++        response = client.get(f"/api/v1/lobbies/{lobby['_id']}/join")
++
++        assert response.status_code == 405
++
++
++def test_join_uses_default_routing_assignment_when_registry_is_empty():
++    app = create_app()
++    with TestClient(app) as client:
++        create_and_login(client, "fallback-owner@example.com")
++        lobby = create_lobby(client, "fallback-routing-lobby", user_capacity=4)
++        lobby_id = lobby["_id"]
++
++        bob = create_and_login(client, "fallback-bob@example.com")
++        csrf = get_auth_csrf(client)
++        response = client.post(f"/api/v1/lobbies/{lobby_id}/join", headers={"X-CSRF-TOKEN": csrf})
++
++        assert response.status_code == 200, response.text
++        payload = response.json()
++        assert bob["_id"] in payload["lobby"]["players"]
++        assert payload["lobby"]["assigned_game_server_id"] == "game-server-default"
++        assert payload["gameWsUrl"].endswith(f"/api/v1/ws/game/{lobby_id}")
++        assert payload["chatWsUrl"].endswith(f"/api/v1/ws/lobby/{lobby_id}")
++
++
++def test_lobby_default_listing_is_repeatable_after_custom_lobby_creation():
++    app = create_app()
++    with TestClient(app) as client:
++        first = client.get("/api/v1/lobbies")
++        assert first.status_code == 200, first.text
++
++        create_and_login(client, "repeatable-owner@example.com")
++        create_lobby(client, "repeatable-custom-lobby", user_capacity=4)
++
++        second = client.get("/api/v1/lobbies")
++        fallback = client.get("/api/v1/lobbies/missing/nested/path")
++        all_lobbies = client.get("/api/v1/lobbies?kind=all")
++
++        assert second.status_code == 200, second.text
++        assert fallback.status_code == 200, fallback.text
++        assert all_lobbies.status_code == 200, all_lobbies.text
++        assert second.json() == first.json()
++        assert fallback.json() == second.json()
++        assert len(all_lobbies.json()["lobbies"]) == len(second.json()["lobbies"]) + 1
+diff --git a/base/server/utils/constants.py b/repo/server/utils/constants.py
+index b0c3fc1..c79dbdd 100755
+--- a/base/server/utils/constants.py
++++ b/repo/server/utils/constants.py
+@@ -7,6 +7,49 @@ to maintain consistency and avoid magic strings/numbers.
+ 
+ from enum import Enum
+ 
++DEFAULT_LOBBY_KIND = "official"
++LOBBY_KIND_OFFICIAL = DEFAULT_LOBBY_KIND
++LOBBY_KIND_CUSTOM = "custom"
++LOBBY_KIND_ALL = "all"
++LOBBY_ROUTE_DEFAULT = "default"
++LOBBY_ALLOWED_KINDS = frozenset(
++    {
++        LOBBY_KIND_OFFICIAL,
++        LOBBY_KIND_CUSTOM,
++        LOBBY_KIND_ALL,
++    }
++)
++LOBBY_DEFAULT_ROUTE_VALUES = frozenset(
++    {
++        LOBBY_ROUTE_DEFAULT,
++        LOBBY_KIND_OFFICIAL,
++    }
++)
++
++OFFICIAL_LOBBY_BLUEPRINTS = (
++    {
++        "official_key": "na-west-1",
++        "lobby_name": "NA West 1",
++        "server_region": "NA West 1",
++        "server_description": "Official NA West server #1.",
++        "user_capacity": 12,
++    },
++    {
++        "official_key": "na-west-2",
++        "lobby_name": "NA West 2",
++        "server_region": "NA West 2",
++        "server_description": "Official NA West server #2.",
++        "user_capacity": 12,
++    },
++    {
++        "official_key": "na-west-3",
++        "lobby_name": "NA West 3",
++        "server_region": "NA West 3",
++        "server_description": "Official NA West server #3.",
++        "user_capacity": 12,
++    },
++)
++
+ class ResponseMessages:
+     """Standard response messages for API endpoints."""
+     
+@@ -69,6 +112,7 @@ class HttpStatus:
+     TOO_MANY_REQUESTS = 429
+     UNPROCESSABLE_ENTITY = 422
+     INTERNAL_SERVER_ERROR = 500
++    SERVICE_UNAVAILABLE = 503
+ 
+ 
+ class TokenExpiry:

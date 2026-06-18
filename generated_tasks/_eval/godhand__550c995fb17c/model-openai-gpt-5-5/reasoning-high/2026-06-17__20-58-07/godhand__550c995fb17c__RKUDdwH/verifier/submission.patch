@@ -1,0 +1,473 @@
+diff --git a/base/server/api/routers/lobby.py b/repo/server/api/routers/lobby.py
+index 01aa022..fb06c21 100644
+--- a/base/server/api/routers/lobby.py
++++ b/repo/server/api/routers/lobby.py
+@@ -7,12 +7,13 @@ from fastapi import APIRouter, Request, HTTPException, Query
+ from pydantic import BaseModel, Field
+ from fastapi.responses import JSONResponse
+ 
++from server.config import get_app_config
+ from server.api.security.jwt import JWTService
+ from server.api.websockets.lobby_chat import connection_hub
+ from server.external.db.models.game_server_registry import GameServerRegistry
+ from server.external.db.models.lobby import Lobby
+ from server.external.db.models.user import User
+-from server.utils.constants import HttpStatus, ResponseMessages
++from server.utils.constants import HttpStatus, LobbyDefaults, ResponseMessages
+ from server.utils.error_handlers import AuthenticationError
+ 
+ lobby_routes = APIRouter(prefix="/api/v1/lobbies", tags=["lobbies"])
+@@ -45,13 +46,13 @@ OFFICIAL_LOBBY_BLUEPRINTS: list[dict[str, Any]] = [
+ 
+ def _normalize_lobby_kind(raw_kind: str) -> str:
+     kind = (raw_kind or "").strip().lower()
+-    if kind in {"official", "custom", "all"}:
++    if kind in LobbyDefaults.VALID_KIND_FILTERS:
+         return kind
+     raise HTTPException(status_code=HttpStatus.BAD_REQUEST, detail="Invalid lobby kind filter.")
+ 
+ 
+ def _is_official_lobby(lobby: Lobby) -> bool:
+-    return (lobby.lobby_kind or "custom").strip().lower() == "official"
++    return (lobby.lobby_kind or LobbyDefaults.KIND_CUSTOM).strip().lower() == LobbyDefaults.KIND_OFFICIAL
+ 
+ 
+ def _upsert_official_lobbies() -> None:
+@@ -83,7 +84,16 @@ def _materialize_assignment(lobby: Lobby, assignment: dict[str, Any]) -> dict[st
+ def _select_game_server_assignment(lobby: Lobby) -> dict[str, str] | None:
+     healthy_registry = GameServerRegistry.list_healthy()
+     if not healthy_registry:
+-        return None
++        cfg = get_app_config()
++        return _materialize_assignment(
++            lobby,
++            {
++                "game_server_id": cfg.DEFAULT_GAME_SERVER_ID,
++                "region": cfg.DEFAULT_GAME_SERVER_REGION,
++                "game_ws_base_url": cfg.GAME_WS_PUBLIC_BASE_URL,
++                "chat_ws_base_url": cfg.CHAT_WS_PUBLIC_BASE_URL,
++            },
++        )
+ 
+     lobby_official_key = (lobby.official_key or "").strip().lower()
+     lobby_region_token = _normalize_match_token(lobby.server_region or "")
+@@ -189,7 +199,7 @@ async def _to_lobby_browser_payload(lobby: Lobby) -> dict[str, Any]:
+     return {
+         "id": lobby_id,
+         "name": lobby.lobby_name,
+-        "kind": (lobby.lobby_kind or "custom"),
++        "kind": (lobby.lobby_kind or LobbyDefaults.KIND_CUSTOM),
+         "officialKey": lobby.official_key,
+         "region": lobby.server_region,
+         "description": lobby.server_description,
+@@ -203,6 +213,39 @@ async def _to_lobby_browser_payload(lobby: Lobby) -> dict[str, Any]:
+     }
+ 
+ 
++async def _list_lobbies_response(kind: str) -> JSONResponse:
++    requested_kind = _normalize_lobby_kind(kind)
++    _upsert_official_lobbies()
++    allowed_official_keys = {item["official_key"] for item in OFFICIAL_LOBBY_BLUEPRINTS}
++    healthy_official_keys = {
++        key.strip().lower()
++        for entry in GameServerRegistry.list_healthy()
++        for key in (entry.official_keys or [])
++        if key and key.strip()
++    }
++
++    filtered_lobbies: list[Lobby] = []
++    for lobby in Lobby.get_all():
++        is_official = _is_official_lobby(lobby)
++        official_key = (lobby.official_key or "").strip()
++        official_key_normalized = official_key.lower()
++        if requested_kind == LobbyDefaults.KIND_OFFICIAL and not is_official:
++            continue
++        if requested_kind == LobbyDefaults.KIND_OFFICIAL and official_key not in allowed_official_keys:
++            continue
++        if is_official and healthy_official_keys and official_key_normalized not in healthy_official_keys:
++            continue
++        if requested_kind == LobbyDefaults.KIND_CUSTOM and is_official:
++            continue
++        filtered_lobbies.append(lobby)
++
++    browser_payload = [await _to_lobby_browser_payload(lobby) for lobby in filtered_lobbies]
++    return JSONResponse(
++        status_code=HttpStatus.OK,
++        content={"lobbies": browser_payload},
++    )
++
++
+ class CreateLobbyRequest(BaseModel):
+     lobby_name: str = Field(..., min_length=1)
+     user_capacity: int = Field(default=4, ge=1, le=100)
+@@ -218,7 +261,7 @@ async def create_lobby(payload: CreateLobbyRequest, request: Request):
+     lobby = Lobby.create(
+         lobby_name=payload.lobby_name,
+         owner_user_id=user_id,
+-        lobby_kind="custom",
++        lobby_kind=LobbyDefaults.KIND_CUSTOM,
+         user_capacity=payload.user_capacity,
+         players=[user_id],
+         world_snapshot=None,
+@@ -230,6 +273,33 @@ async def create_lobby(payload: CreateLobbyRequest, request: Request):
+     return {"lobby": lobby.model_dump(by_alias=True)}
+ 
+ 
++@lobby_routes.get("", status_code=HttpStatus.OK)
++async def list_lobbies(kind: str = Query(default=LobbyDefaults.DEFAULT_KIND_FILTER)):
++    return await _list_lobbies_response(kind)
++
++
++@lobby_routes.get("/", status_code=HttpStatus.OK, include_in_schema=False)
++async def list_lobbies_trailing_slash(kind: str = Query(default=LobbyDefaults.DEFAULT_KIND_FILTER)):
++    return await _list_lobbies_response(kind)
++
++
++@lobby_routes.get(f"/{LobbyDefaults.DEFAULT_ROUTE_PATH}", status_code=HttpStatus.OK, include_in_schema=False)
++async def list_lobbies_default_route(kind: str = Query(default=LobbyDefaults.DEFAULT_KIND_FILTER)):
++    return await _list_lobbies_response(kind)
++
++
++@lobby_routes.get(
++    f"/{LobbyDefaults.DEFAULT_ROUTE_PATH}/{{fallback_path:path}}",
++    status_code=HttpStatus.OK,
++    include_in_schema=False,
++)
++async def list_lobbies_default_route_fallback(
++    fallback_path: str,
++    kind: str = Query(default=LobbyDefaults.DEFAULT_KIND_FILTER),
++):
++    return await _list_lobbies_response(kind)
++
++
+ @lobby_routes.get("/{lobby_id}", status_code=HttpStatus.OK)
+ async def get_lobby(lobby_id: str):
+     lobby = Lobby.get_by_id(lobby_id)
+@@ -279,33 +349,10 @@ async def leave_lobby(lobby_id: str, request: Request):
+ 
+     return {"lobby": updated.model_dump(by_alias=True)}
+ 
+-@lobby_routes.get("", status_code=HttpStatus.OK)
+-async def list_lobbies(kind: str = Query(default="official")):
+-    requested_kind = _normalize_lobby_kind(kind)
+-    _upsert_official_lobbies()
+-    allowed_official_keys = {item["official_key"] for item in OFFICIAL_LOBBY_BLUEPRINTS}
+-    healthy_official_keys = {
+-        key.strip().lower()
+-        for entry in GameServerRegistry.list_healthy()
+-        for key in (entry.official_keys or [])
+-        if key and key.strip()
+-    }
+ 
+-    filtered_lobbies: list[Lobby] = []
+-    for lobby in Lobby.get_all():
+-        is_official = _is_official_lobby(lobby)
+-        if requested_kind == "official" and not is_official:
+-            continue
+-        if requested_kind == "official" and (lobby.official_key or "") not in allowed_official_keys:
+-            continue
+-        if is_official and (lobby.official_key or "").strip().lower() not in healthy_official_keys:
+-            continue
+-        if requested_kind == "custom" and is_official:
+-            continue
+-        filtered_lobbies.append(lobby)
+-
+-    browser_payload = [await _to_lobby_browser_payload(lobby) for lobby in filtered_lobbies]
+-    return JSONResponse(
+-        status_code=HttpStatus.OK,
+-        content={"lobbies": browser_payload},
+-    )
++@lobby_routes.get("/{fallback_path:path}", status_code=HttpStatus.OK, include_in_schema=False)
++async def list_lobbies_unmatched_route_fallback(
++    fallback_path: str,
++    kind: str = Query(default=LobbyDefaults.DEFAULT_KIND_FILTER),
++):
++    return await _list_lobbies_response(kind)
+diff --git a/base/server/api/websockets/connection_hub.py b/repo/server/api/websockets/connection_hub.py
+index 4282055..dc3c630 100644
+--- a/base/server/api/websockets/connection_hub.py
++++ b/repo/server/api/websockets/connection_hub.py
+@@ -131,3 +131,18 @@ class ConnectionHub:
+             except Exception:
+                 pass
+         return closed
++
++    async def close_all(self, *, code: int = 1012, reason: str = "") -> int:
++        async with self._lock:
++            lobbies = self._lobbies
++            self._lobbies = {}
++            sockets = [ws for lobby in lobbies.values() for ws in lobby]
++
++        closed = 0
++        for ws in sockets:
++            try:
++                await ws.close(code=code, reason=reason)
++                closed += 1
++            except Exception:
++                pass
++        return closed
+diff --git a/base/server/api/websockets/lobby_game.py b/repo/server/api/websockets/lobby_game.py
+index fef5fbe..54b1abb 100644
+--- a/base/server/api/websockets/lobby_game.py
++++ b/repo/server/api/websockets/lobby_game.py
+@@ -443,6 +443,46 @@ async def reset_lobby_runtime_state(lobby_id: str, *, disconnect_reason: str = "
+     }
+ 
+ 
++async def reset_all_lobby_runtime_state(*, disconnect_reason: str = "Developer reset.") -> dict[str, int]:
++    async with _snapshot_lock:
++        pending_snapshot_count = len(_pending_snapshot_by_lobby)
++        _pending_snapshot_by_lobby.clear()
++        snapshot_tasks = list(_snapshot_flush_task_by_lobby.values())
++        _snapshot_flush_task_by_lobby.clear()
++
++    async with _presence_lock:
++        presence_lobby_count = len(_presence_by_lobby)
++        _presence_by_lobby.clear()
++
++    async with _lockstep_lock:
++        lockstep_states = list(_lockstep_state_by_lobby.values())
++        _lockstep_state_by_lobby.clear()
++
++    cancelled_snapshot_tasks = 0
++    for task in snapshot_tasks:
++        if not task.done():
++            task.cancel()
++            cancelled_snapshot_tasks += 1
++
++    cancelled_lockstep_tasks = 0
++    for state in lockstep_states:
++        if state.task and not state.task.done():
++            state.task.cancel()
++            cancelled_lockstep_tasks += 1
++
++    closed_connections = await game_connection_hub.close_all(
++        code=1012,
++        reason=disconnect_reason[:120],
++    )
++    return {
++        "closedConnections": closed_connections,
++        "clearedPendingSnapshots": pending_snapshot_count,
++        "clearedPresenceLobbies": presence_lobby_count,
++        "cancelledSnapshotTasks": cancelled_snapshot_tasks,
++        "cancelledLockstepTasks": cancelled_lockstep_tasks,
++    }
++
++
+ @router.websocket("/ws/game/{lobby_id}")
+ async def lobby_game_ws(websocket: WebSocket, lobby_id: str) -> None:
+     try:
+diff --git a/base/server/application/messaging/chat_service.py b/repo/server/application/messaging/chat_service.py
+index b3c7ba5..7928d4a 100644
+--- a/base/server/application/messaging/chat_service.py
++++ b/repo/server/application/messaging/chat_service.py
+@@ -33,6 +33,9 @@ class ChatService:
+     def get_recent_messages(self, lobby_id: str) -> list[dict[str, Any]]:
+         return list(self._history.get(lobby_id, []))
+ 
++    def clear_history(self) -> None:
++        self._history.clear()
++
+     def _store_message(self, lobby_id: str, payload: dict[str, Any]) -> None:
+         self._history[lobby_id].append(payload)
+ 
+@@ -68,4 +71,4 @@ class ChatService:
+         )
+         payload = message.to_payload()
+         self._store_message(lobby_id, payload)
+-        await self._broadcaster.broadcast(lobby_id, payload)
+\ No newline at end of file
++        await self._broadcaster.broadcast(lobby_id, payload)
+diff --git a/base/server/external/db/models/lobby.py b/repo/server/external/db/models/lobby.py
+index 743bc6c..91d8550 100644
+--- a/base/server/external/db/models/lobby.py
++++ b/repo/server/external/db/models/lobby.py
+@@ -9,6 +9,7 @@ from pymongo import ASCENDING, ReturnDocument
+ 
+ from server.external.db.mongo import MongoDBClient
+ from server.external.db.models.base import Timestamped
++from server.utils.constants import LobbyDefaults
+ 
+ 
+ class Lobby(Timestamped):
+@@ -18,7 +19,7 @@ class Lobby(Timestamped):
+ 
+     lobby_name: str
+     owner_user_id: str
+-    lobby_kind: str = "custom"
++    lobby_kind: str = LobbyDefaults.KIND_CUSTOM
+     official_key: str | None = None
+     server_region: str | None = None
+     server_description: str | None = None
+@@ -94,14 +95,14 @@ class Lobby(Timestamped):
+             {
+                 "$set": {
+                     "lobby_name": lobby_name,
+-                    "lobby_kind": "official",
++                    "lobby_kind": LobbyDefaults.KIND_OFFICIAL,
+                     "server_region": server_region,
+                     "server_description": server_description,
+                     "user_capacity": user_capacity,
+                     "updated_at": now,
+                 },
+                 "$setOnInsert": {
+-                    "owner_user_id": "official-server",
++                    "owner_user_id": LobbyDefaults.OFFICIAL_OWNER_USER_ID,
+                     "players": [],
+                     "population": [],
+                     "world_snapshot": None,
+diff --git a/base/server/external/db/mongo.py b/repo/server/external/db/mongo.py
+index 89812c3..e1f7300 100755
+--- a/base/server/external/db/mongo.py
++++ b/repo/server/external/db/mongo.py
+@@ -128,12 +128,13 @@ class MongoDBClient:
+             cls._client = None
+ 
+     @classmethod
+-    def reset_mock(cls):
+-        """Drop all mock data (only valid in mock mode)."""
+-        if not cls._is_mock:
+-            raise RuntimeError("reset_mock() can only be used in mock mode")
+-        cls._client = mongomock.MongoClient()
+-        cls._db_name = "testdb"
++    def reset_mock(cls):
++        """Drop all mock data (only valid in mock mode)."""
++        if not cls._is_mock:
++            raise RuntimeError("reset_mock() can only be used in mock mode")
++        cls._client = mongomock.MongoClient()
++        cls._db_name = "godhand"
++        cls._seed_mock_users()
+ 
+     @classmethod
+     def _seed_mock_users(cls) -> None:
+diff --git a/base/server/tests/conftest.py b/repo/server/tests/conftest.py
+index 3ff3f55..f2cf762 100644
+--- a/base/server/tests/conftest.py
++++ b/repo/server/tests/conftest.py
+@@ -1,5 +1,6 @@
+ from __future__ import annotations
+ 
++import asyncio
+ import os
+ from typing import Dict, Iterator, Optional
+ 
+@@ -138,3 +139,22 @@ def _reset_mongo_mock(_test_env: None) -> None:
+     except Exception:
+         # If the client isn't initialized yet, nothing to reset.
+         pass
++
++
++def _reset_realtime_runtime_state() -> None:
++    from server.api.websockets.lobby_chat import chat_service, connection_hub
++    from server.api.websockets.lobby_game import reset_all_lobby_runtime_state
++
++    async def _reset() -> None:
++        await connection_hub.close_all(code=1012, reason="Test reset.")
++        await reset_all_lobby_runtime_state(disconnect_reason="Test reset.")
++
++    asyncio.run(_reset())
++    chat_service.clear_history()
++
++
++@pytest.fixture(autouse=True)
++def _reset_realtime_state(_test_env: None, _reset_mongo_mock: None) -> Iterator[None]:
++    _reset_realtime_runtime_state()
++    yield
++    _reset_realtime_runtime_state()
+diff --git a/base/server/tests/test_lobby_api.py b/repo/server/tests/test_lobby_api.py
+index ed1685c..396f86f 100644
+--- a/base/server/tests/test_lobby_api.py
++++ b/repo/server/tests/test_lobby_api.py
+@@ -8,6 +8,7 @@ from server.tests.conftest import (
+     login_user,
+     get_auth_csrf,
+ )
++from server.utils.constants import LobbyDefaults
+ 
+ 
+ def create_and_login(client: TestClient, email: str):
+@@ -107,6 +108,59 @@ def test_list_lobbies_defaults_to_official_servers():
+         assert len(payload["lobbies"]) >= 1
+ 
+         first_lobby = payload["lobbies"][0]
+-        assert first_lobby["kind"] == "official"
++        assert first_lobby["kind"] == LobbyDefaults.KIND_OFFICIAL
+         assert isinstance(first_lobby["players"], list)
+         assert "playerCount" in first_lobby
++
++
++def test_default_lobby_route_alias_resolves_to_official_lobbies():
++    app = create_app()
++    with TestClient(app) as client:
++        response = client.get(f"/api/v1/lobbies/{LobbyDefaults.DEFAULT_ROUTE_PATH}")
++        assert response.status_code == 200, response.text
++
++        payload = response.json()
++        assert "lobbies" in payload
++        assert len(payload["lobbies"]) >= 1
++        assert all(lobby["kind"] == LobbyDefaults.KIND_OFFICIAL for lobby in payload["lobbies"])
++
++
++def test_unmatched_lobby_route_uses_default_lobby_fallback():
++    app = create_app()
++    with TestClient(app) as client:
++        direct = client.get("/api/v1/lobbies")
++        fallback = client.get("/api/v1/lobbies/not/a/known/route")
++
++        assert direct.status_code == 200, direct.text
++        assert fallback.status_code == 200, fallback.text
++        assert fallback.json() == direct.json()
++
++
++def test_invalid_single_segment_lobby_id_still_returns_not_found():
++    app = create_app()
++    with TestClient(app) as client:
++        response = client.get("/api/v1/lobbies/not-an-object-id")
++        assert response.status_code == 404
++
++
++def test_default_lobby_route_is_deterministic_across_repeated_calls():
++    app = create_app()
++    with TestClient(app) as client:
++        paths = [
++            "/api/v1/lobbies",
++            f"/api/v1/lobbies/{LobbyDefaults.DEFAULT_ROUTE_PATH}",
++            f"/api/v1/lobbies/{LobbyDefaults.DEFAULT_ROUTE_PATH}/anything",
++            "/api/v1/lobbies",
++        ]
++        responses = [client.get(path) for path in paths]
++
++        for response in responses:
++            assert response.status_code == 200, response.text
++
++        official_key_sets = [
++            [lobby["officialKey"] for lobby in response.json()["lobbies"]]
++            for response in responses
++        ]
++        assert official_key_sets
++        assert all(keys == official_key_sets[0] for keys in official_key_sets)
++        assert len(official_key_sets[0]) == len(set(official_key_sets[0]))
+diff --git a/base/server/utils/constants.py b/repo/server/utils/constants.py
+index b0c3fc1..c757bed 100755
+--- a/base/server/utils/constants.py
++++ b/repo/server/utils/constants.py
+@@ -69,6 +69,19 @@ class HttpStatus:
+     TOO_MANY_REQUESTS = 429
+     UNPROCESSABLE_ENTITY = 422
+     INTERNAL_SERVER_ERROR = 500
++    SERVICE_UNAVAILABLE = 503
++
++
++class LobbyDefaults:
++    """Default values used by lobby routing and filtering."""
++
++    KIND_OFFICIAL = "official"
++    KIND_CUSTOM = "custom"
++    KIND_ALL = "all"
++    VALID_KIND_FILTERS = frozenset({KIND_OFFICIAL, KIND_CUSTOM, KIND_ALL})
++    DEFAULT_KIND_FILTER = KIND_OFFICIAL
++    DEFAULT_ROUTE_PATH = "default"
++    OFFICIAL_OWNER_USER_ID = "official-server"
+ 
+ 
+ class TokenExpiry:

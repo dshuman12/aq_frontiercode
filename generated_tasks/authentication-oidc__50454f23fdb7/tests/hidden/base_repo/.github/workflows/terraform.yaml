@@ -1,0 +1,138 @@
+# Shared Terraform workflow called by pr.yaml, staging.deploy.yaml, and prod.deploy.yaml.
+#
+# Modes:
+#   validate_only=true  — PR checks: runs fmt + validate without AWS credentials
+#   validate_only=false — Deploy: runs full plan/apply cycle against the target environment
+#
+# Plan uses -detailed-exitcode so apply only runs when there are actual changes:
+#   exit 0 = no changes (apply skipped)
+#   exit 1 = error (workflow fails)
+#   exit 2 = changes detected (apply runs if inputs.apply is true)
+#
+# Non-secret variables are passed inline via -var flags or TF_VAR_* env vars.
+# Secrets are passed via TF_VAR_* env vars from GitHub environment secrets.
+
+name: Terraform
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "Target environment (staging or prod)"
+        type: string
+        required: true
+      apply:
+        description: "Run terraform apply after plan"
+        type: boolean
+        default: false
+      validate_only:
+        description: "Only run fmt and validate (no plan/apply, no secrets needed)"
+        type: boolean
+        default: false
+      release_version:
+        description: "Release version tag for Lambda functions"
+        type: string
+        default: ""
+      pr_versions:
+        description: 'JSON-encoded map of PR version name to minor version, e.g. {"pr-42": 204883519}'
+        type: string
+        default: "{}"
+      ref:
+        description: "Git ref to checkout (defaults to the calling workflow's ref)"
+        type: string
+        default: ""
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        working-directory: terraform
+    env:
+      # AWS credentials — resolved from the GitHub environment
+      AWS_ACCOUNT_ID: ${{ secrets.ONMO_PROD_AWS_ACCOUNT_ID }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.ONMO_PROD_AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.ONMO_PROD_AWS_SECRET_ACCESS_KEY }}
+      ONMO_REGISTRY_PACKAGES: ${{ secrets.ONMO_REGISTRY_PACKAGES }}
+
+      # Terraform secret variables — only these remain as env vars (cannot be checked in)
+      TF_VAR_DATADOG_API_KEY: ${{ secrets.DATADOG_PLATFORM_API_KEY }}
+      TF_VAR_DATADOG_APP_KEY: ${{ secrets.DATADOG_PLATFORM_SERVICE_APP_KEY }}
+      TF_VAR_AWS_ACCOUNT_ID: ${{ secrets.ONMO_PROD_AWS_ACCOUNT_ID }}
+      TF_VAR_WEB_ACL_ARN: ${{ inputs.environment == 'prod' && secrets.PROD_WEB_ACL_ARN || secrets.STAGING_WEB_ACL_ARN }}
+      TF_VAR_PINPOINT_PROJECT_ID: ${{ secrets.PINPOINT_PROJECT_ID }}
+      TF_VAR_GITHUB_REPO: ${{ github.repository }}
+      TF_VAR_RELEASE_VERSION: ${{ inputs.release_version }}
+      TF_VAR_PR_VERSIONS: ${{ inputs.pr_versions }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      # Bundle all Lambda handlers so Terraform can reference the build output
+      - name: Bundle Lambda Handlers
+        run: node scripts/build.mjs
+        working-directory: .
+
+      # terraform_wrapper disabled so stdout is clean for $GITHUB_OUTPUT capture
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.4
+          terraform_wrapper: false
+          cli_config_credentials_token: ${{ secrets.TERRAFORM_CLOUD_TOKEN }}
+
+      # ── Validate-only mode (PR checks) ───────────────────────────────────────
+      # Runs without backend/secrets — just checks syntax and config validity
+
+      - name: Terraform Format
+        run: terraform fmt -check
+
+      - name: Terraform Validate
+        if: inputs.validate_only
+        run: terraform init -backend=false && terraform validate
+
+      # ── Full plan/apply mode (deploys) ────────────────────────────────────────
+
+      - name: Terraform Init
+        if: ${{ !inputs.validate_only }}
+        run: |
+          terraform init -upgrade \
+            -backend-config="bucket=onmo-terraform-state-${{ inputs.environment }}" \
+            -backend-config="key=authentication/state-file-${{ inputs.environment }}.tfstate" \
+            -backend-config="dynamodb_table=onmo-terraform-state-${{ inputs.environment }}" \
+            -backend-config="region=eu-west-1" \
+            -backend-config="encrypt=true"
+
+      # -detailed-exitcode: 0=no changes, 1=error, 2=changes detected
+      # Exit code captured manually (terraform_wrapper is disabled)
+      - name: Terraform Plan
+        id: plan
+        if: ${{ !inputs.validate_only }}
+        run: |
+          set +e
+          terraform plan -var="ENVIRONMENT=${{ inputs.environment }}" -input=false -out=tfplan -detailed-exitcode
+          exitcode=$?
+          echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
+          if [ $exitcode -eq 1 ]; then exit 1; fi
+
+      # Only apply when the plan detected changes and apply was requested
+      - name: Terraform Apply
+        if: ${{ !inputs.validate_only && inputs.apply && steps.plan.outputs.exitcode == '2' }}
+        run: terraform apply -auto-approve -input=false tfplan

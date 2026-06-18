@@ -1,0 +1,773 @@
+diff --git a/base/frontend/src/components/ProfileQuickMenu.tsx b/repo/frontend/src/components/ProfileQuickMenu.tsx
+index 25b38a0..f77921d 100644
+--- a/base/frontend/src/components/ProfileQuickMenu.tsx
++++ b/repo/frontend/src/components/ProfileQuickMenu.tsx
+@@ -16,8 +16,8 @@ type ProfileQuickMenuProps = {
+   variant?: 'dock' | 'inline'
+ }
+ 
+-function hasAccessCsrfCookie(): boolean {
+-  return /(?:^|;\s*)csrf_access_token=/.test(document.cookie)
++function hasAuthCsrfCookie(): boolean {
++  return /(?:^|;\s*)(?:csrf_access_token|csrf_refresh_token)=/.test(document.cookie)
+ }
+ 
+ export default function ProfileQuickMenu({ variant = 'dock' }: ProfileQuickMenuProps) {
+@@ -37,7 +37,7 @@ export default function ProfileQuickMenu({ variant = 'dock' }: ProfileQuickMenuP
+   useEffect(() => {
+     setMenuOpen(false)
+     setErrorMessage('')
+-    if (isHiddenRoute || !hasAccessCsrfCookie()) {
++    if (isHiddenRoute || !hasAuthCsrfCookie()) {
+       setUser(null)
+       return
+     }
+diff --git a/base/frontend/src/lib/authApi.ts b/repo/frontend/src/lib/authApi.ts
+index df2a1f2..319c24a 100644
+--- a/base/frontend/src/lib/authApi.ts
++++ b/repo/frontend/src/lib/authApi.ts
+@@ -71,6 +71,8 @@ function isLocalhost(hostname: string): boolean {
+ 
+ const AUTH_BASE_URL = `${API_BASE_URL}/api/v1/auth`
+ const AUTH_REQUEST_TIMEOUT_MS = 10000
++const ANON_CSRF_COOKIE = 'anon_csrf'
++let anonCsrfTokenRequest: Promise<string> | null = null
+ 
+ function readCookie(name: string): string {
+   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+@@ -143,8 +145,16 @@ async function authRequest<T>(path: string, init: RequestInit): Promise<T> {
+ }
+ 
+ export async function getAnonCsrfToken(): Promise<string> {
+-  const data = await authRequest<CsrfResponse>('/csrf-token', { method: 'GET' })
+-  return data.csrf_token
++  const existingToken = readCookie(ANON_CSRF_COOKIE)
++  if (existingToken) return existingToken
++
++  anonCsrfTokenRequest ??= authRequest<CsrfResponse>('/csrf-token', { method: 'GET' })
++    .then((data) => readCookie(ANON_CSRF_COOKIE) || data.csrf_token)
++    .finally(() => {
++      anonCsrfTokenRequest = null
++    })
++
++  return anonCsrfTokenRequest
+ }
+ 
+ export async function login(payload: LoginRequest): Promise<LoginResponse> {
+@@ -200,6 +210,12 @@ async function refreshAccessToken(): Promise<void> {
+   })
+ }
+ 
++function shouldRefreshAccessToken(error: unknown): boolean {
++  if (!(error instanceof AuthApiError)) return false
++  if (error.status !== 401) return false
++  return error.message !== 'Missing CSRF token' && error.message !== 'CSRF token mismatch'
++}
++
+ async function requestCurrentUserWithAccessCsrf(csrfToken: string): Promise<UserResponse> {
+   return authRequest<UserResponse>('/me', {
+     method: 'GET',
+@@ -213,7 +229,7 @@ export async function getCurrentUser(): Promise<UserResponse> {
+   try {
+     return await requestCurrentUserWithAccessCsrf(getAccessCsrfTokenFromCookie())
+   } catch (error) {
+-    if (!(error instanceof AuthApiError) || error.status !== 401) {
++    if (!shouldRefreshAccessToken(error)) {
+       throw error
+     }
+     await refreshAccessToken()
+@@ -221,47 +237,70 @@ export async function getCurrentUser(): Promise<UserResponse> {
+   }
+ }
+ 
++export async function ensureAccessCsrfToken(): Promise<string> {
++  await getCurrentUser()
++  return getAccessCsrfTokenFromCookie()
++}
++
++async function authRequestWithAccessCsrf<T>(
++  requestWithCsrf: (csrfToken: string) => Promise<T>,
++): Promise<T> {
++  try {
++    return await requestWithCsrf(getAccessCsrfTokenFromCookie())
++  } catch (error) {
++    if (!shouldRefreshAccessToken(error)) {
++      throw error
++    }
++    await refreshAccessToken()
++    return requestWithCsrf(getAccessCsrfTokenFromCookie())
++  }
++}
++
+ export async function updateCurrentUsername(username: string): Promise<UserResponse> {
+-  const csrfToken = getAccessCsrfTokenFromCookie()
+-  return authRequest<UserResponse>('/me/username', {
+-    method: 'PATCH',
+-    headers: {
+-      'X-CSRF-TOKEN': csrfToken,
+-    },
+-    body: JSON.stringify({ username }),
+-  })
++  return authRequestWithAccessCsrf((csrfToken) =>
++    authRequest<UserResponse>('/me/username', {
++      method: 'PATCH',
++      headers: {
++        'X-CSRF-TOKEN': csrfToken,
++      },
++      body: JSON.stringify({ username }),
++    }),
++  )
+ }
+ 
+ export async function beginGoogleAccountLink(): Promise<void> {
+   assertSecureAuthTransport()
+-  const csrfToken = getAccessCsrfTokenFromCookie()
+-  const result = await authRequest<GoogleLinkStartResponse>('/google/link/start', {
+-    method: 'POST',
+-    headers: {
+-      'X-CSRF-TOKEN': csrfToken,
+-    },
+-  })
++  const result = await authRequestWithAccessCsrf((csrfToken) =>
++    authRequest<GoogleLinkStartResponse>('/google/link/start', {
++      method: 'POST',
++      headers: {
++        'X-CSRF-TOKEN': csrfToken,
++      },
++    }),
++  )
+   window.location.assign(result.url)
+ }
+ 
+ export async function unlinkGoogleAccount(): Promise<UserResponse> {
+-  const csrfToken = getAccessCsrfTokenFromCookie()
+-  return authRequest<UserResponse>('/google/unlink', {
+-    method: 'POST',
+-    headers: {
+-      'X-CSRF-TOKEN': csrfToken,
+-    },
+-  })
++  return authRequestWithAccessCsrf((csrfToken) =>
++    authRequest<UserResponse>('/google/unlink', {
++      method: 'POST',
++      headers: {
++        'X-CSRF-TOKEN': csrfToken,
++      },
++    }),
++  )
+ }
+ 
+ export async function logout(): Promise<void> {
+-  const csrfToken = getAccessCsrfTokenFromCookie()
+-  await authRequest<{ message: string }>('/logout', {
+-    method: 'POST',
+-    headers: {
+-      'X-CSRF-TOKEN': csrfToken,
+-    },
+-  })
++  await authRequestWithAccessCsrf((csrfToken) =>
++    authRequest<{ message: string }>('/logout', {
++      method: 'POST',
++      headers: {
++        'X-CSRF-TOKEN': csrfToken,
++      },
++    }),
++  )
+ }
+ 
+ const CLIENT_AUTH_COOKIE_NAMES = [
+diff --git a/base/frontend/src/pages/game/GameScreen.tsx b/repo/frontend/src/pages/game/GameScreen.tsx
+index 255d98f..37f5766 100644
+--- a/base/frontend/src/pages/game/GameScreen.tsx
++++ b/repo/frontend/src/pages/game/GameScreen.tsx
+@@ -46,7 +46,7 @@ import { TimingStoreProvider, useStableTimingStore } from './state/timingStore'
+ import { ORE_VISUALS } from './oreCatalog'
+ import { canPlace, type PlacementIntent } from './placement'
+ import { API_BASE_URL } from '../../lib/apiBase'
+-import { getCurrentUser } from '../../lib/authApi'
++import { ensureAccessCsrfToken } from '../../lib/authApi'
+ import { measureBackendPingMs } from '../../lib/healthApi'
+ 
+ const DIRECTION_ORDER: Direction[] = ['up', 'right', 'down', 'left']
+@@ -346,24 +346,6 @@ export default function GameScreen() {
+   })
+   const joinRequestVersionRef = useRef(0)
+ 
+-  const readCookie = useCallback((name: string): string | null => {
+-    const key = `${name}=`
+-    const parts = document.cookie.split(';')
+-    for (const part of parts) {
+-      const trimmed = part.trim()
+-      if (!trimmed.startsWith(key)) continue
+-      return decodeURIComponent(trimmed.slice(key.length))
+-    }
+-    return null
+-  }, [])
+-
+-  const ensureAccessCsrfToken = useCallback(async (): Promise<string> => {
+-    await getCurrentUser()
+-    const accessCsrfToken = readCookie('csrf_access_token')
+-    if (!accessCsrfToken) throw new Error('Missing csrf_access_token. Please sign in again.')
+-    return accessCsrfToken
+-  }, [readCookie])
+-
+   const clearActiveLobby = useCallback(() => {
+     hasLeftLobbyRef.current = true
+     setActiveLobbyId(null)
+@@ -391,7 +373,7 @@ export default function GameScreen() {
+       leaveInFlightRef.current = false
+       clearActiveLobby()
+     }
+-  }, [activeLobbyId, clearActiveLobby, ensureAccessCsrfToken])
++  }, [activeLobbyId, clearActiveLobby])
+ 
+   const ensureLobbyMembership = useCallback(
+     async (lobbyId: string) => {
+@@ -417,7 +399,7 @@ export default function GameScreen() {
+       setActiveLobbyId(lobbyId)
+       hasLeftLobbyRef.current = false
+     },
+-    [ensureAccessCsrfToken],
++    [],
+   )
+ 
+   const navigateAfterLeavingLobby = useCallback(
+diff --git a/base/frontend/src/pages/game/theme/buildingSprites.ts b/repo/frontend/src/pages/game/theme/buildingSprites.ts
+index 0c95ebb..f2b4e35 100644
+--- a/base/frontend/src/pages/game/theme/buildingSprites.ts
++++ b/repo/frontend/src/pages/game/theme/buildingSprites.ts
+@@ -1,3 +1,11 @@
++import conveyorTileUrl from '../../../assets/conveyortile.png'
++import drillTileUrl from '../../../assets/drilltile.png'
++import generatorTileUrl from '../../../assets/generatortile.png'
++import logisticsHubTileUrl from '../../../assets/logisticshubtile.png'
++import minerTileUrl from '../../../assets/minertile.png'
++import smelterTileUrl from '../../../assets/smeltertile.png'
++import splitterTileUrl from '../../../assets/splittertile.png'
++import storageTileUrl from '../../../assets/storagetile.png'
+ import { closeBitmapList, loadBitmapList } from './spriteUtils'
+ 
+ export type BuildingSpriteDefinition = {
+@@ -18,16 +26,16 @@ export type BuildingSpriteBitmaps = {
+ 
+ export const BUILDING_SPRITE_DEFINITION: BuildingSpriteDefinition = {
+   byBuildId: {
+-    splitter: ['/src/assets/splittertile.png'],
+-    storage: ['/src/assets/storagetile.png'],
+-    smelter: ['/src/assets/smeltertile.png'],
+-    generator: ['/src/assets/generatortile.png'],
+-    logistics_hub: ['/src/assets/logisticshubtile.png'],
++    splitter: [splitterTileUrl],
++    storage: [storageTileUrl],
++    smelter: [smelterTileUrl],
++    generator: [generatorTileUrl],
++    logistics_hub: [logisticsHubTileUrl],
+   },
+-  conveyor: ['/src/assets/conveyortile.png'],
+-  miner: ['/src/assets/minertile.png'],
+-  drill: ['/src/assets/drilltile.png'],
+-  hub: ['/src/assets/logisticshubtile.png'],
++  conveyor: [conveyorTileUrl],
++  miner: [minerTileUrl],
++  drill: [drillTileUrl],
++  hub: [logisticsHubTileUrl],
+ }
+ 
+ export async function loadBuildingSpriteBitmaps(
+diff --git a/base/frontend/src/pages/game/theme/oreSprites.ts b/repo/frontend/src/pages/game/theme/oreSprites.ts
+index f7b0842..c6faf5b 100644
+--- a/base/frontend/src/pages/game/theme/oreSprites.ts
++++ b/repo/frontend/src/pages/game/theme/oreSprites.ts
+@@ -1,3 +1,12 @@
++import aluminumOreUrl from '../../../assets/aluminumore.png'
++import coalOreUrl from '../../../assets/coalore.png'
++import copperOreUrl from '../../../assets/copperore.png'
++import lithiumOreUrl from '../../../assets/lithiumore.png'
++import silicaOreUrl from '../../../assets/silicaore.png'
++import silverOreUrl from '../../../assets/silverore.png'
++import thoriumOreUrl from '../../../assets/thoriumore.png'
++import titaniumOreUrl from '../../../assets/titaniumore.png'
++import tungstenOreUrl from '../../../assets/tungstenore.png'
+ import { ORE_TYPES, type OreType } from '../../../game/engine'
+ import {
+   closeBitmapList,
+@@ -10,15 +19,15 @@ export type OreSpriteDefinition = Record<OreType, string[]>
+ export type OreSpriteBitmaps = Record<OreType, ImageBitmap[]>
+ 
+ export const ORE_SPRITE_DEFINITION: OreSpriteDefinition = {
+-  iron: ['/src/assets/silverore.png'],
+-  copper: ['/src/assets/copperore.png'],
+-  coal: ['/src/assets/coalore.png'],
+-  silica: ['/src/assets/silicaore.png'],
+-  aluminum: ['/src/assets/aluminumore.png'],
+-  titanium: ['/src/assets/titaniumore.png'],
+-  lithium: ['/src/assets/lithiumore.png'],
+-  tungsten: ['/src/assets/tungstenore.png'],
+-  thorium: ['/src/assets/thoriumore.png'],
++  iron: [silverOreUrl],
++  copper: [copperOreUrl],
++  coal: [coalOreUrl],
++  silica: [silicaOreUrl],
++  aluminum: [aluminumOreUrl],
++  titanium: [titaniumOreUrl],
++  lithium: [lithiumOreUrl],
++  tungsten: [tungstenOreUrl],
++  thorium: [thoriumOreUrl],
+ }
+ 
+ export async function loadOreSpriteBitmaps(
+diff --git a/base/frontend/src/pages/game/theme/terrainTileset.ts b/repo/frontend/src/pages/game/theme/terrainTileset.ts
+index 7c80fe2..961a199 100644
+--- a/base/frontend/src/pages/game/theme/terrainTileset.ts
++++ b/repo/frontend/src/pages/game/theme/terrainTileset.ts
+@@ -1,3 +1,4 @@
++import valleyTileUrl from '../../../assets/valley1.png'
+ import {
+   closeBitmapList,
+   loadBitmapList,
+@@ -18,12 +19,12 @@ export type TerrainTilesetBitmaps = {
+ export const TERRAIN_TILESET_DEFINITION: TerrainTilesetDefinition = {
+   sourcePx: 24,
+   accessible: {
+-    1: ['/src/assets/valley1.png'],
+-    2: ['/src/assets/valley1.png'],
+-    3: ['/src/assets/valley1.png'],
+-    4: ['/src/assets/valley1.png'],
++    1: [valleyTileUrl],
++    2: [valleyTileUrl],
++    3: [valleyTileUrl],
++    4: [valleyTileUrl],
+   },
+-  blocked: ['/src/assets/blocked.png'],
++  blocked: [],
+ }
+ 
+ export async function loadTerrainTilesetBitmaps(
+diff --git a/base/frontend/src/pages/game/theme/valleyDecorations.ts b/repo/frontend/src/pages/game/theme/valleyDecorations.ts
+index f93d347..0faf95c 100644
+--- a/base/frontend/src/pages/game/theme/valleyDecorations.ts
++++ b/repo/frontend/src/pages/game/theme/valleyDecorations.ts
+@@ -1,3 +1,8 @@
++import flowersOneUrl from '../../../assets/flowers1.png'
++import flowersTwoUrl from '../../../assets/flowers2.png'
++import rockOneUrl from '../../../assets/rock1.png'
++import rockTwoUrl from '../../../assets/rock2.png'
++import treeUrl from '../../../assets/tree.png'
+ import { closeBitmapList, loadBitmapList } from './spriteUtils'
+ 
+ export type ValleyDecorationType = 'tree' | 'rock' | 'flower'
+@@ -12,9 +17,9 @@ export type ValleyDecorationPick = {
+ }
+ 
+ export const VALLEY_DECORATION_DEFINITION: ValleyDecorationDefinition = {
+-  tree: ['/src/assets/tree.png'],
+-  rock: ['/src/assets/rock1.png', '/src/assets/rock2.png'],
+-  flower: ['/src/assets/flowers1.png', '/src/assets/flowers2.png'],
++  tree: [treeUrl],
++  rock: [rockOneUrl, rockTwoUrl],
++  flower: [flowersOneUrl, flowersTwoUrl],
+ }
+ 
+ export type BlockingValleyDecorationType = 'tree' | 'rock'
+diff --git a/base/frontend/src/pages/lobby/LobbyScreen.tsx b/repo/frontend/src/pages/lobby/LobbyScreen.tsx
+index c287e67..a781df9 100644
+--- a/base/frontend/src/pages/lobby/LobbyScreen.tsx
++++ b/repo/frontend/src/pages/lobby/LobbyScreen.tsx
+@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+ import { useNavigate, useSearchParams } from 'react-router-dom'
+ import GodhandButtonBase from '../../components/GodhandButtonBase'
+ import { API_BASE_URL } from '../../lib/apiBase'
+-import { getAuthErrorMessage, getCurrentUser } from '../../lib/authApi'
++import { ensureAccessCsrfToken, getAuthErrorMessage } from '../../lib/authApi'
+ import { measureBackendPingMs } from '../../lib/healthApi'
+ import ShaderBackdrop from '../game/components/ShaderBackdrop'
+ 
+@@ -126,17 +126,6 @@ function parseWsUrl(value: unknown): string | null {
+   }
+ }
+ 
+-function readCookie(name: string): string | null {
+-  const key = `${name}=`
+-  const parts = document.cookie.split(';')
+-  for (const part of parts) {
+-    const trimmed = part.trim()
+-    if (!trimmed.startsWith(key)) continue
+-    return decodeURIComponent(trimmed.slice(key.length))
+-  }
+-  return null
+-}
+-
+ export default function LobbyScreen() {
+   const navigate = useNavigate()
+   const [searchParams, setSearchParams] = useSearchParams()
+@@ -248,9 +237,7 @@ export default function LobbyScreen() {
+       setLoading(true)
+       setError(null)
+ 
+-      await getCurrentUser()
+-      const accessCsrfToken = readCookie('csrf_access_token')
+-      if (!accessCsrfToken) throw new Error('Missing csrf_access_token. Please sign in again.')
++      const accessCsrfToken = await ensureAccessCsrfToken()
+ 
+       const response = await fetch(`${API_BASE_URL}/api/v1/lobbies/${selectedLobby.id}/join`, {
+         method: 'POST',
+diff --git a/base/server/api/routers/auth.py b/repo/server/api/routers/auth.py
+index 78495a3..34c63ad 100644
+--- a/base/server/api/routers/auth.py
++++ b/repo/server/api/routers/auth.py
+@@ -24,7 +24,7 @@ from server.api.schemas.auth import (
+ )
+ from server.api.schemas.user import to_public_user
+ from server.api.security.cookies import CookieUtils
+-from server.api.security.csrf import Csrf, verify_anon_csrf
++from server.api.security.csrf import Csrf, verify_access_csrf, verify_anon_csrf, verify_refresh_csrf
+ from server.api.security.jwt import JWTService
+ from server.api.security.rate_limit import (
+     limit_login_rate,
+@@ -224,7 +224,12 @@ def google_login(request: Request):
+     return response
+ 
+ 
+-@auth_routes.post("/google/link/start", status_code=HttpStatus.OK, response_model=OAuthLinkStartResponse)
++@auth_routes.post(
++    "/google/link/start",
++    status_code=HttpStatus.OK,
++    response_model=OAuthLinkStartResponse,
++    dependencies=[Depends(verify_access_csrf)],
++)
+ def google_link_start(request: Request):
+     """
+     Start Google OAuth flow for linking a Google account to the current authenticated user.
+@@ -429,7 +434,12 @@ def google_callback(request: Request, code: str | None = None, state: str | None
+     return success_response
+ 
+ 
+-@auth_routes.post("/google/unlink", status_code=HttpStatus.OK, response_model=UserResponse)
++@auth_routes.post(
++    "/google/unlink",
++    status_code=HttpStatus.OK,
++    response_model=UserResponse,
++    dependencies=[Depends(verify_access_csrf)],
++)
+ def google_unlink(request: Request):
+     """
+     Unlink the Google account from the authenticated user.
+@@ -485,7 +495,12 @@ def get_me(request: Request):
+     )
+ 
+ 
+-@auth_routes.patch("/me/username", status_code=HttpStatus.OK, response_model=UserResponse)
++@auth_routes.patch(
++    "/me/username",
++    status_code=HttpStatus.OK,
++    response_model=UserResponse,
++    dependencies=[Depends(verify_access_csrf)],
++)
+ def update_me_username(payload: UpdateUsernameRequest, request: Request):
+     """
+     Update the authenticated user's in-game username.
+@@ -512,7 +527,7 @@ def update_me_username(payload: UpdateUsernameRequest, request: Request):
+     )
+ 
+ 
+-@auth_routes.post("/refresh", status_code=HttpStatus.OK)
++@auth_routes.post("/refresh", status_code=HttpStatus.OK, dependencies=[Depends(verify_refresh_csrf)])
+ def refresh_access_token(request: Request):
+     """
+     Issue a new access token (stateless refresh).
+@@ -527,7 +542,7 @@ def refresh_access_token(request: Request):
+     return response
+ 
+ 
+-@auth_routes.post("/logout", status_code=HttpStatus.OK)
++@auth_routes.post("/logout", status_code=HttpStatus.OK, dependencies=[Depends(verify_access_csrf)])
+ def logout(request: Request):
+     """
+     Clear all JWT and CSRF cookies.
+diff --git a/base/server/api/security/csrf.py b/repo/server/api/security/csrf.py
+index 100552a..5022cf5 100755
+--- a/base/server/api/security/csrf.py
++++ b/repo/server/api/security/csrf.py
+@@ -1,8 +1,7 @@
+ import hmac
+ from secrets import token_urlsafe
+ from fastapi import Request, Response
+-from fastapi import Depends
+-from server.config import get_app_config
++from server.config import get_app_config
+ from server.utils.constants import TokenExpiry, ResponseMessages
+ from server.utils.logging import get_app_logger
+ from server.api.security.cookies import CookieUtils
+@@ -10,9 +9,12 @@ from server.utils.error_handlers import AuthenticationError
+ 
+ app_logger = get_app_logger()
+ 
+-_ANON_CSRF_COOKIE = "anon_csrf"
+-
+-class Csrf:
++_ANON_CSRF_COOKIE = "anon_csrf"
++_ACCESS_CSRF_COOKIE = "csrf_access_token"
++_REFRESH_CSRF_COOKIE = "csrf_refresh_token"
++
++
++class Csrf:
+     @staticmethod
+     def issue_anon_csrf_token(response: Response, *, token: str | None = None) -> str:
+         token_value = token or token_urlsafe(32)
+@@ -29,20 +31,30 @@ class Csrf:
+         CookieUtils.delete_cookie(response, _ANON_CSRF_COOKIE)
+ 
+     @staticmethod
+-    def verify_header_matches_cookie(request: Request) -> None:
+-        cfg = get_app_config()
+-        header_name = (cfg.CSRF_HEADER_NAME or "X-CSRF-TOKEN")
+-        header_val = request.headers.get(header_name)
+-        cookie_val = request.cookies.get(_ANON_CSRF_COOKIE)
+-
+-        if not header_val or not cookie_val:
+-            app_logger.warning("Anonymous CSRF missing (header or cookie)")
+-            raise AuthenticationError(ResponseMessages.CSRF_TOKEN_INVALID)
+-
+-        if not hmac.compare_digest(header_val, cookie_val):
+-            app_logger.warning("Anonymous CSRF mismatch")
+-            raise AuthenticationError(ResponseMessages.CSRF_TOKEN_INVALID)
+-
+-def verify_anon_csrf(request: Request = None) -> None:
+-    # request is injected by FastAPI automatically
+-    Csrf.verify_header_matches_cookie(request)
+\ No newline at end of file
++    def verify_header_matches_cookie(request: Request, *, cookie_name: str = _ANON_CSRF_COOKIE) -> None:
++        cfg = get_app_config()
++        header_name = (cfg.CSRF_HEADER_NAME or "X-CSRF-TOKEN")
++        header_val = request.headers.get(header_name)
++        cookie_val = request.cookies.get(cookie_name)
++
++        if not header_val or not cookie_val:
++            app_logger.warning(f"CSRF missing for cookie={cookie_name} (header or cookie)")
++            raise AuthenticationError(ResponseMessages.CSRF_TOKEN_MISSING)
++
++        if not hmac.compare_digest(header_val, cookie_val):
++            app_logger.warning(f"CSRF mismatch for cookie={cookie_name}")
++            raise AuthenticationError(ResponseMessages.CSRF_TOKEN_MISMATCH)
++
++def verify_anon_csrf(request: Request = None) -> None:
++    # request is injected by FastAPI automatically
++    Csrf.verify_header_matches_cookie(request)
++
++
++def verify_access_csrf(request: Request = None) -> None:
++    # request is injected by FastAPI automatically
++    Csrf.verify_header_matches_cookie(request, cookie_name=_ACCESS_CSRF_COOKIE)
++
++
++def verify_refresh_csrf(request: Request = None) -> None:
++    # request is injected by FastAPI automatically
++    Csrf.verify_header_matches_cookie(request, cookie_name=_REFRESH_CSRF_COOKIE)
+diff --git a/base/server/docs/auth.md b/repo/server/docs/auth.md
+index 96080c6..89ea469 100644
+--- a/base/server/docs/auth.md
++++ b/repo/server/docs/auth.md
+@@ -19,8 +19,17 @@ Email verification code remains in the repository for future re-enable, but it i
+ ### 1) `GET /csrf-token`
+ Returns an anonymous CSRF token and sets `anon_csrf` cookie.
+ 
++CSRF contract:
++- Send the token returned by this endpoint as `X-CSRF-TOKEN` for anonymous state-changing auth requests.
++- Anonymous state-changing endpoints validate `X-CSRF-TOKEN` against the `anon_csrf` cookie.
++- Authenticated state-changing endpoints validate `X-CSRF-TOKEN` against `csrf_access_token`, except `/refresh`, which validates against `csrf_refresh_token`.
++- Missing CSRF header/cookie pairs return `401` with `detail: "Missing CSRF token"`.
++- Mismatched CSRF header/cookie pairs return `401` with `detail: "CSRF token mismatch"`.
++- JWT token validation still runs after CSRF validation on authenticated endpoints.
++
+ ### 2) `POST /register`
+ Creates a user account (does not auto-login).
++Requires `X-CSRF-TOKEN` matching `anon_csrf`.
+ 
+ Request body:
+ 
+@@ -52,6 +61,7 @@ Response:
+ ### 3) `POST /login`
+ Logs in with `identifier` (username or email) + password.
+ Sets access/refresh JWT cookies and CSRF cookies.
++Requires `X-CSRF-TOKEN` matching `anon_csrf`.
+ 
+ ### 4) `GET /google/login`
+ Starts Google OAuth login redirect flow.
+@@ -61,21 +71,27 @@ Handles OAuth callback, creates or links account, issues JWT cookies, redirects
+ 
+ ### 6) `POST /google/link/start`
+ Authenticated endpoint to begin linking a Google account to the current user.
++Requires `X-CSRF-TOKEN` matching `csrf_access_token`.
+ 
+ ### 7) `POST /google/unlink`
+ Authenticated endpoint to unlink the currently linked Google account.
++Requires `X-CSRF-TOKEN` matching `csrf_access_token`.
+ 
+ ### 8) `GET /me`
+ Returns current authenticated user profile.
++Requires valid access JWT cookies and `X-CSRF-TOKEN` matching `csrf_access_token`.
+ 
+ ### 9) `PATCH /me/username`
+ Updates the in-game username for the authenticated user.
++Requires `X-CSRF-TOKEN` matching `csrf_access_token`.
+ 
+ ### 10) `POST /refresh`
+ Refreshes access token using refresh token cookie + refresh CSRF token.
++Requires `X-CSRF-TOKEN` matching `csrf_refresh_token`.
+ 
+ ### 11) `POST /logout`
+ Clears auth and CSRF cookies.
++Requires `X-CSRF-TOKEN` matching `csrf_access_token`.
+ 
+ ## Environment Variables (Auth)
+ 
+diff --git a/base/server/tests/test_auth_user_flow.py b/repo/server/tests/test_auth_user_flow.py
+index 72aa67c..ea6d7cc 100644
+--- a/base/server/tests/test_auth_user_flow.py
++++ b/repo/server/tests/test_auth_user_flow.py
+@@ -1,5 +1,7 @@
+ from __future__ import annotations
+ 
++import pytest
++
+ from server.external.db.models.user import User
+ from server.tests.conftest import (
+     get_anon_csrf,
+@@ -266,6 +268,124 @@ def test_logout_uses_access_csrf(client):
+     assert not client.cookies.get("csrf_refresh_token")
+ 
+ 
++@pytest.mark.parametrize(
++    ("path", "payload"),
++    [
++        (
++            "/api/v1/auth/register",
++            {
++                "username": "missinganon",
++                "email": "missing-anon@example.com",
++                "password": "StrongPass123",
++            },
++        ),
++        (
++            "/api/v1/auth/login",
++            {"identifier": "missing-login@example.com", "password": "StrongPass123"},
++        ),
++    ],
++)
++def test_anonymous_state_changing_auth_endpoints_reject_missing_csrf(client, path, payload):
++    if path.endswith("/login"):
++        register_user(client, email="missing-login@example.com", password="StrongPass123")
++    get_anon_csrf(client)
++
++    response = client.post(path, json=payload)
++
++    assert response.status_code == 401
++    assert response.json()["detail"] == ResponseMessages.CSRF_TOKEN_MISSING
++
++
++@pytest.mark.parametrize(
++    ("path", "payload"),
++    [
++        (
++            "/api/v1/auth/register",
++            {
++                "username": "mismatchanon",
++                "email": "mismatch-anon@example.com",
++                "password": "StrongPass123",
++            },
++        ),
++        (
++            "/api/v1/auth/login",
++            {"identifier": "mismatch-login@example.com", "password": "StrongPass123"},
++        ),
++    ],
++)
++def test_anonymous_state_changing_auth_endpoints_reject_csrf_mismatch(client, path, payload):
++    if path.endswith("/login"):
++        register_user(client, email="mismatch-login@example.com", password="StrongPass123")
++    get_anon_csrf(client)
++
++    response = client.post(path, json=payload, headers={"X-CSRF-TOKEN": "bad-token"})
++
++    assert response.status_code == 401
++    assert response.json()["detail"] == ResponseMessages.CSRF_TOKEN_MISMATCH
++
++
++@pytest.mark.parametrize(
++    ("method", "path", "payload"),
++    [
++        ("patch", "/api/v1/auth/me/username", {"username": "missingaccess"}),
++        ("post", "/api/v1/auth/google/link/start", None),
++        ("post", "/api/v1/auth/google/unlink", None),
++        ("post", "/api/v1/auth/logout", None),
++    ],
++)
++def test_access_state_changing_auth_endpoints_reject_missing_csrf(client, method, path, payload):
++    register_user(client, email="missing-access@example.com", password="StrongPass123")
++    login_user(client, email="missing-access@example.com", password="StrongPass123")
++    request = getattr(client, method)
++    kwargs = {"json": payload} if payload is not None else {}
++
++    response = request(path, **kwargs)
++
++    assert response.status_code == 401
++    assert response.json()["detail"] == ResponseMessages.CSRF_TOKEN_MISSING
++
++
++@pytest.mark.parametrize(
++    ("method", "path", "payload"),
++    [
++        ("patch", "/api/v1/auth/me/username", {"username": "mismatchaccess"}),
++        ("post", "/api/v1/auth/google/link/start", None),
++        ("post", "/api/v1/auth/google/unlink", None),
++        ("post", "/api/v1/auth/logout", None),
++    ],
++)
++def test_access_state_changing_auth_endpoints_reject_csrf_mismatch(client, method, path, payload):
++    register_user(client, email="mismatch-access@example.com", password="StrongPass123")
++    login_user(client, email="mismatch-access@example.com", password="StrongPass123")
++    request = getattr(client, method)
++    kwargs = {"json": payload} if payload is not None else {}
++
++    response = request(path, headers={"X-CSRF-TOKEN": "bad-token"}, **kwargs)
++
++    assert response.status_code == 401
++    assert response.json()["detail"] == ResponseMessages.CSRF_TOKEN_MISMATCH
++
++
++def test_refresh_rejects_missing_csrf(client):
++    register_user(client, email="missing-refresh@example.com", password="StrongPass123")
++    login_user(client, email="missing-refresh@example.com", password="StrongPass123")
++
++    response = client.post("/api/v1/auth/refresh")
++
++    assert response.status_code == 401
++    assert response.json()["detail"] == ResponseMessages.CSRF_TOKEN_MISSING
++
++
++def test_refresh_rejects_csrf_mismatch(client):
++    register_user(client, email="mismatch-refresh@example.com", password="StrongPass123")
++    login_user(client, email="mismatch-refresh@example.com", password="StrongPass123")
++
++    response = client.post("/api/v1/auth/refresh", headers={"X-CSRF-TOKEN": "bad-token"})
++
++    assert response.status_code == 401
++    assert response.json()["detail"] == ResponseMessages.CSRF_TOKEN_MISMATCH
++
++
+ def test_me_rejects_csrf_mismatch(client):
+     register_user(client, email="csrfmismatch@example.com", password="StrongPass123")
+     login_user(client, email="csrfmismatch@example.com", password="StrongPass123")
+diff --git a/base/server/utils/constants.py b/repo/server/utils/constants.py
+index 81f3f60..8b6f7c1 100755
+--- a/base/server/utils/constants.py
++++ b/repo/server/utils/constants.py
+@@ -51,6 +51,8 @@ class ResponseMessages:
+     EMAIL_SENDER_NOT_CONFIGURED = "Email sender is not configured"
+     UNEXPECTED_ERROR = "An unexpected error occurred"
+     CSRF_TOKEN_INVALID = "Invalid or missing CSRF token"
++    CSRF_TOKEN_MISSING = "Missing CSRF token"
++    CSRF_TOKEN_MISMATCH = "CSRF token mismatch"
+     EMAIL_NOT_VERIFIED = "Email not verified"
+     VERIFICATION_EMAIL_GENERIC_SENT = "If an account exists, a verification email has been sent."
+     RATE_LIMIT_EXCEEDED = "Too many requests. Please try again later."
