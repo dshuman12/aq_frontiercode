@@ -1,0 +1,320 @@
+diff --git a/package.json b/package.json
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/package.json
+@@ -0,0 +1,16 @@
++{
++  "name": "healthbridge",
++  "version": "0.1.0",
++  "private": true,
++  "workspaces": [
++    "apps/admin-dashboard",
++    "apps/integration-console",
++    "apps/patient-portal",
++    "apps/provider-portal",
++    "apps/public-website"
++  ],
++  "scripts": {
++    "test": "npm run test --workspaces --if-present",
++    "build": "npm run build --workspaces --if-present"
++  }
++}
+ diff --git a/package-lock.json b/package-lock.json
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/package-lock.json
+@@ -0,0 +1,20 @@
++{
++  "name": "healthbridge",
++  "version": "0.1.0",
++  "lockfileVersion": 3,
++  "requires": true,
++  "packages": {
++    "": {
++      "name": "healthbridge",
++      "version": "0.1.0",
++      "workspaces": [
++        "apps/admin-dashboard",
++        "apps/integration-console",
++        "apps/patient-portal",
++        "apps/provider-portal",
++        "apps/public-website"
++      ]
++    }
++  }
++}
+ diff --git a/Makefile b/Makefile
+index 3333333..4444444 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,5 +1,20 @@
+ test:
+ 	pytest
+ 
+ lint:
+ 	python -m compileall services packages
++
++frontend-test:
++	npm run test --workspaces --if-present
++
++frontend-build:
++	npm run build --workspaces --if-present
++
++verify:
++	python3 scripts/verify_repository.py
++
++go-test:
++	cd packages/sdk-go && go test ./...
++
++.PHONY: test lint frontend-test frontend-build verify go-test
+ diff --git a/.gitignore b/.gitignore
+index 5555555..6666666 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,7 +1,8 @@
+ .venv/
+ __pycache__/
+ .pytest_cache/
+ node_modules/
+ dist/
+ build/
+ .env
++packages/sdk-go/sdk-go.test
+ diff --git a/packages/sdk-go/go.mod b/packages/sdk-go/go.mod
+new file mode 100644
+index 0000000..7777777
+--- /dev/null
++++ b/packages/sdk-go/go.mod
+@@ -0,0 +1,3 @@
++module github.com/healthbridge/healthbridge/packages/sdk-go
++
++go 1.21
+ diff --git a/packages/sdk-go/client.go b/packages/sdk-go/client.go
+new file mode 100644
+index 0000000..8888888
+--- /dev/null
++++ b/packages/sdk-go/client.go
+@@ -0,0 +1,30 @@
++// Package sdk provides a small HealthBridge API client used by integration tooling.
++package sdk
++
++import "strings"
++
++// Client is a thin HealthBridge integration API client.
++type Client struct {
++	BaseURL string
++}
++
++// NewClient creates a Client for the given base URL, trimming any trailing slash.
++func NewClient(baseURL string) *Client {
++	return &Client{BaseURL: strings.TrimRight(baseURL, "/")}
++}
++
++// Endpoint joins the client base URL with the provided request path.
++func (c *Client) Endpoint(path string) string {
++	if path == "" {
++		return c.BaseURL
++	}
++	return c.BaseURL + "/" + strings.TrimLeft(path, "/")
++}
+ diff --git a/packages/sdk-go/client_test.go b/packages/sdk-go/client_test.go
+new file mode 100644
+index 0000000..9999999
+--- /dev/null
++++ b/packages/sdk-go/client_test.go
+@@ -0,0 +1,28 @@
++package sdk
++
++import "testing"
++
++func TestNewClientTrimsTrailingSlash(t *testing.T) {
++	c := NewClient("https://api.healthbridge.test/")
++	if c.BaseURL != "https://api.healthbridge.test" {
++		t.Fatalf("unexpected base url: %q", c.BaseURL)
++	}
++}
++
++func TestEndpointJoinsPath(t *testing.T) {
++	c := NewClient("https://api.healthbridge.test")
++	got := c.Endpoint("/patients")
++	want := "https://api.healthbridge.test/patients"
++	if got != want {
++		t.Fatalf("got %q want %q", got, want)
++	}
++}
++
++func TestEndpointEmptyPath(t *testing.T) {
++	c := NewClient("https://api.healthbridge.test")
++	if got := c.Endpoint(""); got != "https://api.healthbridge.test" {
++		t.Fatalf("unexpected endpoint: %q", got)
++	}
++}
+ diff --git a/scripts/verify_repository.py b/scripts/verify_repository.py
+new file mode 100644
+index 0000000..aaaaaaa
+--- /dev/null
++++ b/scripts/verify_repository.py
+@@ -0,0 +1,118 @@
++#!/usr/bin/env python3
++"""Canonical repository verification entrypoint for HealthBridge.
++
++Runs Python, npm workspace, Go, Helm, database, and Docker checks. Optional
++tools that are not installed produce explicit skip messages instead of failing
++the whole run.
++"""
++from __future__ import annotations
++
++import json
++import shutil
++import subprocess
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def log(message: str) -> None:
++    print(f"[verify] {message}", flush=True)
++
++
++def run(cmd: list[str], cwd: Path | None = None) -> None:
++    log("$ " + " ".join(cmd))
++    subprocess.run(cmd, cwd=str(cwd or ROOT), check=True)
++
++
++def have(tool: str) -> bool:
++    return shutil.which(tool) is not None
++
++
++def check_python() -> None:
++    targets = [d for d in ("services", "packages", "scripts") if (ROOT / d).is_dir()]
++    if targets:
++        run([sys.executable, "-m", "compileall", "-q", *targets])
++    if have("pytest") or True:
++        try:
++            run([sys.executable, "-m", "pytest", "-q"])
++        except subprocess.CalledProcessError:
++            raise
++
++
++def check_json_yaml() -> None:
++    for path in ROOT.rglob("*.json"):
++        if "node_modules" in path.parts:
++            continue
++        try:
++            json.loads(path.read_text())
++        except Exception as exc:  # noqa: BLE001
++            raise SystemExit(f"invalid JSON: {path}: {exc}")
++    try:
++        import yaml  # type: ignore
++    except Exception:
++        log("SKIP yaml validation (PyYAML not installed)")
++        return
++    for path in ROOT.rglob("*.yaml"):
++        if "node_modules" in path.parts or "templates" in path.parts:
++            continue
++        text = path.read_text()
++        if "{{" in text:  # skip Helm templates
++            continue
++        try:
++            list(yaml.safe_load_all(text))
++        except Exception as exc:  # noqa: BLE001
++            raise SystemExit(f"invalid YAML: {path}: {exc}")
++
++
++def check_frontend() -> None:
++    if not (ROOT / "package-lock.json").exists():
++        raise SystemExit("missing root package-lock.json")
++    if not have("npm"):
++        log("SKIP frontend checks (npm not installed)")
++        return
++    run(["npm", "install", "--package-lock=false", "--no-audit", "--fund=false"])
++    run(["npm", "test"])
++    run(["npm", "run", "build"])
++
++
++def check_go() -> None:
++    sdk = ROOT / "packages" / "sdk-go"
++    if not sdk.is_dir():
++        return
++    if not have("go"):
++        log("SKIP go test (go not installed)")
++        return
++    run(["go", "test", "./..."], cwd=sdk)
++
++
++def check_helm() -> None:
++    if not have("helm"):
++        log("SKIP helm checks (helm not installed)")
++        return
++    for chart in ROOT.rglob("Chart.yaml"):
++        run(["helm", "lint", str(chart.parent)])
++
++
++def check_database() -> None:
++    if not have("psql"):
++        log("SKIP database checks (psql not installed)")
++        return
++    log("database tooling available")
++
++
++def check_docker() -> None:
++    if not have("docker"):
++        log("SKIP docker checks (docker not installed)")
++        return
++    log("docker tooling available")
++
++
++def main() -> int:
++    check_python()
++    check_json_yaml()
++    check_frontend()
++    check_go()
++    check_helm()
++    check_database()
++    check_docker()
++    log("verification complete")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+ diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+new file mode 100644
+index 0000000..bbbbbbb
+--- /dev/null
++++ b/.github/workflows/ci.yml
+@@ -0,0 +1,33 @@
++name: CI
++
++on:
++  pull_request:
++  push:
++    branches: [main, master]
++
++jobs:
++  verify:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.11"
++      - uses: actions/setup-node@v4
++        with:
++          node-version: "22"
++      - uses: actions/setup-go@v5
++        with:
++          go-version: "1.21"
++      - name: Install npm workspaces
++        run: |
++          test -f package-lock.json
++          npm install --package-lock=false --no-audit --fund=false
++      - name: Frontend tests
++        run: npm test
++      - name: Go SDK tests
++        run: cd packages/sdk-go && go test ./...
++      - name: Full verification
++        run: python3 scripts/verify_repository.py
