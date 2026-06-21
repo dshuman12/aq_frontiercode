@@ -1,0 +1,651 @@
+[
+  {
+    "check_results": [
+      {
+        "check_id": "01_prompt_clarity",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "instruction.md"
+        ],
+        "findings": [
+          "[info] instruction.md evidence: The prompt states: 'Fix the eviction logic so that when capacity is exceeded, the cache evicts the entry whose last-access time is oldest.' and 'Keep the change scoped to the LRU cache. Do not alter other packages, exported names, or the cache's external API.' reason: These statements clearly define the user-facing request and scope without prescribing a precise patch strategy.",
+          "[info] instruction.md evidence: No specific patch code or approach is mandated; the prompt requires preserving existing external API signatures, callbacks, and concurrency safety. reason: Avoiding over-specification ensures flexibility in implementation while meeting maintainers' design expectations."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "instruction.md"
+          ],
+          "findings": [
+            {
+              "evidence": "The prompt states: 'Fix the eviction logic so that when capacity is exceeded, the cache evicts the entry whose last-access time is oldest.' and 'Keep the change scoped to the LRU cache. Do not alter other packages, exported names, or the cache's external API.'",
+              "path": "instruction.md",
+              "reason": "These statements clearly define the user-facing request and scope without prescribing a precise patch strategy.",
+              "severity": "info"
+            },
+            {
+              "evidence": "No specific patch code or approach is mandated; the prompt requires preserving existing external API signatures, callbacks, and concurrency safety.",
+              "path": "instruction.md",
+              "reason": "Avoiding over-specification ensures flexibility in implementation while meeting maintainers' design expectations.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "The prompt clearly describes the user-facing problem (fixing LRU eviction logic), the constraints on the change scope and API stability, and the minimal guidance on expected behavior without dictating exact implementation details."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The prompt clearly describes the user-facing problem (fixing LRU eviction logic), the constraints on the change scope and API stability, and the minimal guidance on expected behavior without dictating exact implementation details.",
+        "title": "Prompt Clarity"
+      },
+      {
+        "check_id": "02_visible_workflow",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "instruction.md",
+          "environment/repo/README.md",
+          "environment/repo/environment/Dockerfile",
+          "tests/test.sh",
+          "tests/grader/frontiercode.yaml"
+        ],
+        "findings": [
+          "[info] instruction.md evidence: instruction.md specifies 'Run `go test ./pkg/lru/...` to validate the change' and 'Run `gofmt -l .` and `go vet ./pkg/lru/...` and ensure no issues'. reason: This matches the repository's README.md test instructions using 'go test ./...' and the Dockerfile running 'go test ./...' with appropriate args, which includes the lru package.",
+          "[info] environment/repo/README.md evidence: README.md testing section instructs 'go test ./...' and 'go test ./... -v -count=1'. reason: These are consistent with instruction.md test commands and ensure that testing includes the pkg/lru package coverage.",
+          "[info] environment/repo/environment/Dockerfile evidence: Dockerfile runs 'go build ./cmd/swarmsync/' and then 'go test ./... -count=1 -timeout=120s'. reason: This confirms visible build and test commands that run tests for entire repo including lru, matching visible test guidance.",
+          "[info] tests/test.sh evidence: Test harness uses a python script to run criteria on environment/repo, consistent with visible guidance that testing occurs on environment/repo. reason: This indicates visible tests are integrated well with hidden criteria and no hidden grader commands are exposed directly to the user.",
+          "[info] tests/grader/frontiercode.yaml evidence: Visible regression test command is 'go test ./pkg/lru/...' wrapped via python tests/hidden/run_criteria.py --criterion visible_regression_tests_pass environment/repo. reason: This shows the visible workflow command corresponds to actual lru package test execution with no unsupported or generic commands."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "instruction.md",
+            "environment/repo/README.md",
+            "environment/repo/environment/Dockerfile",
+            "tests/test.sh",
+            "tests/grader/frontiercode.yaml"
+          ],
+          "findings": [
+            {
+              "evidence": "instruction.md specifies 'Run `go test ./pkg/lru/...` to validate the change' and 'Run `gofmt -l .` and `go vet ./pkg/lru/...` and ensure no issues'.",
+              "path": "instruction.md",
+              "reason": "This matches the repository's README.md test instructions using 'go test ./...' and the Dockerfile running 'go test ./...' with appropriate args, which includes the lru package.",
+              "severity": "info"
+            },
+            {
+              "evidence": "README.md testing section instructs 'go test ./...' and 'go test ./... -v -count=1'.",
+              "path": "environment/repo/README.md",
+              "reason": "These are consistent with instruction.md test commands and ensure that testing includes the pkg/lru package coverage.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Dockerfile runs 'go build ./cmd/swarmsync/' and then 'go test ./... -count=1 -timeout=120s'.",
+              "path": "environment/repo/environment/Dockerfile",
+              "reason": "This confirms visible build and test commands that run tests for entire repo including lru, matching visible test guidance.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Test harness uses a python script to run criteria on environment/repo, consistent with visible guidance that testing occurs on environment/repo.",
+              "path": "tests/test.sh",
+              "reason": "This indicates visible tests are integrated well with hidden criteria and no hidden grader commands are exposed directly to the user.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Visible regression test command is 'go test ./pkg/lru/...' wrapped via python tests/hidden/run_criteria.py --criterion visible_regression_tests_pass environment/repo.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "This shows the visible workflow command corresponds to actual lru package test execution with no unsupported or generic commands.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "Visible workflow guidance in instruction.md matches the actual Go test commands and linting described in README and Dockerfile, providing sufficient information for validation without exposing hidden assets."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "Visible workflow guidance in instruction.md matches the actual Go test commands and linting described in README and Dockerfile, providing sufficient information for validation without exposing hidden assets.",
+        "title": "Visible Workflow Guidance"
+      },
+      {
+        "check_id": "03_rubric_coverage",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "tests/grader/frontiercode.yaml",
+          "tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go"
+        ],
+        "findings": [
+          "[info] tests/grader/frontiercode.yaml evidence: Criteria include hidden_reference_tests_pass (classical), submitted_tests_fail_on_base (reverse_classical), visible_regression_tests_pass (command), scope_matches_reference_intent (scope), and no_hidden_asset_leak (command), all blocker true. reason: These objective criteria ensure behavioral correctness, no regressions, correct patch scope, and no leakage of hidden assets.",
+          "[info] tests/grader/frontiercode.yaml evidence: Multiple patch_specific and regular criteria with llm_prompt methods cover subjective aspects like behavior correctness, edge cases, error handling, backward compatibility, test coverage positive/negative, integration into test workflow, code style, scope minimalism, no unrelated API changes, idiomatic design, simple control flow, dependency fit, and observable output contracts. reason: This broad set of subjective checks ensures quality, maintainability, and overall compliance with the task's demands beyond mere correctness.",
+          "[info] tests/grader/frontiercode.yaml evidence: Reference test files pkg/lru/lru_eviction_test.go are included in hidden_reference_tests_pass criteria, providing concrete behavioral test validation for the core LRU eviction correction. reason: This linkage between tests and task behavior ensures the patch correctly fixes the LRU eviction logic.",
+          "[info] tests/grader/frontiercode.yaml evidence: Weight distribution accounts for correctness, regressions, scope, and quality with blocker flags on top criteria to enforce strict pass conditions. reason: Proper weighting and blocker status ensure that the patch cannot pass unless it meets core functional and mechanical cleanliness requirements."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "tests/grader/frontiercode.yaml",
+            "tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go"
+          ],
+          "findings": [
+            {
+              "evidence": "Criteria include hidden_reference_tests_pass (classical), submitted_tests_fail_on_base (reverse_classical), visible_regression_tests_pass (command), scope_matches_reference_intent (scope), and no_hidden_asset_leak (command), all blocker true.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "These objective criteria ensure behavioral correctness, no regressions, correct patch scope, and no leakage of hidden assets.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Multiple patch_specific and regular criteria with llm_prompt methods cover subjective aspects like behavior correctness, edge cases, error handling, backward compatibility, test coverage positive/negative, integration into test workflow, code style, scope minimalism, no unrelated API changes, idiomatic design, simple control flow, dependency fit, and observable output contracts.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "This broad set of subjective checks ensures quality, maintainability, and overall compliance with the task's demands beyond mere correctness.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Reference test files pkg/lru/lru_eviction_test.go are included in hidden_reference_tests_pass criteria, providing concrete behavioral test validation for the core LRU eviction correction.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "This linkage between tests and task behavior ensures the patch correctly fixes the LRU eviction logic.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Weight distribution accounts for correctness, regressions, scope, and quality with blocker flags on top criteria to enforce strict pass conditions.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Proper weighting and blocker status ensure that the patch cannot pass unless it meets core functional and mechanical cleanliness requirements.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "The rubric in tests/grader/frontiercode.yaml comprehensively covers mergeability aspects including behavior (core, edge cases, error handling), regressions (visible and hidden tests), scope, mechanical cleanliness, and integration with existing workflows. The use of classical, reverse_classical, command, scope methods for objective checks is appropriate and aligned with the task requirements."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The rubric in tests/grader/frontiercode.yaml comprehensively covers mergeability aspects including behavior (core, edge cases, error handling), regressions (visible and hidden tests), scope, mechanical cleanliness, and integration with existing workflows. The use of classical, reverse_classical, command, scope methods for objective checks is appropriate and aligned with the task requirements.",
+        "title": "Rubric Coverage"
+      },
+      {
+        "check_id": "04_rubric_metadata",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "tests/grader/frontiercode.yaml"
+        ],
+        "findings": [
+          "[info] tests/grader/frontiercode.yaml evidence: Each criterion has a clear, meaningful description and rationale explaining why it matters and what is being tested. reason: Clear rationale helps reviewers understand the intent and importance of each criterion.",
+          "[info] tests/grader/frontiercode.yaml evidence: Blocker status is set true for high-impact criteria covering correctness, regression, and scope; false for lower risk or guidance criteria. reason: Blocker status matches the risk and importance of each criterion for defining task correctness and quality.",
+          "[info] tests/grader/frontiercode.yaml evidence: Weights range from 0.35 for the most critical hidden tests, down to 0.02 for detailed patch quality and maintainability aspects. reason: Weights are proportional to impact and risk, balancing functional correctness and code quality within the patch scope."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "tests/grader/frontiercode.yaml"
+          ],
+          "findings": [
+            {
+              "evidence": "Each criterion has a clear, meaningful description and rationale explaining why it matters and what is being tested.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Clear rationale helps reviewers understand the intent and importance of each criterion.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Blocker status is set true for high-impact criteria covering correctness, regression, and scope; false for lower risk or guidance criteria.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Blocker status matches the risk and importance of each criterion for defining task correctness and quality.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Weights range from 0.35 for the most critical hidden tests, down to 0.02 for detailed patch quality and maintainability aspects.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Weights are proportional to impact and risk, balancing functional correctness and code quality within the patch scope.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "All rubric criteria have clear rationale descriptions, blocker statuses are consistent and intentional, and weights are calibrated appropriately to the task's patch scope and risk."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "All rubric criteria have clear rationale descriptions, blocker statuses are consistent and intentional, and weights are calibrated appropriately to the task's patch scope and risk.",
+        "title": "Rubric Rationale And Weights"
+      },
+      {
+        "check_id": "05_blocker_validity",
+        "confidence": 0.95,
+        "evidence_paths": [
+          "tests/grader/frontiercode.yaml",
+          "tests/grader/calibration/reference.patch",
+          "tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go"
+        ],
+        "findings": [
+          "[info] tests/grader/frontiercode.yaml evidence: Blockers include 'hidden_reference_tests_pass', 'submitted_tests_fail_on_base', 'visible_regression_tests_pass', 'scope_matches_reference_intent', and 'no_hidden_asset_leak'. reason: These combined criteria ensure that patches not fixing the eviction logic (which breaks core behavior visible in hidden tests and base failures) fail to merge, representing true hard stops.",
+          "[info] tests/grader/calibration/reference.patch evidence: Reference fix patch passes all blocker tests, while no-op base fails those that require proper eviction behavior validation. reason: Calibration confirms that blockers distinguish between broken and correct behavior, validating their soundness as merge blockers.",
+          "[info] tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go evidence: Tests verify least-recently-used eviction semantics, hitting cases of eviction ordering and access refresh that failed previously. reason: These tests enforce correct eviction as the core task behavior, justifying the blockers linked to them."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.95,
+          "evidence_paths": [
+            "tests/grader/frontiercode.yaml",
+            "tests/grader/calibration/reference.patch",
+            "tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go"
+          ],
+          "findings": [
+            {
+              "evidence": "Blockers include 'hidden_reference_tests_pass', 'submitted_tests_fail_on_base', 'visible_regression_tests_pass', 'scope_matches_reference_intent', and 'no_hidden_asset_leak'.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "These combined criteria ensure that patches not fixing the eviction logic (which breaks core behavior visible in hidden tests and base failures) fail to merge, representing true hard stops.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Reference fix patch passes all blocker tests, while no-op base fails those that require proper eviction behavior validation.",
+              "path": "tests/grader/calibration/reference.patch",
+              "reason": "Calibration confirms that blockers distinguish between broken and correct behavior, validating their soundness as merge blockers.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Tests verify least-recently-used eviction semantics, hitting cases of eviction ordering and access refresh that failed previously.",
+              "path": "tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go",
+              "reason": "These tests enforce correct eviction as the core task behavior, justifying the blockers linked to them.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "All blockers in tests/grader/frontiercode.yaml correspond to strict criteria that would prevent merging patches with incorrect or incomplete LRU eviction fixes. The calibration example shows these blockers clearly distinguish a broken base from a valid fix, ensuring true hard stops in maintainer review."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "All blockers in tests/grader/frontiercode.yaml correspond to strict criteria that would prevent merging patches with incorrect or incomplete LRU eviction fixes. The calibration example shows these blockers clearly distinguish a broken base from a valid fix, ensuring true hard stops in maintainer review.",
+        "title": "Blocker Validity"
+      },
+      {
+        "check_id": "06_false_positive_resistance",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "pkg/lru/lru_eviction_test.go",
+          "tests/grader/frontiercode.yaml",
+          "pkg/lru/lru.go"
+        ],
+        "findings": [
+          "[info] pkg/lru/lru_eviction_test.go evidence: Tests explicitly check eviction of least-recently-used key after accessing others reason: Directly tests the core behavioral requirement, preventing false positives by validating eviction order.",
+          "[info] tests/grader/frontiercode.yaml evidence: Calibration includes base no-op hack failing hidden_reference_tests_pass and fix passing them reason: Ensures that weak solutions or unchanged base commits cannot forge passing results.",
+          "[info] pkg/lru/lru.go evidence: evictOldest polls the Back() element to evict, reversing original faulty eviction from Front() reason: Fix commit and rubric focus on eviction logic adjustment, so scope is tight, reducing exploit surface.",
+          "[warn] adversarial-1 evidence: adversarial model call failed reason: Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
+          "[info] adversarial-2 evidence: model did not return a patch reason: no adversarial candidate",
+          "[warn] adversarial-3 evidence: adversarial model call failed reason: Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
+          "[info] adversarial-4 evidence: model did not return a patch reason: no adversarial candidate",
+          "[info] adversarial-5 evidence: model did not return a patch reason: no adversarial candidate"
+        ],
+        "passed": true,
+        "raw_response": {
+          "adversarial_probe": {
+            "attempts": [
+              {
+                "error": "Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
+                "probe_id": "adversarial-1"
+              },
+              {
+                "confidence": 0.0,
+                "patch": "",
+                "probe_id": "adversarial-2",
+                "status": "no_candidate",
+                "strategy": "The only file that must be modified to satisfy the blocking criteria is environment/repo/pkg/lru/lru.go, but its contents were truncated from the provided context (cut off at the 120000-char limit before reaching pkg/lru). A unified diff requires exact original context lines to apply, and the hidden reference test (pkg/lru/lru_eviction_test.go) is likewise unavailable. Any patch I fabricate for the eviction logic would be a blind guess at the data structure (linked-list vs. timestamp-counter) and would almost certainly fail to apply, causing the entire atomic patch (including any added visible test) to be rejected.",
+                "why_bad": "Without the actual source of lru.go I cannot construct an applicable diff; submitting a guessed hunk risks a non-applying patch that fails every blocker, which provides no probe value and would not be an acceptable solution either."
+              },
+              {
+                "error": "Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
+                "probe_id": "adversarial-3"
+              },
+              {
+                "confidence": 0.0,
+                "patch": "",
+                "probe_id": "adversarial-4",
+                "status": "no_candidate",
+                "strategy": "Intended shortcut would be to flip the eviction selection in pkg/lru/lru.go (pick oldest last-access instead of newest) plus add a thin eviction test, while leaving recency tracking otherwise untouched.",
+                "why_bad": "Such a patch would mechanically flip a comparison without genuinely auditing recency semantics (tie-breaking, callback timing, Peek vs Get), and the added test would be tailored only to the visible command rather than robustly covering eviction ordering."
+              },
+              {
+                "confidence": 0.0,
+                "patch": "",
+                "probe_id": "adversarial-5",
+                "status": "no_candidate",
+                "strategy": "The fix must edit pkg/lru/lru.go's eviction logic, but that source file's contents were truncated from the provided context. A unified diff that modifies or replaces an existing file requires the exact original lines to apply cleanly via git apply. Without the verbatim contents of lru.go, any reconstructed diff would almost certainly fail to apply, and a non-applying patch fails every blocker including hidden_reference_tests_pass.",
+                "why_bad": "No patch is proposed; producing a blind reconstruction would be a guess that fails to apply and thus would not constitute a usable (even shortcut) solution."
+              }
+            ]
+          },
+          "review": {
+            "confidence": 0.9,
+            "evidence_paths": [
+              "pkg/lru/lru_eviction_test.go",
+              "tests/grader/frontiercode.yaml",
+              "pkg/lru/lru.go"
+            ],
+            "findings": [
+              {
+                "evidence": "Tests explicitly check eviction of least-recently-used key after accessing others",
+                "path": "pkg/lru/lru_eviction_test.go",
+                "reason": "Directly tests the core behavioral requirement, preventing false positives by validating eviction order.",
+                "severity": "info"
+              },
+              {
+                "evidence": "Calibration includes base no-op hack failing hidden_reference_tests_pass and fix passing them",
+                "path": "tests/grader/frontiercode.yaml",
+                "reason": "Ensures that weak solutions or unchanged base commits cannot forge passing results.",
+                "severity": "info"
+              },
+              {
+                "evidence": "evictOldest polls the Back() element to evict, reversing original faulty eviction from Front()",
+                "path": "pkg/lru/lru.go",
+                "reason": "Fix commit and rubric focus on eviction logic adjustment, so scope is tight, reducing exploit surface.",
+                "severity": "info"
+              }
+            ],
+            "passed": true,
+            "recommended_fixes": [],
+            "status": "pass",
+            "summary": "The hidden tests rigorously verify correct LRU eviction order (least recently used), evicting the oldest accessed entries, and preserving recently accessed/updated entries. The calibration includes a reference fix patch with targeted tests against known base failure and scope constraints."
+          }
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The hidden tests rigorously verify correct LRU eviction order (least recently used), evicting the oldest accessed entries, and preserving recently accessed/updated entries. The calibration includes a reference fix patch with targeted tests against known base failure and scope constraints. Adversarial probe: Adversarial agent did not find a candidate patch.",
+        "title": "False Positive Resistance"
+      },
+      {
+        "check_id": "07_false_negative_resistance",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "tests/grader/frontiercode.yaml",
+          "tests/grader/calibration/reference.patch",
+          "pkg/lru/lru_eviction_test.go"
+        ],
+        "findings": [
+          "[info] tests/grader/frontiercode.yaml evidence: Contains alternative_valid calibration 'reference-fix' pointing to calibration/reference.patch (source fix). reason: This provides a known valid patch baseline ensuring no false negatives due to fragile or overly narrow validation.",
+          "[info] tests/grader/frontiercode.yaml evidence: Criteria include layered validation: classical, reverse_classical, command, and LLM-prompt based checks for coverage, scope, and behavior. reason: This multi-criteria approach reduces brittleness by validating correctness across different dimensions, allowing reasonable alternate implementations.",
+          "[info] tests/grader/calibration/reference.patch evidence: Patch changes eviction from 'c.order.Front()' to 'c.order.Back()' to fix eviction order, matching task description's LRU logic. reason: Reference solution corresponds directly to task requirements and is provided as alternate valid solution to prevent false negatives.",
+          "[info] pkg/lru/lru_eviction_test.go evidence: Tests verify least-recently-used eviction behavior, including access refreshing and eviction callback semantics. reason: Covering correct behavioral cases helps avoid rejecting valid variants that maintain expected eviction logic."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "tests/grader/frontiercode.yaml",
+            "tests/grader/calibration/reference.patch",
+            "pkg/lru/lru_eviction_test.go"
+          ],
+          "findings": [
+            {
+              "evidence": "Contains alternative_valid calibration 'reference-fix' pointing to calibration/reference.patch (source fix).",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "This provides a known valid patch baseline ensuring no false negatives due to fragile or overly narrow validation.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Criteria include layered validation: classical, reverse_classical, command, and LLM-prompt based checks for coverage, scope, and behavior.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "This multi-criteria approach reduces brittleness by validating correctness across different dimensions, allowing reasonable alternate implementations.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Patch changes eviction from 'c.order.Front()' to 'c.order.Back()' to fix eviction order, matching task description's LRU logic.",
+              "path": "tests/grader/calibration/reference.patch",
+              "reason": "Reference solution corresponds directly to task requirements and is provided as alternate valid solution to prevent false negatives.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Tests verify least-recently-used eviction behavior, including access refreshing and eviction callback semantics.",
+              "path": "pkg/lru/lru_eviction_test.go",
+              "reason": "Covering correct behavioral cases helps avoid rejecting valid variants that maintain expected eviction logic.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "The frontiercode.yaml config includes an alternative_valid calibration using the source fix commit patch with matching test coverage and no overly prescriptive criteria rejecting maintainable implementations."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The frontiercode.yaml config includes an alternative_valid calibration using the source fix commit patch with matching test coverage and no overly prescriptive criteria rejecting maintainable implementations.",
+        "title": "False Negative Resistance"
+      },
+      {
+        "check_id": "08_agent_tests",
+        "confidence": 0.95,
+        "evidence_paths": [
+          "pkg/lru/lru_eviction_test.go",
+          "tests/grader/frontiercode.yaml",
+          "tests/grader/calibration/reference.patch"
+        ],
+        "findings": [
+          "[info] pkg/lru/lru_eviction_test.go evidence: Tests check that when inserting beyond capacity, the oldest entry is evicted; accessing keys prevents their eviction; eviction callback fires correctly once per eviction. reason: These tests directly address the key task behavioral fix: evicting least recently used entries.",
+          "[info] tests/grader/frontiercode.yaml evidence: Criterion id 'submitted_tests_fail_on_base' uses reverse_classical checking with a command to run 'python3 tests/hidden/run_criteria.py --criterion submitted_tests_fail_on_base environment/repo' and is marked as blocker and passed in the calibration reference patch. reason: This ensures the submitted visible tests meaningfully detect the broken base code.",
+          "[info] tests/grader/calibration/reference.patch evidence: Reference fix patch includes the introduced tests in pkg/lru/lru_eviction_test.go, which fail on base and pass on fix. reason: Shows integration of tests with fix and their behavioral meaning."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.95,
+          "evidence_paths": [
+            "pkg/lru/lru_eviction_test.go",
+            "tests/grader/frontiercode.yaml",
+            "tests/grader/calibration/reference.patch"
+          ],
+          "findings": [
+            {
+              "evidence": "Tests check that when inserting beyond capacity, the oldest entry is evicted; accessing keys prevents their eviction; eviction callback fires correctly once per eviction.",
+              "path": "pkg/lru/lru_eviction_test.go",
+              "reason": "These tests directly address the key task behavioral fix: evicting least recently used entries.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Criterion id 'submitted_tests_fail_on_base' uses reverse_classical checking with a command to run 'python3 tests/hidden/run_criteria.py --criterion submitted_tests_fail_on_base environment/repo' and is marked as blocker and passed in the calibration reference patch.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "This ensures the submitted visible tests meaningfully detect the broken base code.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Reference fix patch includes the introduced tests in pkg/lru/lru_eviction_test.go, which fail on base and pass on fix.",
+              "path": "tests/grader/calibration/reference.patch",
+              "reason": "Shows integration of tests with fix and their behavioral meaning.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "The task requires adding or extending tests in pkg/lru to cover eviction ordering and callback behavior. The submitted tests in pkg/lru/lru_eviction_test.go validate eviction of the least recently used entry after capacity is exceeded, including cases with accessed and newly inserted keys. The criterion submitted_tests_fail_on_base is configured to reverse classical test base validation and has passed, indicating tests are meaningful and fail on the buggy base. The tests are integrated and executed with go test."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The task requires adding or extending tests in pkg/lru to cover eviction ordering and callback behavior. The submitted tests in pkg/lru/lru_eviction_test.go validate eviction of the least recently used entry after capacity is exceeded, including cases with accessed and newly inserted keys. The criterion submitted_tests_fail_on_base is configured to reverse classical test base validation and has passed, indicating tests are meaningful and fail on the buggy base. The tests are integrated and executed with go test.",
+        "title": "Agent Test Correctness"
+      },
+      {
+        "check_id": "09_scope_controls",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "tests/grader/frontiercode.yaml"
+        ],
+        "findings": [
+          "[info] tests/grader/frontiercode.yaml evidence: scope: allowed_paths includes only 'pkg/lru/', 'pkg/lru/lru.go', and 'pkg/lru/lru_eviction_test.go' with max_files=6 and max_changed_lines=250 reason: Explicit scoped limits prevent unrelated or excessive changes, ensuring patch relevance and minimal file churn."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "tests/grader/frontiercode.yaml"
+          ],
+          "findings": [
+            {
+              "evidence": "scope: allowed_paths includes only 'pkg/lru/', 'pkg/lru/lru.go', and 'pkg/lru/lru_eviction_test.go' with max_files=6 and max_changed_lines=250",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Explicit scoped limits prevent unrelated or excessive changes, ensuring patch relevance and minimal file churn.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "The task uses explicit scope criteria with allowed paths limited to 'pkg/lru/' and its key files and enforces max_files (6) and max_changed_lines (250), effectively constraining the patch to the relevant LRU cache code and tests."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The task uses explicit scope criteria with allowed paths limited to 'pkg/lru/' and its key files and enforces max_files (6) and max_changed_lines (250), effectively constraining the patch to the relevant LRU cache code and tests.",
+        "title": "Scope Controls"
+      },
+      {
+        "check_id": "10_hidden_asset_isolation",
+        "confidence": 1.0,
+        "evidence_paths": [
+          "instruction.md",
+          "task.toml",
+          "environment/repo"
+        ],
+        "findings": [
+          "[info] instruction.md evidence: No hidden tests, grader prompts, or reference outputs are present. reason: Instruction file is visible to the agent and should not leak hidden grader data.",
+          "[info] task.toml evidence: No hidden grader or reference data exists; task configuration is minimal and clean. reason: The task configuration file must not include hidden test or grader info.",
+          "[info] environment/repo/ evidence: Source code and tests under environment/repo contain no hidden grader tests, patches, or commit hashes. reason: Only visible solution source is present; no hidden or calibration artifacts leaked.",
+          "[info] No top-level solution folder found evidence: The directory tree does not include any solution/ folder at root level. reason: Top-level solution folders containing answers would constitute a hidden asset leak."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 1.0,
+          "evidence_paths": [
+            "instruction.md",
+            "task.toml",
+            "environment/repo"
+          ],
+          "findings": [
+            {
+              "evidence": "No hidden tests, grader prompts, or reference outputs are present.",
+              "path": "instruction.md",
+              "reason": "Instruction file is visible to the agent and should not leak hidden grader data.",
+              "severity": "info"
+            },
+            {
+              "evidence": "No hidden grader or reference data exists; task configuration is minimal and clean.",
+              "path": "task.toml",
+              "reason": "The task configuration file must not include hidden test or grader info.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Source code and tests under environment/repo contain no hidden grader tests, patches, or commit hashes.",
+              "path": "environment/repo/",
+              "reason": "Only visible solution source is present; no hidden or calibration artifacts leaked.",
+              "severity": "info"
+            },
+            {
+              "evidence": "The directory tree does not include any solution/ folder at root level.",
+              "path": "No top-level solution folder found",
+              "reason": "Top-level solution folders containing answers would constitute a hidden asset leak.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "No hidden grader assets, test patches, or references leak into the agent-visible files or repo; no top-level solution folder is present."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "No hidden grader assets, test patches, or references leak into the agent-visible files or repo; no top-level solution folder is present.",
+        "title": "Hidden Asset Isolation"
+      },
+      {
+        "check_id": "11_packaging_e2e",
+        "confidence": 0.95,
+        "evidence_paths": [
+          "environment/repo/environment/Dockerfile",
+          "tests/test.sh",
+          "tests/grader/frontiercode.yaml",
+          "tests/grader/calibration/reference.patch",
+          "tests/hidden/base_repo/environment/Dockerfile"
+        ],
+        "findings": [
+          "[info] environment/repo/environment/Dockerfile evidence: Dockerfile uses golang:1.22.3-bookworm, copies source, builds cmd/swarmsync, then runs 'go test ./... -count=1 -timeout=120s' reason: This ensures a clean environment compilation and comprehensive testing to catch build or test failures.",
+          "[info] tests/test.sh evidence: Executes run_criteria.py on environment/repo to run all task tests and criteria reason: Standardized test runner wrapping task-specific test criteria for validation.",
+          "[info] tests/grader/frontiercode.yaml evidence: Defines multiple blocking criteria with commands that run python3 tests/hidden/run_criteria.py on environment/repo, including tests to verify patch scope, behavior, regression, and no asset leaks. reason: This metadata drives FrontierCode-style testing and grading in a clean setup.",
+          "[info] tests/grader/calibration/reference.patch evidence: Reference patch applies the correct fix (evictOldest uses list.Back() instead of Front()) and introduces a new test pkg/lru/lru_eviction_test.go with LRU eviction tests. reason: Calibration shows the task tests can detect the fix and the regression as intended.",
+          "[info] tests/hidden/base_repo/environment/Dockerfile evidence: Base environment Dockerfile matches main environment Dockerfile settings and builds/tests inside container reason: Ensures environment consistency and reproducibility.",
+          "[info] environment/repo/pkg/lru/lru.go evidence: Contains the code under test, which the patch fixes correctly reason: Ensures the fix is scoped and packaged inside the repo.",
+          "[info] environment/repo/pkg/lru/lru_test.go evidence: Contains existing and new tests integrated within the package, run by 'go test ./pkg/lru/...' commands reason: Confirms that tests for the patch are integrated and runnable via standard Go testing."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.95,
+          "evidence_paths": [
+            "environment/repo/environment/Dockerfile",
+            "tests/test.sh",
+            "tests/grader/frontiercode.yaml",
+            "tests/grader/calibration/reference.patch",
+            "tests/hidden/base_repo/environment/Dockerfile"
+          ],
+          "findings": [
+            {
+              "evidence": "Dockerfile uses golang:1.22.3-bookworm, copies source, builds cmd/swarmsync, then runs 'go test ./... -count=1 -timeout=120s'",
+              "path": "environment/repo/environment/Dockerfile",
+              "reason": "This ensures a clean environment compilation and comprehensive testing to catch build or test failures.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Executes run_criteria.py on environment/repo to run all task tests and criteria",
+              "path": "tests/test.sh",
+              "reason": "Standardized test runner wrapping task-specific test criteria for validation.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Defines multiple blocking criteria with commands that run python3 tests/hidden/run_criteria.py on environment/repo, including tests to verify patch scope, behavior, regression, and no asset leaks.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "This metadata drives FrontierCode-style testing and grading in a clean setup.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Reference patch applies the correct fix (evictOldest uses list.Back() instead of Front()) and introduces a new test pkg/lru/lru_eviction_test.go with LRU eviction tests.",
+              "path": "tests/grader/calibration/reference.patch",
+              "reason": "Calibration shows the task tests can detect the fix and the regression as intended.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Base environment Dockerfile matches main environment Dockerfile settings and builds/tests inside container",
+              "path": "tests/hidden/base_repo/environment/Dockerfile",
+              "reason": "Ensures environment consistency and reproducibility.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Contains the code under test, which the patch fixes correctly",
+              "path": "environment/repo/pkg/lru/lru.go",
+              "reason": "Ensures the fix is scoped and packaged inside the repo.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Contains existing and new tests integrated within the package, run by 'go test ./pkg/lru/...' commands",
+              "path": "environment/repo/pkg/lru/lru_test.go",
+              "reason": "Confirms that tests for the patch are integrated and runnable via standard Go testing.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "The task includes an appropriate Docker environment with a build and test workflow, a test.sh that runs relevant test criteria, and a frontiercode.yaml grader with a full suite of tests showing passing calibration results with the fix patch. The task can be packaged and run end-to-end in a fresh container."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The task includes an appropriate Docker environment with a build and test workflow, a test.sh that runs relevant test criteria, and a frontiercode.yaml grader with a full suite of tests showing passing calibration results with the fix patch. The task can be packaged and run end-to-end in a fresh container.",
+        "title": "End To End Packaging"
+      }
+    ],
+    "deterministic_errors": [],
+    "deterministic_warnings": [],
+    "passed": true,
+    "task_id": "swarmsync__ccf121c",
+    "task_path": "generated_tasks/swarmsync__ccf121c"
+  }
+]

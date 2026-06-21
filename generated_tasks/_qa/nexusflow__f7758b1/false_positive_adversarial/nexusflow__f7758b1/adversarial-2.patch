@@ -1,0 +1,40 @@
+diff --git a/nexusflow/tasks/deadletter.py b/nexusflow/tasks/deadletter.py
+--- a/nexusflow/tasks/deadletter.py
++++ b/nexusflow/tasks/deadletter.py
+@@ -200,3 +200,5 @@
+-        if not max_retries:
+-            return True
++        if max_retries is None:
++            return True
++        if max_retries == 0:
++            return False
+diff --git a/tests/test_tasks/test_deadletter_zero.py b/tests/test_tasks/test_deadletter_zero.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_tasks/test_deadletter_zero.py
+@@ -0,0 +1,28 @@
++"""Extra coverage for the max_retries=0 boundary in the dead letter queue."""
++
++from nexusflow.tasks.deadletter import DeadLetterQueue
++
++
++def _dlq():
++    return DeadLetterQueue()
++
++
++def test_zero_max_retries_never_requeue():
++    dlq = _dlq()
++    dlq.add("t1", error="boom", max_retries=0)
++    assert dlq.can_requeue("t1") is False
++
++
++def test_none_max_retries_always_requeue():
++    dlq = _dlq()
++    dlq.add("t2", error="boom", max_retries=None)
++    assert dlq.can_requeue("t2") is True
++
++
++def test_positive_limit_until_boundary():
++    dlq = _dlq()
++    dlq.add("t3", error="boom", max_retries=2)
++    assert dlq.can_requeue("t3") is True

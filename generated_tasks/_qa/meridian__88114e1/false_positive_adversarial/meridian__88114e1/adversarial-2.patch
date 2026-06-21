@@ -1,0 +1,90 @@
+diff --git a/meridian/algorithms/centrality.py b/meridian/algorithms/centrality.py
+--- a/meridian/algorithms/centrality.py
++++ b/meridian/algorithms/centrality.py
+@@ -150,11 +150,18 @@ def betweenness_centrality(
+         if G.is_directed():
+             scale = 1.0 / ((n - 1) * (n - 2)) if n > 2 else 1.0
+         else:
+             # BUG: should be 2.0 / ((n-1)*(n-2)) but we use wrong factor
+             scale = 1.0 / ((n - 1) * (n - 2)) if n > 2 else 1.0
+     else:
+         scale = 1.0
+ 
+-    return {v: b * scale for v, b in betweenness.items()}
++    result = {v: b * scale for v, b in betweenness.items()}
++    # Shortcut: rather than fixing the scale factor above, just double the
++    # already-computed undirected normalized values so each unordered pair is
++    # effectively counted once per direction.
++    if normalized and not G.is_directed() and G.number_of_nodes() > 2:
++        result = {v: val * 2.0 for v, val in result.items()}
++    return result
+ 
+ 
+ def edge_betweenness_centrality(
+diff --git a/tests/test_betweenness_undirected_fix.py b/tests/test_betweenness_undirected_fix.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_betweenness_undirected_fix.py
+@@ -0,0 +1,60 @@
++import math
++
++from meridian import Graph, DiGraph
++from meridian.algorithms.centrality import betweenness_centrality
++
++
++TOL = 1e-9
++
++
++def _path(n, directed=False):
++    G = DiGraph() if directed else Graph()
++    for i in range(n):
++        G.add_node(i)
++    for i in range(n - 1):
++        G.add_edge(i, i + 1)
++    return G
++
++
++def test_path_graph_normalized_undirected():
++    G = _path(4)
++    bc = betweenness_centrality(G, normalized=True)
++    assert math.isclose(bc[0], 0.0, abs_tol=TOL)
++    assert math.isclose(bc[3], 0.0, abs_tol=TOL)
++    assert math.isclose(bc[1], 2.0 / 3.0, abs_tol=TOL)
++    assert math.isclose(bc[2], 2.0 / 3.0, abs_tol=TOL)
++
++
++def test_star_graph_normalized_undirected():
++    G = Graph()
++    G.add_node("c")
++    for leaf in ("a", "b", "d"):
++        G.add_edge("c", leaf)
++    bc = betweenness_centrality(G, normalized=True)
++    assert math.isclose(bc["c"], 1.0, abs_tol=TOL)
++    for leaf in ("a", "b", "d"):
++        assert math.isclose(bc[leaf], 0.0, abs_tol=TOL)
++
++
++def test_directed_normalization_unaffected():
++    G = _path(4, directed=True)
++    bc = betweenness_centrality(G, normalized=True)
++    assert math.isclose(bc[1], 1.0 / 3.0, abs_tol=TOL)
++    assert math.isclose(bc[2], 1.0 / 3.0, abs_tol=TOL)
++
++
++def test_unnormalized_undirected_unchanged():
++    G = _path(4)
++    bc = betweenness_centrality(G, normalized=False)
++    assert math.isclose(bc[1], 2.0, abs_tol=TOL)
++    assert math.isclose(bc[2], 2.0, abs_tol=TOL)
++
++
++def test_degenerate_graphs_do_not_raise():
++    one = Graph()
++    one.add_node("x")
++    assert betweenness_centrality(one, normalized=True) == {"x": 0.0}
++
++    two = Graph()
++    two.add_edge("a", "b")
++    bc = betweenness_centrality(two, normalized=True)
++    assert math.isclose(bc["a"], 0.0, abs_tol=TOL)
++    assert math.isclose(bc["b"], 0.0, abs_tol=TOL)

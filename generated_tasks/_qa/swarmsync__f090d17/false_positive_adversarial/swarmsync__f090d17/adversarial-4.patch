@@ -1,0 +1,61 @@
+diff --git a/pkg/crdt/set.go b/pkg/crdt/set.go
+--- a/pkg/crdt/set.go
++++ b/pkg/crdt/set.go
+@@
+ func (o *ORSet) Merge(other *ORSet) {
+ 	o.mu.Lock()
+ 	defer o.mu.Unlock()
+ 	other.mu.RLock()
+ 	defer other.mu.RUnlock()
+ 
+-	for elem, tags := range other.entries {
+-		o.entries[elem] = tags
+-	}
++	for elem, tags := range other.entries {
++		local, ok := o.entries[elem]
++		if !ok {
++			local = make(map[ORTag]bool)
++			o.entries[elem] = local
++		}
++		for tag := range tags {
++			local[tag] = true
++		}
++	}
+ 
+ 	for node, c := range other.counters {
+ 		if c > o.counters[node] {
+ 			o.counters[node] = c
+ 		}
+ 	}
+ }
+diff --git a/pkg/crdt/orset_merge_union_test.go b/pkg/crdt/orset_merge_union_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/crdt/orset_merge_union_test.go
+@@
++package crdt
++
++import "testing"
++
++// TestORSet_MergeUnionsSharedTags ensures a shared element retains the union
++// of both replicas' tags after a bidirectional merge.
++func TestORSet_MergeUnionsSharedTags(t *testing.T) {
++	a := NewORSet("a")
++	b := NewORSet("b")
++
++	a.Add("x")
++	b.Add("x")
++
++	a.Merge(b)
++	b.Merge(a)
++
++	if !a.Contains("x") || !b.Contains("x") {
++		t.Fatal("both replicas must contain x after merge")
++	}
++	if got := len(a.entries["x"]); got != 2 {
++		t.Fatalf("replica a: expected union of 2 tags, got %d", got)
++	}
++	if got := len(b.entries["x"]); got != 2 {
++		t.Fatalf("replica b: expected union of 2 tags, got %d", got)
++	}
++}

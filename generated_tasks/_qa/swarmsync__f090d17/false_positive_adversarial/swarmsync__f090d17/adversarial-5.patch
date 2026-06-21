@@ -1,0 +1,42 @@
+diff --git a/pkg/crdt/set.go b/pkg/crdt/set.go
+--- a/pkg/crdt/set.go
++++ b/pkg/crdt/set.go
+@@
+-	for elem, tags := range other.entries {
+-		s.entries[elem] = tags
+-	}
++	for elem, tags := range other.entries {
++		local := s.entries[elem]
++		if local == nil {
++			local = make(map[ORTag]bool)
++			s.entries[elem] = local
++		}
++		for tag := range tags {
++			local[tag] = true
++		}
++	}
+diff --git a/pkg/crdt/orset_union_test.go b/pkg/crdt/orset_union_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/crdt/orset_union_test.go
+@@
++package crdt
++
++import "testing"
++
++// TestORSet_MergeUnionsTags is a minimal positive-path check that a
++// concurrently-added element survives a bidirectional merge.
++func TestORSet_MergeUnionsTags(t *testing.T) {
++	a := NewORSet("a")
++	b := NewORSet("b")
++	a.Add("x")
++	b.Add("x")
++	a.Merge(b)
++	b.Merge(a)
++	if !a.Contains("x") {
++		t.Fatal("replica a should contain x after merge")
++	}
++	if !b.Contains("x") {
++		t.Fatal("replica b should contain x after merge")
++	}
++}

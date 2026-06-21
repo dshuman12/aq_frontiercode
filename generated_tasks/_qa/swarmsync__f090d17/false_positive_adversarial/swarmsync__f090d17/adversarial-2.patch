@@ -1,0 +1,57 @@
+diff --git a/pkg/crdt/set.go b/pkg/crdt/set.go
+--- a/pkg/crdt/set.go
++++ b/pkg/crdt/set.go
+@@
+-	for elem, tags := range other.entries {
+-		s.entries[elem] = tags
+-	}
++	for elem, tags := range other.entries {
++		local := s.entries[elem]
++		if local == nil {
++			local = make(map[ORTag]bool)
++			s.entries[elem] = local
++		}
++		for tag := range tags {
++			local[tag] = true
++		}
++	}
+diff --git a/pkg/crdt/orset_union_test.go b/pkg/crdt/orset_union_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/crdt/orset_union_test.go
+@@
++package crdt
++
++import "testing"
++
++// TestORSet_MergeUnionsConcurrentTags is a narrow guard that the per-element
++// tag map is unioned on merge rather than overwritten. It inspects the
++// unexported entries field directly to detect dropped tags.
++func TestORSet_MergeUnionsConcurrentTags(t *testing.T) {
++	a := NewORSet("a")
++	b := NewORSet("b")
++	a.Add("x")
++	b.Add("x")
++
++	a.Merge(b)
++	if got := len(a.entries["x"]); got != 2 {
++		t.Fatalf("expected 2 unioned tags for x after merge, got %d", got)
++	}
++	if !a.Contains("x") {
++		t.Fatal("a must still contain x")
++	}
++
++	b.Merge(a)
++	if got := len(b.entries["x"]); got != 2 {
++		t.Fatalf("expected 2 unioned tags for x on b after bidirectional merge, got %d", got)
++	}
++	if !b.Contains("x") {
++		t.Fatal("b must still contain x")
++	}
++
++	// Idempotent re-merge must not change state.
++	a.Merge(b)
++	if got := len(a.entries["x"]); got != 2 {
++		t.Fatalf("idempotent re-merge changed tag count: %d", got)
++	}
++}

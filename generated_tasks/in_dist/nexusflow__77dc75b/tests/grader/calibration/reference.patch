@@ -1,0 +1,73 @@
+diff --git a/nexusflow/tasks/worker.py b/nexusflow/tasks/worker.py
+index 6b49c83..55a1011 100644
+--- a/nexusflow/tasks/worker.py
++++ b/nexusflow/tasks/worker.py
+@@ -67,12 +67,12 @@ class RetryPolicy:
+         # BUG: type() check instead of isinstance()
+         # A TimeoutError subclass won't match TimeoutError here
+         for exc_type in self.no_retry_on:
+-            if type(exception) is exc_type:  # BUG: should be isinstance
++            if isinstance(exception, exc_type):
+                 return False
+ 
+         if self.retry_on is not None:
+             for exc_type in self.retry_on:
+-                if type(exception) is exc_type:  # BUG: should be isinstance
++                if isinstance(exception, exc_type):
+                     return True
+             return False
+ 
+diff --git a/nexusflow/utils/retry.py b/nexusflow/utils/retry.py
+index 4fa30b1..6afe863 100644
+--- a/nexusflow/utils/retry.py
++++ b/nexusflow/utils/retry.py
+@@ -222,7 +222,7 @@ class CircuitBreaker:
+             for exc_type in self._monitored_exceptions:
+                 # BUG: type() check instead of isinstance()
+                 # Subclass exceptions won't match
+-                if type(exception) is exc_type:
++                if isinstance(exception, exc_type):
+                     is_monitored = True
+                     break
+ 
+@@ -327,4 +327,4 @@ class RetryWithCircuitBreaker:
+             f"Failed after {self._retry.max_attempts} attempts",
+             last_exception=last_exc,
+         )
+-# Fix retry backoff calculation
++# Fix retry backoff calculation
+diff --git a/tests/test_isinstance_fix.py b/tests/test_isinstance_fix.py
+new file mode 100644
+index 0000000..aa6d04b
+--- /dev/null
++++ b/tests/test_isinstance_fix.py
+@@ -0,0 +1,29 @@
++"""Tests that verify isinstance is used for exception hierarchy matching."""
++import pytest
++from nexusflow.utils.retry import CircuitBreaker, CircuitBreakerState
++from nexusflow.tasks.worker import RetryPolicy
++
++
++class BaseError(Exception):
++    pass
++
++
++class SubError(BaseError):
++    pass
++
++
++def test_circuit_breaker_recognizes_exception_subclasses():
++    cb = CircuitBreaker(failure_threshold=3, monitored_exceptions={BaseError})
++    for _ in range(3):
++        cb.record_failure(SubError("sub"))
++    assert cb.state == CircuitBreakerState.OPEN, "subclass should trip circuit breaker"
++
++
++def test_retry_policy_recognizes_subclass_in_retry_on():
++    policy = RetryPolicy(max_retries=2, retry_on={BaseError})
++    assert policy.should_retry(SubError("sub"), attempt=0), "subclass should match retry_on"
++
++
++def test_retry_policy_recognizes_subclass_in_no_retry_on():
++    policy = RetryPolicy(max_retries=2, no_retry_on={BaseError})
++    assert not policy.should_retry(SubError("sub"), attempt=0), "subclass should match no_retry_on"

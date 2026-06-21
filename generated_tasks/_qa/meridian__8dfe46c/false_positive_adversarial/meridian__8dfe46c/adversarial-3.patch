@@ -1,0 +1,61 @@
+diff --git a/meridian/analysis/bipartite.py b/meridian/analysis/bipartite.py
+--- a/meridian/analysis/bipartite.py
++++ b/meridian/analysis/bipartite.py
+@@
+-                elif color[nbr] != color[node]:
++                elif color[nbr] == color[node]:
+diff --git a/tests/test_bipartite_extra.py b/tests/test_bipartite_extra.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_bipartite_extra.py
+@@
++import pytest
++
++from meridian import Graph
++from meridian.analysis.bipartite import two_color, bipartite_sets
++
++
++def _cycle(n):
++    g = Graph()
++    for i in range(n):
++        g.add_edge(i, (i + 1) % n)
++    return g
++
++
++def test_even_cycle_is_bipartite():
++    g = _cycle(4)
++    color = two_color(g)
++    for u, v in g.edges:
++        assert color[u] != color[v]
++
++
++def test_path_is_bipartite():
++    g = Graph()
++    g.add_edge("a", "b")
++    g.add_edge("b", "c")
++    g.add_edge("c", "d")
++    color = two_color(g)
++    for u, v in g.edges:
++        assert color[u] != color[v]
++
++
++def test_odd_cycle_raises():
++    g = _cycle(3)
++    with pytest.raises(ValueError):
++        two_color(g)
++
++
++def test_five_cycle_raises():
++    g = _cycle(5)
++    with pytest.raises(ValueError):
++        two_color(g)
++
++
++def test_bipartite_sets_complete_bipartite():
++    g = Graph()
++    for a in ("a", "b"):
++        for c in ("x", "y", "z"):
++            g.add_edge(a, c)
++    left, right = bipartite_sets(g)
++    assert {"a", "b"} in (set(left), set(right))
++    assert {"x", "y", "z"} in (set(left), set(right))

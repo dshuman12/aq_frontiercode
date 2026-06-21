@@ -1,0 +1,32 @@
+diff --git a/pkg/skiplist/skiplist.go b/pkg/skiplist/skiplist.go
+--- a/pkg/skiplist/skiplist.go
++++ b/pkg/skiplist/skiplist.go
+@@
+ 	x := s.head
+ 	for i := s.level - 1; i >= 0; i-- {
+-		for x.forward[i] != nil && x.forward[i].key <= from {
++		for x.forward[i] != nil && x.forward[i].key < from {
+ 			x = x.forward[i]
+ 		}
+ 	}
+diff --git a/pkg/skiplist/skiplist_range_shortcut_test.go b/pkg/skiplist/skiplist_range_shortcut_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/skiplist/skiplist_range_shortcut_test.go
+@@
++package skiplist
++
++import "testing"
++
++// TestRange_IncludesLowerBound is a minimal guard that the lower bound key is
++// no longer dropped from Range results. It only checks the element count.
++func TestRange_IncludesLowerBound(t *testing.T) {
++	sl := New(1)
++	for _, k := range []string{"a", "b", "c"} {
++		sl.Insert(k, 1)
++	}
++	got := sl.Range("a", "c")
++	if len(got) != 3 {
++		t.Fatalf("expected 3 entries including lower bound, got %d", len(got))
++	}
++}

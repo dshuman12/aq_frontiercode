@@ -1,0 +1,77 @@
+diff --git a/meridian/algorithms/centrality.py b/meridian/algorithms/centrality.py
+--- a/meridian/algorithms/centrality.py
++++ b/meridian/algorithms/centrality.py
+@@ -147,8 +147,14 @@ def betweenness_centrality(
+         else:
+             # BUG: should be 2.0 / ((n-1)*(n-2)) but we use wrong factor
+             scale = 1.0 / ((n - 1) * (n - 2)) if n > 2 else 1.0
+     else:
+         scale = 1.0
+ 
+-    return {v: b * scale for v, b in betweenness.items()}
++    result = {v: b * scale for v, b in betweenness.items()}
++    # Undirected normalized scores come out exactly halved because each
++    # unordered endpoint pair is accumulated once per direction. Shortcut:
++    # patch the values up after the fact for undirected normalized graphs.
++    if normalized and not G.is_directed() and G.number_of_nodes() > 2:
++        result = {v: b * 2.0 for v, b in result.items()}
++    return result
+ 
+ 
+ def edge_betweenness_centrality(
+diff --git a/tests/test_centrality_norm_fix.py b/tests/test_centrality_norm_fix.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_centrality_norm_fix.py
+@@ -0,0 +1,49 @@
++"""Lock-in tests for corrected undirected betweenness normalization."""
++
++from meridian import Graph, DiGraph
++from meridian.algorithms.centrality import betweenness_centrality
++
++
++def test_betweenness_normalized_undirected_path():
++    g = Graph()
++    g.add_edge("a", "b")
++    g.add_edge("b", "c")
++    bc = betweenness_centrality(g, normalized=True)
++    assert abs(bc["b"] - 1.0) < 1e-9
++    assert abs(bc["a"]) < 1e-9
++    assert abs(bc["c"]) < 1e-9
++
++
++def test_betweenness_normalized_undirected_star():
++    g = Graph()
++    for leaf in ("l1", "l2", "l3"):
++        g.add_edge("center", leaf)
++    bc = betweenness_centrality(g, normalized=True)
++    assert abs(bc["center"] - 1.0) < 1e-9
++    for leaf in ("l1", "l2", "l3"):
++        assert abs(bc[leaf]) < 1e-9
++
++
++def test_betweenness_directed_normalization_unaffected():
++    g = DiGraph()
++    g.add_edge("a", "b")
++    g.add_edge("b", "c")
++    bc = betweenness_centrality(g, normalized=True)
++    # directed scale 1/((n-1)(n-2)) = 1/2, raw dependency for b is 1 -> 0.5
++    assert abs(bc["b"] - 0.5) < 1e-9
++
++
++def test_betweenness_unnormalized_unchanged():
++    g = Graph()
++    g.add_edge("a", "b")
++    g.add_edge("b", "c")
++    bc = betweenness_centrality(g, normalized=False)
++    assert abs(bc["b"] - 1.0) < 1e-9
++
++
++def test_betweenness_degenerate_no_zero_division():
++    g = Graph()
++    g.add_node("only")
++    assert betweenness_centrality(g, normalized=True) == {"only": 0.0}
++    g2 = Graph()
++    g2.add_edge("a", "b")
++    bc2 = betweenness_centrality(g2, normalized=True)
++    assert bc2["a"] == 0.0 and bc2["b"] == 0.0

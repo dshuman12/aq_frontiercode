@@ -1,0 +1,75 @@
+diff --git a/meridian/algorithms/centrality.py b/meridian/algorithms/centrality.py
+--- a/meridian/algorithms/centrality.py
++++ b/meridian/algorithms/centrality.py
+@@ -150,8 +150,9 @@ def betweenness_centrality(
+         if G.is_directed():
+             scale = 1.0 / ((n - 1) * (n - 2)) if n > 2 else 1.0
+         else:
+-            # BUG: should be 2.0 / ((n-1)*(n-2)) but we use wrong factor
+-            scale = 1.0 / ((n - 1) * (n - 2)) if n > 2 else 1.0
++            # Undirected graphs accumulate each unordered endpoint pair once
++            # per direction, so the scaling factor is doubled.
++            scale = 2.0 / ((n - 1) * (n - 2)) if n > 2 else 1.0
+     else:
+         scale = 1.0
+ 
+diff --git a/tests/test_centrality.py b/tests/test_centrality.py
+--- a/tests/test_centrality.py
++++ b/tests/test_centrality.py
+@@ -1,1 +1,53 @@
++from meridian.graph import Graph
++from meridian.digraph import DiGraph
++from meridian.algorithms.centrality import betweenness_centrality
++
++
++def _approx(a, b, tol=1e-9):
++    return abs(a - b) <= tol
++
++
++def test_betweenness_undirected_path_normalized():
++    g = Graph()
++    g.add_edge("a", "b")
++    g.add_edge("b", "c")
++    bc = betweenness_centrality(g, normalized=True)
++    assert _approx(bc["b"], 1.0)
++    assert _approx(bc["a"], 0.0)
++    assert _approx(bc["c"], 0.0)
++
++
++def test_betweenness_undirected_star_normalized():
++    g = Graph()
++    for leaf in ("l1", "l2", "l3"):
++        g.add_edge("center", leaf)
++    bc = betweenness_centrality(g, normalized=True)
++    assert _approx(bc["center"], 1.0)
++    for leaf in ("l1", "l2", "l3"):
++        assert _approx(bc[leaf], 0.0)
++
++
++def test_betweenness_directed_unaffected():
++    g = DiGraph()
++    g.add_edge("a", "b")
++    g.add_edge("b", "c")
++    bc = betweenness_centrality(g, normalized=True)
++    assert _approx(bc["b"], 0.5)
++    assert _approx(bc["a"], 0.0)
++    assert _approx(bc["c"], 0.0)
++
++
++def test_betweenness_unnormalized_path():
++    g = Graph()
++    g.add_edge("a", "b")
++    g.add_edge("b", "c")
++    bc = betweenness_centrality(g, normalized=False)
++    assert _approx(bc["b"], 1.0)
++
++
++def test_betweenness_degenerate_no_divzero():
++    g = Graph()
++    g.add_node("only")
++    bc = betweenness_centrality(g, normalized=True)
++    assert _approx(bc["only"], 0.0)
++    g2 = Graph()
++    g2.add_edge("x", "y")
++    bc2 = betweenness_centrality(g2, normalized=True)
++    assert all(_approx(v, 0.0) for v in bc2.values())

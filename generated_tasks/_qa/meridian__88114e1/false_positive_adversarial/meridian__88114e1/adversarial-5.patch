@@ -1,0 +1,68 @@
+diff --git a/meridian/algorithms/centrality.py b/meridian/algorithms/centrality.py
+--- a/meridian/algorithms/centrality.py
++++ b/meridian/algorithms/centrality.py
+@@ -154,8 +154,10 @@ def betweenness_centrality(
+         if G.is_directed():
+             scale = 1.0 / ((n - 1) * (n - 2)) if n > 2 else 1.0
+         else:
+-            # BUG: should be 2.0 / ((n-1)*(n-2)) but we use wrong factor
+             scale = 1.0 / ((n - 1) * (n - 2)) if n > 2 else 1.0
++            # undirected pairs are accumulated once per direction, so the
++            # standard scaling is twice the directed factor.
++            scale = scale * 2.0 if n > 2 else scale
+     else:
+         scale = 1.0
+ 
+ diff --git a/tests/test_betweenness_norm.py b/tests/test_betweenness_norm.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/tests/test_betweenness_norm.py
+@@ -0,0 +1,46 @@
++"""Lock in corrected undirected normalized betweenness scores."""
++
++from meridian import Graph, DiGraph
++from meridian.algorithms.centrality import betweenness_centrality
++
++TOL = 1e-9
++
++
++def test_path_graph_normalized_undirected():
++    g = Graph()
++    g.add_edge(0, 1)
++    g.add_edge(1, 2)
++    bc = betweenness_centrality(g, normalized=True)
++    assert abs(bc[1] - 1.0) < TOL
++    assert abs(bc[0] - 0.0) < TOL
++    assert abs(bc[2] - 0.0) < TOL
++
++
++def test_star_graph_normalized_undirected():
++    g = Graph()
++    g.add_edge("c", "a")
++    g.add_edge("c", "b")
++    g.add_edge("c", "d")
++    bc = betweenness_centrality(g, normalized=True)
++    assert abs(bc["c"] - 1.0) < TOL
++    for leaf in ("a", "b", "d"):
++        assert abs(bc[leaf] - 0.0) < TOL
++
++
++def test_directed_normalization_unchanged():
++    g = DiGraph()
++    g.add_edge(0, 1)
++    g.add_edge(1, 2)
++    bc = betweenness_centrality(g, normalized=True)
++    assert abs(bc[1] - 0.5) < TOL
++
++
++def test_degenerate_graphs_do_not_raise():
++    g1 = Graph()
++    g1.add_node(0)
++    assert betweenness_centrality(g1, normalized=True) == {0: 0.0}
++
++    g2 = Graph()
++    g2.add_edge(0, 1)
++    bc = betweenness_centrality(g2, normalized=True)
++    assert abs(bc[0]) < TOL
++    assert abs(bc[1]) < TOL

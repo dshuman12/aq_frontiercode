@@ -1,0 +1,32 @@
+diff --git a/pkg/skiplist/skiplist.go b/pkg/skiplist/skiplist.go
+--- a/pkg/skiplist/skiplist.go
++++ b/pkg/skiplist/skiplist.go
+@@
+ 	for i := s.level - 1; i >= 0; i-- {
+-		for x.forward[i] != nil && x.forward[i].key <= from {
++		for x.forward[i] != nil && x.forward[i].key < from {
+ 			x = x.forward[i]
+ 		}
+ 	}
+diff --git a/pkg/skiplist/skiplist_range_lb_test.go b/pkg/skiplist/skiplist_range_lb_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/skiplist/skiplist_range_lb_test.go
+@@
++package skiplist
++
++import "testing"
++
++func TestRangeIncludesLowerBoundLB(t *testing.T) {
++	s := New(1)
++	for _, k := range []string{"a", "b", "c", "d"} {
++		s.Insert(k, 1)
++	}
++	got := s.Range("a", "d")
++	if len(got) != 4 {
++		t.Fatalf("expected 4 entries, got %d", len(got))
++	}
++	if got[0].Key != "a" {
++		t.Fatalf("expected first key 'a', got %q", got[0].Key)
++	}
++}

@@ -1,0 +1,72 @@
+diff --git a/meridian/analysis/bipartite.py b/meridian/analysis/bipartite.py
+--- a/meridian/analysis/bipartite.py
++++ b/meridian/analysis/bipartite.py
+@@
+                 if nbr not in color:
+                     color[nbr] = 1 - color[node]
+                     queue.append(nbr)
+-                elif color[nbr] != color[node]:
++                elif color[nbr] == color[node]:
+                     raise ValueError("Graph is not bipartite")
+diff --git a/tests/test_bipartite_shortcut.py b/tests/test_bipartite_shortcut.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_bipartite_shortcut.py
+@@ -0,0 +1,57 @@
++"""Focused checks for the bipartite 2-coloring conflict fix."""
++
++import pytest
++
++from meridian import Graph
++from meridian.analysis.bipartite import two_color, bipartite_sets
++
++
++def _path(n):
++    g = Graph()
++    for i in range(n - 1):
++        g.add_edge(i, i + 1)
++    return g
++
++
++def _cycle(n):
++    g = Graph()
++    for i in range(n):
++        g.add_edge(i, (i + 1) % n)
++    return g
++
++
++def test_even_cycle_is_bipartite():
++    g = _cycle(4)
++    color = two_color(g)
++    assert all(color[u] != color[v] for u, v in g.edges)
++    left, right = bipartite_sets(g)
++    assert left and right
++
++
++def test_path_is_bipartite():
++    g = _path(5)
++    color = two_color(g)
++    assert all(color[u] != color[v] for u, v in g.edges)
++
++
++def test_odd_cycle_raises():
++    g = _cycle(3)
++    with pytest.raises(ValueError):
++        two_color(g)
++    with pytest.raises(ValueError):
++        bipartite_sets(g)
++
++
++def test_five_cycle_raises():
++    g = _cycle(5)
++    with pytest.raises(ValueError):
++        two_color(g)
++
++
++def test_disconnected_mixed_components_raise():
++    g = _cycle(4)
++    g.add_edge("a", "b")
++    g.add_edge("b", "c")
++    g.add_edge("c", "a")
++    with pytest.raises(ValueError):
++        two_color(g)

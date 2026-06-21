@@ -1,0 +1,45 @@
+diff --git a/nexusflow/tasks/deadletter.py b/nexusflow/tasks/deadletter.py
+--- a/nexusflow/tasks/deadletter.py
++++ b/nexusflow/tasks/deadletter.py
+@@
+-        if not max_retries:
+-            return True
++        if max_retries == 0:
++            return False
++        if not max_retries:
++            return True
+diff --git a/tests/test_tasks/test_deadletter_zero.py b/tests/test_tasks/test_deadletter_zero.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_tasks/test_deadletter_zero.py
+@@
++"""Boundary tests for DeadLetterQueue.can_requeue retry-limit semantics."""
++
++from nexusflow.tasks.deadletter import DeadLetterQueue
++
++
++def _add(dlq, task_id, max_retries):
++    return dlq.add(task_id, payload={}, reason="boom", max_retries=max_retries)
++
++
++def test_zero_max_retries_never_requeueable():
++    dlq = DeadLetterQueue()
++    _add(dlq, "t-zero", max_retries=0)
++    assert dlq.can_requeue("t-zero") is False
++
++
++def test_none_max_retries_always_requeueable():
++    dlq = DeadLetterQueue()
++    _add(dlq, "t-none", max_retries=None)
++    assert dlq.can_requeue("t-none") is True
++
++
++def test_positive_limit_allows_until_boundary():
++    dlq = DeadLetterQueue()
++    entry = _add(dlq, "t-two", max_retries=2)
++    entry.retry_count = 0
++    assert dlq.can_requeue("t-two") is True
++    entry.retry_count = 1
++    assert dlq.can_requeue("t-two") is True
++    entry.retry_count = 2
++    assert dlq.can_requeue("t-two") is False

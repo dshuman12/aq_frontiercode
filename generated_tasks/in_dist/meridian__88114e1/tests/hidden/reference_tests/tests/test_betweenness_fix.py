@@ -1,0 +1,57 @@
+"""Tests that betweenness_centrality normalization is correct for undirected graphs."""
+import pytest
+from meridian import Graph
+from meridian.algorithms.centrality import betweenness_centrality
+
+
+def test_path_graph_betweenness_normalized():
+    # In a path graph 0-1-2-3-4, node 2 (middle) has highest betweenness
+    # For n=5 path graph, the correct normalized betweenness of middle node is 0.6
+    G = Graph()
+    for i in range(5):
+        G.add_node(i)
+    for i in range(4):
+        G.add_edge(i, i+1)
+
+    bc = betweenness_centrality(G, normalized=True)
+    # Node 2 (middle) betweenness in undirected path of 5: should be 0.6
+    assert abs(bc[2] - 0.6) < 1e-6, f"Expected 0.6, got {bc[2]}"
+
+
+def test_star_graph_betweenness_normalized():
+    # Star graph: center node has betweenness = 1.0 when normalized
+    G = Graph()
+    G.add_node(0)  # center
+    for i in range(1, 5):
+        G.add_node(i)
+        G.add_edge(0, i)
+
+    bc = betweenness_centrality(G, normalized=True)
+    assert abs(bc[0] - 1.0) < 1e-6, f"Center of star should have betweenness 1.0, got {bc[0]}"
+
+
+def test_undirected_vs_directed_normalization():
+    # For undirected graphs, normalization factor is 2/((n-1)(n-2))
+    # For directed, it's 1/((n-1)(n-2))
+    # So undirected values should be 2x the directed values (all else equal)
+    from meridian import DiGraph
+    G_und = Graph()
+    G_dir = DiGraph()
+    nodes = [0, 1, 2, 3]
+    for n in nodes:
+        G_und.add_node(n)
+        G_dir.add_node(n)
+    edges = [(0,1),(1,2),(2,3),(0,3)]
+    for u, v in edges:
+        G_und.add_edge(u, v)
+        G_dir.add_edge(u, v)
+        G_dir.add_edge(v, u)
+
+    bc_und = betweenness_centrality(G_und, normalized=True)
+    bc_dir = betweenness_centrality(G_dir, normalized=True)
+
+    # Every undirected value should be 2x directed value
+    for node in nodes:
+        ratio = bc_und[node] / bc_dir[node] if bc_dir[node] > 0 else None
+        if ratio is not None:
+            assert abs(ratio - 2.0) < 1e-6, f"Node {node}: ratio={ratio}, expected 2.0"

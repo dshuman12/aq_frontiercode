@@ -1,0 +1,46 @@
+diff --git a/meridian/analysis/bipartite.py b/meridian/analysis/bipartite.py
+--- a/meridian/analysis/bipartite.py
++++ b/meridian/analysis/bipartite.py
+@@
+                 if neighbor not in color:
+                     color[neighbor] = 1 - color[node]
+                     queue.append(neighbor)
+-                elif color[neighbor] != color[node]:
++                elif color[neighbor] == color[node]:
+                     raise ValueError(
+                         "Graph is not bipartite; odd cycle detected"
+                     )
+diff --git a/tests/test_bipartite_extra.py b/tests/test_bipartite_extra.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_bipartite_extra.py
+@@
++import pytest
++
++from meridian import Graph
++from meridian.analysis.bipartite import two_color, bipartite_sets
++
++
++def _cycle(n):
++    g = Graph()
++    for i in range(n):
++        g.add_edge(i, (i + 1) % n)
++    return g
++
++
++def test_even_cycle_two_color():
++    g = _cycle(4)
++    color = two_color(g)
++    for u, v in g.edges:
++        assert color[u] != color[v]
++
++
++def test_odd_cycle_raises():
++    with pytest.raises(ValueError):
++        two_color(_cycle(3))
++
++
++def test_bipartite_sets_even_cycle():
++    g = _cycle(6)
++    left, right = bipartite_sets(g)
++    assert len(set(left) | set(right)) == 6
