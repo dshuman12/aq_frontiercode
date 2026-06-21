@@ -1,0 +1,63 @@
+diff --git a/pkg/skiplist/skiplist.go b/pkg/skiplist/skiplist.go
+index e2b7371..85f0c37 100644
+--- a/pkg/skiplist/skiplist.go
++++ b/pkg/skiplist/skiplist.go
+@@ -113,7 +113,7 @@ func (sl *SkipList) Range(from, to string) []struct{ Key string; Value interface
+ 	var result []struct{ Key string; Value interface{} }
+ 	current := sl.head
+ 	for i := sl.level - 1; i >= 0; i-- {
+-		for current.next[i] != nil && current.next[i].key <= from { current = current.next[i] }
++		for current.next[i] != nil && current.next[i].key < from { current = current.next[i] }
+ 	}
+ 	current = current.next[0]
+-	for current != nil && current.key < to {
++	for current != nil && current.key <= to {
+diff --git a/pkg/skiplist/skiplist_range_test.go b/pkg/skiplist/skiplist_range_test.go
+new file mode 100644
+index 0000000..efdf7e0
+--- /dev/null
++++ b/pkg/skiplist/skiplist_range_test.go
+@@ -0,0 +1,43 @@
++package skiplist
++
++import "testing"
++
++func TestSkipList_RangeIncludesLowerBound(t *testing.T) {
++	sl := New(42)
++	sl.Insert("a", 1)
++	sl.Insert("b", 2)
++	sl.Insert("c", 3)
++	sl.Insert("d", 4)
++
++	result := sl.Range("b", "c")
++	if len(result) != 2 {
++		t.Fatalf("expected 2 results for Range(b,c), got %d", len(result))
++	}
++	if result[0].Key != "b" {
++		t.Errorf("expected first key 'b', got %q", result[0].Key)
++	}
++}
++
++func TestSkipList_RangeIncludesUpperBound(t *testing.T) {
++	sl := New(42)
++	sl.Insert("a", 1)
++	sl.Insert("b", 2)
++	sl.Insert("c", 3)
++
++	result := sl.Range("a", "c")
++	if len(result) != 3 {
++		t.Fatalf("expected 3 results for Range(a,c), got %d: %v", len(result), result)
++	}
++	if result[2].Key != "c" {
++		t.Errorf("expected last key 'c', got %q", result[2].Key)
++	}
++}
++
++func TestSkipList_RangeSingleKey(t *testing.T) {
++	sl := New(42)
++	sl.Insert("exact", 99)
++	result := sl.Range("exact", "exact")
++	if len(result) != 1 {
++		t.Fatalf("Range(exact,exact) should return 1 result, got %d", len(result))
++	}
++}

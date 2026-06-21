@@ -1,0 +1,85 @@
+diff --git a/meridian/analysis/bipartite.py b/meridian/analysis/bipartite.py
+index 0537b11..6eaae1e 100644
+--- a/meridian/analysis/bipartite.py
++++ b/meridian/analysis/bipartite.py
+@@ -32,7 +32,7 @@ def bipartite_sets(G) -> Tuple[Set, Set]:
+                 if nbr not in color:
+                     color[nbr] = 1 - color[v]
+                     queue.append(nbr)
+-                elif color[nbr] != color[v]:
++                elif color[nbr] == color[v]:
+                     raise ValueError(f"Graph is not bipartite; odd cycle found near {v!r}")
+     top = {v for v, c in color.items() if c == 0}
+     bottom = {v for v, c in color.items() if c == 1}
+@@ -53,7 +53,7 @@ def two_color(G) -> Dict[Any, int]:
+                 if nbr not in color:
+                     color[nbr] = 1 - color[v]
+                     queue.append(nbr)
+-                elif color[nbr] != color[v]:
++                elif color[nbr] == color[v]:
+                     raise ValueError("Graph is not bipartite")
+     return color
+
+@@ -67,7 +67,7 @@ def is_complete_bipartite(G) -> bool:
+     # Every top node must be connected to every bottom node
+     for u in top:
+-        if set(G.neighbors(u)) == bottom:
++        if set(G.neighbors(u)) != bottom:
+             return False
+     return True
+
+diff --git a/tests/test_bipartite_fix.py b/tests/test_bipartite_fix.py
+new file mode 100644
+index 0000000..058e078
+--- /dev/null
++++ b/tests/test_bipartite_fix.py
+@@ -0,0 +1,49 @@
++"""Tests for bipartite graph detection and 2-coloring."""
++import pytest
++from meridian import Graph
++from meridian.analysis.bipartite import bipartite_sets, two_color, is_bipartite
++
++
++def test_simple_bipartite_graph():
++    G = Graph()
++    for n in [1, 2, 3, 4]:
++        G.add_node(n)
++    G.add_edge(1, 2)
++    G.add_edge(1, 4)
++    G.add_edge(3, 2)
++    G.add_edge(3, 4)
++
++    top, bottom = bipartite_sets(G)
++    assert top | bottom == {1, 2, 3, 4}
++    # Nodes 1,3 should be in one set; 2,4 in the other
++    assert (top == {1, 3} and bottom == {2, 4}) or (top == {2, 4} and bottom == {1, 3})
++
++
++def test_odd_cycle_is_not_bipartite():
++    G = Graph()
++    for n in [1, 2, 3]:
++        G.add_node(n)
++    G.add_edge(1, 2)
++    G.add_edge(2, 3)
++    G.add_edge(3, 1)
++
++    with pytest.raises(ValueError):
++        bipartite_sets(G)
++
++
++def test_is_bipartite_even_cycle():
++    G = Graph()
++    for n in range(4):
++        G.add_node(n)
++    for i in range(4):
++        G.add_edge(i, (i+1) % 4)
++    assert is_bipartite(G)
++
++
++def test_is_bipartite_odd_cycle():
++    G = Graph()
++    for n in range(3):
++        G.add_node(n)
++    for i in range(3):
++        G.add_edge(i, (i+1) % 3)
++    assert not is_bipartite(G)
