@@ -1,0 +1,1 @@
+-- Migration 0001: create patients table. See database/schema.sql for canonical DDL.
