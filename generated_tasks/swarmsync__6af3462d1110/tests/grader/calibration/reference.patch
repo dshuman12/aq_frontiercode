@@ -1,0 +1,304 @@
+diff --git a/pkg/merkle/merkle_test.go b/pkg/merkle/merkle_test.go
+index 94ddc81..24b73e2 100644
+--- a/pkg/merkle/merkle_test.go
++++ b/pkg/merkle/merkle_test.go
+@@ -293,4 +293,137 @@ func TestProof_WrongValue(t *testing.T) {
+ 	if proof.Verify(rootHash) {
+ 		t.Fatal("wrong value should not verify")
+ 	}
++}
++
++// --- Lazy rebuild tests ---
++
++func TestTree_LazyRebuild_MultiPut(t *testing.T) {
++	tree := NewTree()
++	for i := 0; i < 100; i++ {
++		tree.Put(fmt.Sprintf("key-%03d", i), []byte(fmt.Sprintf("val-%d", i)))
++	}
++	if tree.Len() != 100 {
++		t.Fatalf("expected 100, got %d", tree.Len())
++	}
++	h := tree.RootHash()
++	if h == ([32]byte{}) {
++		t.Fatal("should have non-zero root hash after puts")
++	}
++}
++
++func TestTree_LazyRebuild_ConsistentWithEager(t *testing.T) {
++	lazy := NewTree()
++	eager := NewTree()
++	entries := map[string][]byte{
++		"alpha": []byte("1"),
++		"beta":  []byte("2"),
++		"gamma": []byte("3"),
++		"delta": []byte("4"),
++	}
++	for k, v := range entries {
++		lazy.Put(k, v)
++	}
++	eager.PutBatch(entries)
++
++	if lazy.RootHash() != eager.RootHash() {
++		t.Fatal("lazy and eager rebuild should produce identical root hashes")
++	}
++}
++
++func TestTree_LazyRebuild_DeleteThenRead(t *testing.T) {
++	tree := NewTree()
++	tree.Put("a", []byte("1"))
++	tree.Put("b", []byte("2"))
++	tree.Put("c", []byte("3"))
++	h1 := tree.RootHash()
++
++	tree.Delete("b")
++	h2 := tree.RootHash()
++	if h1 == h2 {
++		t.Fatal("hash should change after delete")
++	}
++	if tree.Len() != 2 {
++		t.Fatalf("expected 2 after delete, got %d", tree.Len())
++	}
++}
++
++// --- PutBatch tests ---
++
++func TestTree_PutBatch_Empty(t *testing.T) {
++	tree := NewTree()
++	tree.PutBatch(map[string][]byte{})
++	if tree.Len() != 0 {
++		t.Fatal("expected empty tree after empty batch")
++	}
++}
++
++func TestTree_PutBatch_MatchesSequentialPuts(t *testing.T) {
++	sequential := NewTree()
++	batch := NewTree()
++	for i := 0; i < 50; i++ {
++		k := fmt.Sprintf("key-%02d", i)
++		v := []byte(fmt.Sprintf("val-%d", i))
++		sequential.Put(k, v)
++	}
++	entries := make(map[string][]byte, 50)
++	for i := 0; i < 50; i++ {
++		k := fmt.Sprintf("key-%02d", i)
++		entries[k] = []byte(fmt.Sprintf("val-%d", i))
++	}
++	batch.PutBatch(entries)
++
++	if sequential.RootHash() != batch.RootHash() {
++		t.Fatal("PutBatch should produce same tree as sequential Puts")
++	}
++	if sequential.Len() != batch.Len() {
++		t.Fatal("length mismatch")
++	}
++}
++
++func TestTree_PutBatch_Overwrite(t *testing.T) {
++	tree := NewTree()
++	tree.Put("k", []byte("old"))
++	tree.PutBatch(map[string][]byte{"k": []byte("new")})
++	v, ok := tree.Get("k")
++	if !ok || string(v) != "new" {
++		t.Fatal("PutBatch should overwrite existing keys")
++	}
++}
++
++func TestDiff_AfterLazyRebuild(t *testing.T) {
++	a := NewTree()
++	b := NewTree()
++	for i := 0; i < 20; i++ {
++		k := fmt.Sprintf("key-%02d", i)
++		a.Put(k, []byte("v"))
++		b.Put(k, []byte("v"))
++	}
++	a.Put("extra-a", []byte("x"))
++	b.Put("extra-b", []byte("y"))
++
++	d := Diff(a, b)
++	if len(d.OnlyLocal) != 1 || d.OnlyLocal[0] != "extra-a" {
++		t.Fatalf("expected onlyLocal=[extra-a], got %v", d.OnlyLocal)
++	}
++	if len(d.OnlyRemote) != 1 || d.OnlyRemote[0] != "extra-b" {
++		t.Fatalf("expected onlyRemote=[extra-b], got %v", d.OnlyRemote)
++	}
++}
++
++func TestFastDiff_AfterLazyRebuild(t *testing.T) {
++	a := NewTree()
++	b := NewTree()
++	entries := make(map[string][]byte, 50)
++	for i := 0; i < 50; i++ {
++		k := fmt.Sprintf("key-%02d", i)
++		entries[k] = []byte("v")
++	}
++	a.PutBatch(entries)
++	b.PutBatch(entries)
++
++	b.Put("key-10", []byte("changed"))
++	d := FastDiff(a, b)
++	if len(d.Different) != 1 || d.Different[0] != "key-10" {
++		t.Fatalf("expected different=[key-10], got %v", d.Different)
++	}
+ }
+\ No newline at end of file
+diff --git a/pkg/merkle/tree.go b/pkg/merkle/tree.go
+index f508fc1..f0d3e97 100644
+--- a/pkg/merkle/tree.go
++++ b/pkg/merkle/tree.go
+@@ -21,9 +21,10 @@ type Node struct {
+ // It supports efficient diff computation between two trees to find
+ // the minimal set of keys that differ.
+ type Tree struct {
+-	mu   sync.RWMutex
+-	root *Node
+-	data map[string][]byte
++	mu    sync.RWMutex
++	root  *Node
++	data  map[string][]byte
++	dirty bool
+ }
+ 
+ // NewTree creates an empty Merkle tree.
+@@ -38,6 +39,19 @@ func (t *Tree) Put(key string, value []byte) {
+ 	cp := make([]byte, len(value))
+ 	copy(cp, value)
+ 	t.data[key] = cp
++	t.dirty = true
++}
++
++// PutBatch inserts multiple key-value pairs with a single tree rebuild.
++// Far more efficient than calling Put repeatedly.
++func (t *Tree) PutBatch(entries map[string][]byte) {
++	t.mu.Lock()
++	defer t.mu.Unlock()
++	for k, v := range entries {
++		cp := make([]byte, len(v))
++		copy(cp, v)
++		t.data[k] = cp
++	}
+ 	t.rebuild()
+ }
+ 
+@@ -46,7 +60,15 @@ func (t *Tree) Delete(key string) {
+ 	t.mu.Lock()
+ 	defer t.mu.Unlock()
+ 	delete(t.data, key)
+-	t.rebuild()
++	t.dirty = true
++}
++
++// ensureBuilt rebuilds the tree if mutations have been made since the last build.
++func (t *Tree) ensureBuilt() {
++	if t.dirty {
++		t.rebuild()
++		t.dirty = false
++	}
+ }
+ 
+ // Get returns the value for a key.
+@@ -64,8 +86,9 @@ func (t *Tree) Get(key string) ([]byte, bool) {
+ 
+ // RootHash returns the hash of the root node, or a zero hash if empty.
+ func (t *Tree) RootHash() [32]byte {
+-	t.mu.RLock()
+-	defer t.mu.RUnlock()
++	t.mu.Lock()
++	defer t.mu.Unlock()
++	t.ensureBuilt()
+ 	if t.root == nil {
+ 		return [32]byte{}
+ 	}
+@@ -158,10 +181,13 @@ func makeInternal(left, right *Node) *Node {
+ // It traverses both trees simultaneously, pruning subtrees with matching hashes.
+ // Returns keys that are in local but not remote (or different), and vice versa.
+ func Diff(local, remote *Tree) DiffResult {
+-	local.mu.RLock()
+-	defer local.mu.RUnlock()
+-	remote.mu.RLock()
+-	defer remote.mu.RUnlock()
++	local.mu.Lock()
++	defer local.mu.Unlock()
++	remote.mu.Lock()
++	defer remote.mu.Unlock()
++
++	local.ensureBuilt()
++	remote.ensureBuilt()
+ 
+ 	var result DiffResult
+ 
+@@ -207,10 +233,13 @@ func Diff(local, remote *Tree) DiffResult {
+ // using a map-based approach. More efficient than Diff for large trees
+ // with few differences because matching subtrees are never traversed.
+ func FastDiff(local, remote *Tree) DiffResult {
+-	local.mu.RLock()
+-	defer local.mu.RUnlock()
+-	remote.mu.RLock()
+-	defer remote.mu.RUnlock()
++	local.mu.Lock()
++	defer local.mu.Unlock()
++	remote.mu.Lock()
++	defer remote.mu.Unlock()
++
++	local.ensureBuilt()
++	remote.ensureBuilt()
+ 
+ 	// Quick check: if roots match, no differences
+ 	if local.root != nil && remote.root != nil && local.root.Hash == remote.root.Hash {
+@@ -305,15 +334,23 @@ func collectLeaves(n *Node) []*Node {
+ 	if n == nil {
+ 		return nil
+ 	}
+-	if n.IsLeaf {
+-		return []*Node{n}
+-	}
+ 	var result []*Node
+-	result = append(result, collectLeaves(n.Left)...)
+-	result = append(result, collectLeaves(n.Right)...)
++	collectLeavesInto(n, &result)
+ 	return result
+ }
+ 
++func collectLeavesInto(n *Node, result *[]*Node) {
++	if n == nil {
++		return
++	}
++	if n.IsLeaf {
++		*result = append(*result, n)
++		return
++	}
++	collectLeavesInto(n.Left, result)
++	collectLeavesInto(n.Right, result)
++}
++
+ // Proof represents a Merkle proof for a single key.
+ type Proof struct {
+ 	Key      string
+diff --git a/pkg/sim/network.go b/pkg/sim/network.go
+index 5f012b9..e7b205d 100644
+--- a/pkg/sim/network.go
++++ b/pkg/sim/network.go
+@@ -216,7 +216,7 @@ func (ns *NetworkSim) RunMerkleSyncRound() int {
+ 		// Build merkle trees from both stores
+ 		localTree := storeToTree(store)
+ 		remoteTree := storeToTree(peerStore)
+-		diff := merkle.Diff(localTree, remoteTree)
++		diff := merkle.FastDiff(localTree, remoteTree)
+ 
+ 		// Sync differing keys using Apply to preserve versions
+ 		for _, key := range diff.OnlyRemote {
+@@ -259,12 +259,14 @@ func (ns *NetworkSim) RunMerkleSyncRound() int {
+ 
+ func storeToTree(store *gossip.StateStore) *merkle.Tree {
+ 	tree := merkle.NewTree()
++	entries := make(map[string][]byte)
+ 	for _, key := range store.Keys() {
+ 		v, ok := store.Get(key)
+ 		if ok {
+-			tree.Put(key, v)
++			entries[key] = v
+ 		}
+ 	}
++	tree.PutBatch(entries)
+ 	return tree
+ }
+ 

@@ -1,0 +1,101 @@
+diff --git a/pkg/bloom/filter.go b/pkg/bloom/filter.go
+--- a/pkg/bloom/filter.go
++++ b/pkg/bloom/filter.go
+@@ func (cf *CountingFilter) decrementCounter(pos uint64) {
+ func (cf *CountingFilter) decrementCounter(pos uint64) {
+ 	byteIdx := pos / 2
+ 	if pos%2 == 0 {
+ 		low := cf.counters[byteIdx] & 0x0F
+-		if low > 0 {
++		// A counter that has saturated at 15 may have lost information about
++		// how many elements actually hash here, so decrementing it could drive
++		// a still-present element's counter to zero (a false negative). Treat a
++		// saturated counter as sticky and never decrement it.
++		if low > 0 && low < 15 {
+ 			cf.counters[byteIdx] = (cf.counters[byteIdx] & 0xF0) | (low - 1)
+ 		}
+ 	} else {
+ 		high := cf.counters[byteIdx] >> 4
+-		if high > 0 {
++		if high > 0 && high < 15 {
+ 			cf.counters[byteIdx] = (cf.counters[byteIdx] & 0x0F) | ((high - 1) << 4)
+ 		}
+ 	}
+ }
+diff --git a/pkg/bloom/bloom_test.go b/pkg/bloom/bloom_test.go
+--- a/pkg/bloom/bloom_test.go
++++ b/pkg/bloom/bloom_test.go
+@@ func TestCountingFilter_FNV_AddRemove(t *testing.T) {
+ 	for i := 50; i < 100; i++ {
+ 		if !cf.Contains([]byte(fmt.Sprintf("cfnv-%d", i))) {
+ 			t.Fatalf("should still contain cfnv-%d", i)
+ 		}
+ 	}
+ }
++
++// TestCountingFilter_NoFalseNegativeUnderChurn drives heavy interleaved churn so
++// that the kept element's counter positions saturate. On the broken base the
++// saturated counters get decremented back to zero during the removals, producing
++// a false negative.
++func TestCountingFilter_NoFalseNegativeUnderChurn(t *testing.T) {
++	cf := NewCountingFilter(50, 0.01)
++	cf.Add([]byte("keep"))
++	for i := 0; i < 2000; i++ {
++		cf.Add([]byte(fmt.Sprintf("churn-%d", i)))
++	}
++	for i := 0; i < 2000; i++ {
++		cf.Remove([]byte(fmt.Sprintf("churn-%d", i)))
++	}
++	if !cf.Contains([]byte("keep")) {
++		t.Fatal("false negative: kept element reported absent after churn")
++	}
++}
++
++// TestCountingFilter_RepeatedAddPartialRemove confirms an element added more
++// times than it is removed always tests present.
++func TestCountingFilter_RepeatedAddPartialRemove(t *testing.T) {
++	cf := NewCountingFilter(1000, 0.01)
++	cf.Add([]byte("x"))
++	cf.Add([]byte("x"))
++	cf.Add([]byte("x"))
++	cf.Remove([]byte("x"))
++	cf.Remove([]byte("x"))
++	if !cf.Contains([]byte("x")) {
++		t.Fatal("element added more times than removed must remain present")
++	}
++}
++
++func scanFillRatio(f *Filter) float64 {
++	set := 0
++	for _, word := range f.bits {
++		for word != 0 {
++			set++
++			word &= word - 1
++		}
++	}
++	return float64(set) / float64(f.Size())
++}
++
++// TestFilter_FillRatioMatchesScan checks FillRatio equals a full-scan
++// computation after additions, a union, and a reset.
++func TestFilter_FillRatioMatchesScan(t *testing.T) {
++	f := NewFilterRaw(1024, 7)
++	for i := 0; i < 100; i++ {
++		f.Add([]byte(fmt.Sprintf("a-%d", i)))
++	}
++	if got, want := f.FillRatio(), scanFillRatio(f); got != want {
++		t.Fatalf("after adds FillRatio %v != scan %v", got, want)
++	}
++	g := NewFilterRaw(1024, 7)
++	for i := 0; i < 50; i++ {
++		g.Add([]byte(fmt.Sprintf("b-%d", i)))
++	}
++	f.Union(g)
++	if got, want := f.FillRatio(), scanFillRatio(f); got != want {
++		t.Fatalf("after union FillRatio %v != scan %v", got, want)
++	}
++	f.Reset()
++	if got, want := f.FillRatio(), scanFillRatio(f); got != want {
++		t.Fatalf("after reset FillRatio %v != scan %v", got, want)
++	}
++}

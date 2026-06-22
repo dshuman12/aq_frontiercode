@@ -1,0 +1,160 @@
+diff --git a/pkg/crdt/set.go b/pkg/crdt/set.go
+--- a/pkg/crdt/set.go
++++ b/pkg/crdt/set.go
+@@ -73,8 +73,9 @@ func (s *GSet) Merge(other *GSet) {
+ // (nodeID, counter) pair so that removes only affect observed adds.
+ type ORSet struct {
+ 	mu       sync.RWMutex
+ 	entries  map[string]map[ORTag]struct{} // element -> set of tags
++	removed  map[string]map[ORTag]struct{} // element -> tombstoned tags
+ 	counters map[string]uint64             // nodeID -> next counter
+ }
+ 
+ // ORTag uniquely identifies an add operation.
+ type ORTag struct {
+ 	NodeID  string
+ 	Counter uint64
+ }
+ 
+ // NewORSet creates an empty OR-Set.
+ func NewORSet() *ORSet {
+ 	return &ORSet{
+ 		entries:  make(map[string]map[ORTag]struct{}),
++		removed:  make(map[string]map[ORTag]struct{}),
+ 		counters: make(map[string]uint64),
+ 	}
+ }
+@@ -89,11 +90,18 @@ func (s *ORSet) Add(elem string, nodeID string) {
+ 	s.entries[elem][tag] = struct{}{}
+ }
+ 
+ // Remove removes an element by clearing all its observed tags.
+ // Concurrent adds (unseen tags) will survive.
+ func (s *ORSet) Remove(elem string) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
++	if tags := s.entries[elem]; len(tags) > 0 {
++		if s.removed[elem] == nil {
++			s.removed[elem] = make(map[ORTag]struct{})
++		}
++		for tag := range tags {
++			s.removed[elem][tag] = struct{}{}
++		}
++	}
+ 	delete(s.entries, elem)
+ }
+@@ -147,17 +155,38 @@ func (s *ORSet) Len() int {
+ func (s *ORSet) Merge(other *ORSet) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+ 	other.mu.RLock()
+ 	defer other.mu.RUnlock()
+ 
++	for elem, tags := range other.removed {
++		if s.removed[elem] == nil {
++			s.removed[elem] = make(map[ORTag]struct{})
++		}
++		for tag := range tags {
++			s.removed[elem][tag] = struct{}{}
++		}
++	}
++
+ 	for elem, tags := range other.entries {
+ 		if s.entries[elem] == nil {
+ 			s.entries[elem] = make(map[ORTag]struct{})
+ 		}
+ 		for tag := range tags {
+ 			s.entries[elem][tag] = struct{}{}
+ 		}
+ 	}
++
++	for elem, rtags := range s.removed {
++		e := s.entries[elem]
++		if e == nil {
++			continue
++		}
++		for tag := range rtags {
++			delete(e, tag)
++		}
++		if len(e) == 0 {
++			delete(s.entries, elem)
++		}
++	}
++
+ 	for nodeID, c := range other.counters {
+ 		if c > s.counters[nodeID] {
+ 			s.counters[nodeID] = c
+ 		}
+ 	}
+ }
+diff --git a/pkg/crdt/ormap.go b/pkg/crdt/ormap.go
+--- a/pkg/crdt/ormap.go
++++ b/pkg/crdt/ormap.go
+@@ -56,9 +56,7 @@ func (m *ORMap) Get(key string) (interface{}, bool) {
+ // Delete removes a key.
+ func (m *ORMap) Delete(key string) {
+ 	m.mu.Lock()
+ 	defer m.mu.Unlock()
+-	m.keys.mu.Lock()
+-	delete(m.keys.entries, key)
+-	m.keys.mu.Unlock()
++	m.keys.Remove(key)
+ }
+ 
+ // Keys returns all active keys.
+diff --git a/pkg/crdt/crdt_test.go b/pkg/crdt/crdt_test.go
+--- a/pkg/crdt/crdt_test.go
++++ b/pkg/crdt/crdt_test.go
+@@ -468,6 +468,40 @@ func TestORSet_Elements(t *testing.T) {
+ 	if len(elems) != 2 {
+ 		t.Fatalf("expected 2 elements, got %d", len(elems))
+ 	}
+ }
+ 
++func TestORSet_DeleteThenMergeConvergence(t *testing.T) {
++	s1 := NewORSet()
++	s1.Add("x", "n1")
++
++	s2 := NewORSet()
++	s2.Merge(s1) // s2 observes n1's add
++	s2.Remove("x")
++
++	// Merging the observed removal back into s1 must keep x removed.
++	s1.Merge(s2)
++	if s1.Contains("x") {
++		t.Fatal("observed removal should converge and stay removed after merge")
++	}
++}
++
++func TestORSet_ConcurrentAddSurvivesObservedRemove(t *testing.T) {
++	s1 := NewORSet()
++	s1.Add("x", "n1")
++
++	s2 := NewORSet()
++	s2.Merge(s1)
++	s2.Remove("x")
++
++	s1.Add("x", "n1") // concurrent re-add with a tag s2 never observed
++	s1.Merge(s2)
++	if !s1.Contains("x") {
++		t.Fatal("concurrent add carrying an unseen tag should survive")
++	}
++}
++
++func TestORMap_DeleteThenMergeConvergence(t *testing.T) {
++	m1 := NewORMap()
++	m1.Put("k", "v", 100, "n1")
++
++	m2 := NewORMap()
++	m2.Merge(m1)
++	m2.Delete("k")
++
++	m1.Merge(m2)
++	if _, ok := m1.Get("k"); ok {
++		t.Fatal("deleted key should stay deleted after merge")
++	}
++}
++
+ // --- ORMap ---
+ 
+ func TestORMap_PutGet(t *testing.T) {

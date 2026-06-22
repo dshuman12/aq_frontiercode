@@ -1,0 +1,4357 @@
+diff --git a/base/cmd/swarmsync/main.go b/repo/cmd/swarmsync/main.go
+index a3bddfb..9344488 100644
+--- a/base/cmd/swarmsync/main.go
++++ b/repo/cmd/swarmsync/main.go
+@@ -125,4 +125,4 @@ func runDemo() {
+ 	fmt.Printf("Simulator converged: %v\n", ns.Converged())
+ 
+ 	fmt.Println("\nAll demos completed successfully!")
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/bitmap/bitmap.go b/repo/pkg/bitmap/bitmap.go
+index 074bb18..44bb9a5 100644
+--- a/base/pkg/bitmap/bitmap.go
++++ b/repo/pkg/bitmap/bitmap.go
+@@ -20,7 +20,9 @@ func (b *Bitmap) Set(pos uint) {
+ 	word := pos / 64
+ 	bit := pos % 64
+ 	b.grow(word)
+-	if b.words[word]&(1<<bit) == 0 { b.count++ }
++	if b.words[word]&(1<<bit) == 0 {
++		b.count++
++	}
+ 	b.words[word] |= 1 << bit
+ }
+ 
+@@ -29,9 +31,13 @@ func (b *Bitmap) Clear(pos uint) {
+ 	b.mu.Lock()
+ 	defer b.mu.Unlock()
+ 	word := pos / 64
+-	if word >= uint(len(b.words)) { return }
++	if word >= uint(len(b.words)) {
++		return
++	}
+ 	bit := pos % 64
+-	if b.words[word]&(1<<bit) != 0 { b.count-- }
++	if b.words[word]&(1<<bit) != 0 {
++		b.count--
++	}
+ 	b.words[word] &^= 1 << bit
+ }
+ 
+@@ -40,7 +46,9 @@ func (b *Bitmap) Test(pos uint) bool {
+ 	b.mu.RLock()
+ 	defer b.mu.RUnlock()
+ 	word := pos / 64
+-	if word >= uint(len(b.words)) { return false }
++	if word >= uint(len(b.words)) {
++		return false
++	}
+ 	return b.words[word]&(1<<(pos%64)) != 0
+ }
+ 
+@@ -58,9 +66,15 @@ func (b *Bitmap) And(other *Bitmap) {
+ 	other.mu.RLock()
+ 	defer other.mu.RUnlock()
+ 	minLen := len(b.words)
+-	if len(other.words) < minLen { minLen = len(other.words) }
+-	for i := 0; i < minLen; i++ { b.words[i] &= other.words[i] }
+-	for i := minLen; i < len(b.words); i++ { b.words[i] = 0 }
++	if len(other.words) < minLen {
++		minLen = len(other.words)
++	}
++	for i := 0; i < minLen; i++ {
++		b.words[i] &= other.words[i]
++	}
++	for i := minLen; i < len(b.words); i++ {
++		b.words[i] = 0
++	}
+ 	b.recount()
+ }
+ 
+@@ -71,7 +85,9 @@ func (b *Bitmap) Or(other *Bitmap) {
+ 	other.mu.RLock()
+ 	defer other.mu.RUnlock()
+ 	b.grow(uint(len(other.words)) - 1)
+-	for i := 0; i < len(other.words); i++ { b.words[i] |= other.words[i] }
++	for i := 0; i < len(other.words); i++ {
++		b.words[i] |= other.words[i]
++	}
+ 	b.recount()
+ }
+ 
+@@ -81,8 +97,12 @@ func (b *Bitmap) Xor(other *Bitmap) {
+ 	defer b.mu.Unlock()
+ 	other.mu.RLock()
+ 	defer other.mu.RUnlock()
+-	if len(other.words) > 0 { b.grow(uint(len(other.words)) - 1) }
+-	for i := 0; i < len(other.words); i++ { b.words[i] ^= other.words[i] }
++	if len(other.words) > 0 {
++		b.grow(uint(len(other.words)) - 1)
++	}
++	for i := 0; i < len(other.words); i++ {
++		b.words[i] ^= other.words[i]
++	}
+ 	b.recount()
+ }
+ 
+@@ -93,8 +113,12 @@ func (b *Bitmap) AndNot(other *Bitmap) {
+ 	other.mu.RLock()
+ 	defer other.mu.RUnlock()
+ 	minLen := len(b.words)
+-	if len(other.words) < minLen { minLen = len(other.words) }
+-	for i := 0; i < minLen; i++ { b.words[i] &^= other.words[i] }
++	if len(other.words) < minLen {
++		minLen = len(other.words)
++	}
++	for i := 0; i < minLen; i++ {
++		b.words[i] &^= other.words[i]
++	}
+ 	b.recount()
+ }
+ 
+@@ -107,7 +131,10 @@ func (b *Bitmap) Bits() []uint {
+ 		for w != 0 {
+ 			bit := uint(0)
+ 			tmp := w
+-			for tmp&1 == 0 { bit++; tmp >>= 1 }
++			for tmp&1 == 0 {
++				bit++
++				tmp >>= 1
++			}
+ 			result = append(result, uint(i)*64+bit)
+ 			w &= w - 1
+ 		}
+@@ -128,7 +155,9 @@ func (b *Bitmap) Clone() *Bitmap {
+ func (b *Bitmap) Reset() {
+ 	b.mu.Lock()
+ 	defer b.mu.Unlock()
+-	for i := range b.words { b.words[i] = 0 }
++	for i := range b.words {
++		b.words[i] = 0
++	}
+ 	b.count = 0
+ }
+ 
+@@ -148,6 +177,9 @@ func (b *Bitmap) grow(wordIdx uint) {
+ func (b *Bitmap) recount() {
+ 	b.count = 0
+ 	for _, w := range b.words {
+-		for w != 0 { b.count++; w &= w - 1 }
++		for w != 0 {
++			b.count++
++			w &= w - 1
++		}
+ 	}
+ }
+diff --git a/base/pkg/bitmap/bitmap_test.go b/repo/pkg/bitmap/bitmap_test.go
+index ab0308c..8b7e078 100644
+--- a/base/pkg/bitmap/bitmap_test.go
++++ b/repo/pkg/bitmap/bitmap_test.go
+@@ -4,90 +4,153 @@ import "testing"
+ 
+ func TestBitmap_SetTest(t *testing.T) {
+ 	b := New()
+-	b.Set(10); b.Set(100); b.Set(1000)
+-	if !b.Test(10) || !b.Test(100) || !b.Test(1000) { t.Fatal("should be set") }
+-	if b.Test(11) { t.Fatal("should not be set") }
++	b.Set(10)
++	b.Set(100)
++	b.Set(1000)
++	if !b.Test(10) || !b.Test(100) || !b.Test(1000) {
++		t.Fatal("should be set")
++	}
++	if b.Test(11) {
++		t.Fatal("should not be set")
++	}
+ }
+ 
+ func TestBitmap_Clear(t *testing.T) {
+ 	b := New()
+-	b.Set(5); b.Clear(5)
+-	if b.Test(5) { t.Fatal("should be cleared") }
+-	if b.Count() != 0 { t.Fatal("should be empty") }
++	b.Set(5)
++	b.Clear(5)
++	if b.Test(5) {
++		t.Fatal("should be cleared")
++	}
++	if b.Count() != 0 {
++		t.Fatal("should be empty")
++	}
+ }
+ 
+ func TestBitmap_Count(t *testing.T) {
+ 	b := New()
+-	for i := uint(0); i < 100; i++ { b.Set(i) }
+-	if b.Count() != 100 { t.Fatalf("expected 100, got %d", b.Count()) }
++	for i := uint(0); i < 100; i++ {
++		b.Set(i)
++	}
++	if b.Count() != 100 {
++		t.Fatalf("expected 100, got %d", b.Count())
++	}
+ }
+ 
+ func TestBitmap_And(t *testing.T) {
+-	a := New(); b := New()
+-	a.Set(1); a.Set(2); a.Set(3)
+-	b.Set(2); b.Set(3); b.Set(4)
++	a := New()
++	b := New()
++	a.Set(1)
++	a.Set(2)
++	a.Set(3)
++	b.Set(2)
++	b.Set(3)
++	b.Set(4)
+ 	a.And(b)
+-	if a.Count() != 2 { t.Fatalf("expected 2, got %d", a.Count()) }
+-	if !a.Test(2) || !a.Test(3) { t.Fatal("wrong bits") }
++	if a.Count() != 2 {
++		t.Fatalf("expected 2, got %d", a.Count())
++	}
++	if !a.Test(2) || !a.Test(3) {
++		t.Fatal("wrong bits")
++	}
+ }
+ 
+ func TestBitmap_Or(t *testing.T) {
+-	a := New(); b := New()
+-	a.Set(1); a.Set(2)
+-	b.Set(3); b.Set(4)
++	a := New()
++	b := New()
++	a.Set(1)
++	a.Set(2)
++	b.Set(3)
++	b.Set(4)
+ 	a.Or(b)
+-	if a.Count() != 4 { t.Fatalf("expected 4, got %d", a.Count()) }
++	if a.Count() != 4 {
++		t.Fatalf("expected 4, got %d", a.Count())
++	}
+ }
+ 
+ func TestBitmap_Xor(t *testing.T) {
+-	a := New(); b := New()
+-	a.Set(1); a.Set(2)
+-	b.Set(2); b.Set(3)
++	a := New()
++	b := New()
++	a.Set(1)
++	a.Set(2)
++	b.Set(2)
++	b.Set(3)
+ 	a.Xor(b)
+-	if !a.Test(1) || !a.Test(3) { t.Fatal("XOR wrong") }
+-	if a.Test(2) { t.Fatal("2 should be cleared by XOR") }
++	if !a.Test(1) || !a.Test(3) {
++		t.Fatal("XOR wrong")
++	}
++	if a.Test(2) {
++		t.Fatal("2 should be cleared by XOR")
++	}
+ }
+ 
+ func TestBitmap_AndNot(t *testing.T) {
+-	a := New(); b := New()
+-	a.Set(1); a.Set(2); a.Set(3)
+-	b.Set(2); b.Set(3)
++	a := New()
++	b := New()
++	a.Set(1)
++	a.Set(2)
++	a.Set(3)
++	b.Set(2)
++	b.Set(3)
+ 	a.AndNot(b)
+-	if a.Count() != 1 || !a.Test(1) { t.Fatal("wrong") }
++	if a.Count() != 1 || !a.Test(1) {
++		t.Fatal("wrong")
++	}
+ }
+ 
+ func TestBitmap_Bits(t *testing.T) {
+ 	b := New()
+-	b.Set(0); b.Set(5); b.Set(63); b.Set(64)
++	b.Set(0)
++	b.Set(5)
++	b.Set(63)
++	b.Set(64)
+ 	bits := b.Bits()
+-	if len(bits) != 4 { t.Fatalf("expected 4, got %d", len(bits)) }
++	if len(bits) != 4 {
++		t.Fatalf("expected 4, got %d", len(bits))
++	}
+ }
+ 
+ func TestBitmap_Clone(t *testing.T) {
+ 	a := New()
+ 	a.Set(42)
+ 	b := a.Clone()
+-	if !b.Test(42) { t.Fatal("clone should have bit") }
++	if !b.Test(42) {
++		t.Fatal("clone should have bit")
++	}
+ 	a.Clear(42)
+-	if !b.Test(42) { t.Fatal("clone should be independent") }
++	if !b.Test(42) {
++		t.Fatal("clone should be independent")
++	}
+ }
+ 
+ func TestBitmap_Reset(t *testing.T) {
+ 	b := New()
+-	b.Set(1); b.Set(2); b.Reset()
+-	if b.Count() != 0 { t.Fatal("should be empty") }
++	b.Set(1)
++	b.Set(2)
++	b.Reset()
++	if b.Count() != 0 {
++		t.Fatal("should be empty")
++	}
+ }
+ 
+ func TestBitmap_IsEmpty(t *testing.T) {
+ 	b := New()
+-	if !b.IsEmpty() { t.Fatal("new bitmap should be empty") }
++	if !b.IsEmpty() {
++		t.Fatal("new bitmap should be empty")
++	}
+ 	b.Set(1)
+-	if b.IsEmpty() { t.Fatal("should not be empty") }
++	if b.IsEmpty() {
++		t.Fatal("should not be empty")
++	}
+ }
+ 
+ func TestBitmap_Large(t *testing.T) {
+ 	b := New()
+ 	b.Set(10000)
+-	if !b.Test(10000) { t.Fatal("should handle large positions") }
+-	if b.Count() != 1 { t.Fatal("count should be 1") }
++	if !b.Test(10000) {
++		t.Fatal("should handle large positions")
++	}
++	if b.Count() != 1 {
++		t.Fatal("count should be 1")
++	}
+ }
+diff --git a/base/pkg/bloom/bloom_test.go b/repo/pkg/bloom/bloom_test.go
+index bc8a666..8cd63b0 100644
+--- a/base/pkg/bloom/bloom_test.go
++++ b/repo/pkg/bloom/bloom_test.go
+@@ -307,4 +307,4 @@ func TestCountingFilter_FNV_AddRemove(t *testing.T) {
+ 			t.Fatalf("should still contain cfnv-%d", i)
+ 		}
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/bloom/filter.go b/repo/pkg/bloom/filter.go
+index f6f0a62..0beb0c3 100644
+--- a/base/pkg/bloom/filter.go
++++ b/repo/pkg/bloom/filter.go
+@@ -313,8 +313,8 @@ type ScalableFilter struct {
+ 	mu       sync.RWMutex
+ 	filters  []*Filter
+ 	fpRate   float64
+-	growth   uint    // multiplier for each new slice's size
+-	maxSlice uint    // capacity per slice
++	growth   uint // multiplier for each new slice's size
++	maxSlice uint // capacity per slice
+ 	count    uint
+ }
+ 
+@@ -375,4 +375,4 @@ func (sf *ScalableFilter) SliceCount() int {
+ 	sf.mu.RLock()
+ 	defer sf.mu.RUnlock()
+ 	return len(sf.filters)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/circuit/breaker.go b/repo/pkg/circuit/breaker.go
+index 5e796c5..b8abadc 100644
+--- a/base/pkg/circuit/breaker.go
++++ b/repo/pkg/circuit/breaker.go
+@@ -7,35 +7,39 @@ import (
+ )
+ 
+ var (
+-	ErrOpen     = errors.New("circuit: breaker is open")
+-	ErrTooMany  = errors.New("circuit: too many requests in half-open")
++	ErrOpen    = errors.New("circuit: breaker is open")
++	ErrTooMany = errors.New("circuit: too many requests in half-open")
+ )
+ 
+ // State represents the circuit breaker state.
+ type State int
+ 
+ const (
+-	StateClosed   State = iota
++	StateClosed State = iota
+ 	StateOpen
+ 	StateHalfOpen
+ )
+ 
+ func (s State) String() string {
+ 	switch s {
+-	case StateClosed: return "closed"
+-	case StateOpen: return "open"
+-	case StateHalfOpen: return "half-open"
+-	default: return "unknown"
++	case StateClosed:
++		return "closed"
++	case StateOpen:
++		return "open"
++	case StateHalfOpen:
++		return "half-open"
++	default:
++		return "unknown"
+ 	}
+ }
+ 
+ // Counts tracks successes and failures.
+ type Counts struct {
+-	Requests          uint64
+-	Successes         uint64
+-	Failures          uint64
+-	ConsecutiveFails  uint64
+-	ConsecutiveOK     uint64
++	Requests         uint64
++	Successes        uint64
++	Failures         uint64
++	ConsecutiveFails uint64
++	ConsecutiveOK    uint64
+ }
+ 
+ // Breaker implements the circuit breaker pattern.
+@@ -89,7 +93,9 @@ func NewBreaker(opts ...Option) *Breaker {
+ 		timeout:          10 * time.Second,
+ 		halfOpenMax:      1,
+ 	}
+-	for _, o := range opts { o(b) }
++	for _, o := range opts {
++		o(b)
++	}
+ 	return b
+ }
+ 
+@@ -196,7 +202,9 @@ func (b *Breaker) onFailure() {
+ }
+ 
+ func (b *Breaker) transition(to State) {
+-	if b.state == to { return }
++	if b.state == to {
++		return
++	}
+ 	from := b.state
+ 	b.state = to
+ 	if b.onStateChange != nil {
+diff --git a/base/pkg/circuit/breaker_test.go b/repo/pkg/circuit/breaker_test.go
+index c1cf9f4..ff9725e 100644
+--- a/base/pkg/circuit/breaker_test.go
++++ b/repo/pkg/circuit/breaker_test.go
+@@ -84,22 +84,34 @@ func TestBreaker_Counts(t *testing.T) {
+ }
+ 
+ func TestBreaker_StateString(t *testing.T) {
+-	if StateClosed.String() != "closed" { t.Fatal("wrong") }
+-	if StateOpen.String() != "open" { t.Fatal("wrong") }
+-	if StateHalfOpen.String() != "half-open" { t.Fatal("wrong") }
++	if StateClosed.String() != "closed" {
++		t.Fatal("wrong")
++	}
++	if StateOpen.String() != "open" {
++		t.Fatal("wrong")
++	}
++	if StateHalfOpen.String() != "half-open" {
++		t.Fatal("wrong")
++	}
+ }
+ 
+ func TestBreaker_OnStateChange(t *testing.T) {
+ 	transitions := 0
+ 	b := NewBreaker(WithFailThreshold(1), WithOnStateChange(func(from, to State) { transitions++ }))
+ 	b.Execute(func() error { return errFail })
+-	if transitions != 1 { t.Fatalf("expected 1 transition, got %d", transitions) }
++	if transitions != 1 {
++		t.Fatalf("expected 1 transition, got %d", transitions)
++	}
+ }
+ 
+ func TestBreaker_SuccessInClosed(t *testing.T) {
+ 	b := NewBreaker()
+ 	err := b.Execute(func() error { return nil })
+-	if err != nil { t.Fatal("should succeed") }
++	if err != nil {
++		t.Fatal("should succeed")
++	}
+ 	c := b.CurrentCounts()
+-	if c.ConsecutiveOK != 1 { t.Fatal("should track consecutive ok") }
++	if c.ConsecutiveOK != 1 {
++		t.Fatal("should track consecutive ok")
++	}
+ }
+diff --git a/base/pkg/clock/clock_test.go b/repo/pkg/clock/clock_test.go
+index 30551f2..0b83111 100644
+--- a/base/pkg/clock/clock_test.go
++++ b/repo/pkg/clock/clock_test.go
+@@ -571,4 +571,4 @@ func TestVectorTimestamp_MergeAssociative(t *testing.T) {
+ 	if ab.Compare(abc) != Equal {
+ 		t.Fatal("merge should be associative")
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/clock/errors.go b/repo/pkg/clock/errors.go
+index 33400c2..f4b43ef 100644
+--- a/base/pkg/clock/errors.go
++++ b/repo/pkg/clock/errors.go
+@@ -2,4 +2,4 @@ package clock
+ 
+ import "errors"
+ 
+-var errShortData = errors.New("clock: data too short for deserialization")
+\ No newline at end of file
++var errShortData = errors.New("clock: data too short for deserialization")
+diff --git a/base/pkg/clock/hlc.go b/repo/pkg/clock/hlc.go
+index ddd34d5..b1ead75 100644
+--- a/base/pkg/clock/hlc.go
++++ b/repo/pkg/clock/hlc.go
+@@ -205,4 +205,4 @@ func maxUint32(a, b uint32) uint32 {
+ 		return a
+ 	}
+ 	return b
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/clock/types.go b/repo/pkg/clock/types.go
+index a24c64f..04bd785 100644
+--- a/base/pkg/clock/types.go
++++ b/repo/pkg/clock/types.go
+@@ -29,4 +29,4 @@ type Timestamp interface {
+ }
+ 
+ // NodeID is a type alias for clarity.
+-type NodeID = string
+\ No newline at end of file
++type NodeID = string
+diff --git a/base/pkg/clock/vector.go b/repo/pkg/clock/vector.go
+index 8d924c3..5103e3f 100644
+--- a/base/pkg/clock/vector.go
++++ b/repo/pkg/clock/vector.go
+@@ -199,4 +199,4 @@ func (vc *VectorClock) Snapshot() *VectorTimestamp {
+ 	vc.mu.RLock()
+ 	defer vc.mu.RUnlock()
+ 	return vc.current.Clone()
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/counter.go b/repo/pkg/crdt/counter.go
+index f6e3b55..5f59051 100644
+--- a/base/pkg/crdt/counter.go
++++ b/repo/pkg/crdt/counter.go
+@@ -5,10 +5,10 @@ import "sync"
+ // GCounter is a grow-only counter. Each node maintains its own count;
+ // the value is the sum of all nodes. Merge takes element-wise max.
+ type GCounter struct {
+-	mu      sync.RWMutex
+-	nodeID  string
+-	counts  map[string]uint64
+-	cached  uint64
++	mu     sync.RWMutex
++	nodeID string
++	counts map[string]uint64
++	cached uint64
+ }
+ 
+ // NewGCounter creates a G-Counter owned by nodeID.
+@@ -156,4 +156,4 @@ func (p *PNCounter) NegState() map[string]uint64 {
+ 		m[k] = v
+ 	}
+ 	return m
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/crdt_test.go b/repo/pkg/crdt/crdt_test.go
+index b1d9d84..fa1a93d 100644
+--- a/base/pkg/crdt/crdt_test.go
++++ b/repo/pkg/crdt/crdt_test.go
+@@ -667,24 +667,31 @@ func TestMVRegister_InPlaceFilter_Concurrent(t *testing.T) {
+ 		t.Fatalf("expected 2 concurrent entries, got %d", len(entries))
+ 	}
+ }
++
+ // --- EWFlag tests ---
+ 
+ func TestEWFlag_InitDisabled(t *testing.T) {
+ 	f := NewEWFlag()
+-	if f.Value() { t.Fatal("should start disabled") }
++	if f.Value() {
++		t.Fatal("should start disabled")
++	}
+ }
+ 
+ func TestEWFlag_Enable(t *testing.T) {
+ 	f := NewEWFlag()
+ 	f.Enable("n1")
+-	if !f.Value() { t.Fatal("should be enabled") }
++	if !f.Value() {
++		t.Fatal("should be enabled")
++	}
+ }
+ 
+ func TestEWFlag_Disable(t *testing.T) {
+ 	f := NewEWFlag()
+ 	f.Enable("n1")
+ 	f.Disable()
+-	if f.Value() { t.Fatal("should be disabled") }
++	if f.Value() {
++		t.Fatal("should be disabled")
++	}
+ }
+ 
+ func TestEWFlag_EnableWins(t *testing.T) {
+@@ -693,7 +700,9 @@ func TestEWFlag_EnableWins(t *testing.T) {
+ 	a.Enable("n1")
+ 	b.Disable()
+ 	a.Merge(b)
+-	if !a.Value() { t.Fatal("enable should win over concurrent disable") }
++	if !a.Value() {
++		t.Fatal("enable should win over concurrent disable")
++	}
+ }
+ 
+ func TestEWFlag_MergeConverges(t *testing.T) {
+@@ -703,12 +712,16 @@ func TestEWFlag_MergeConverges(t *testing.T) {
+ 	b.Enable("n2")
+ 	a.Merge(b)
+ 	b.Merge(a)
+-	if a.Value() != b.Value() { t.Fatal("should converge") }
++	if a.Value() != b.Value() {
++		t.Fatal("should converge")
++	}
+ }
+ 
+ func TestEWFlag_DotCount(t *testing.T) {
+ 	f := NewEWFlag()
+ 	f.Enable("n1")
+ 	f.Enable("n2")
+-	if f.DotCount() != 2 { t.Fatalf("expected 2 dots, got %d", f.DotCount()) }
++	if f.DotCount() != 2 {
++		t.Fatalf("expected 2 dots, got %d", f.DotCount())
++	}
+ }
+diff --git a/base/pkg/crdt/ormap.go b/repo/pkg/crdt/ormap.go
+index 88368cc..4c3e811 100644
+--- a/base/pkg/crdt/ormap.go
++++ b/repo/pkg/crdt/ormap.go
+@@ -6,9 +6,9 @@ import "sync"
+ // Keys can be added and removed; add-wins semantics apply.
+ // Each key's value is resolved by last-writer-wins.
+ type ORMap struct {
+-	mu       sync.RWMutex
+-	keys     *ORSet
+-	values   map[string]*LWWRegister
++	mu     sync.RWMutex
++	keys   *ORSet
++	values map[string]*LWWRegister
+ }
+ 
+ // NewORMap creates an empty OR-Map.
+@@ -114,4 +114,4 @@ func (m *ORMap) Merge(other *ORMap) {
+ 		}
+ 		m.values[key].Merge(otherReg)
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/register.go b/repo/pkg/crdt/register.go
+index f96ebb0..7a30da9 100644
+--- a/base/pkg/crdt/register.go
++++ b/repo/pkg/crdt/register.go
+@@ -144,4 +144,4 @@ func (mv *MVRegister) Len() int {
+ 	mv.mu.RLock()
+ 	defer mv.mu.RUnlock()
+ 	return len(mv.entries)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/set.go b/repo/pkg/crdt/set.go
+index 3b912b8..25bde89 100644
+--- a/base/pkg/crdt/set.go
++++ b/repo/pkg/crdt/set.go
+@@ -171,4 +171,4 @@ func (s *ORSet) Tags(elem string) []ORTag {
+ 		result = append(result, t)
+ 	}
+ 	return result
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/dag/dag.go b/repo/pkg/dag/dag.go
+index fd8ee19..081949f 100644
+--- a/base/pkg/dag/dag.go
++++ b/repo/pkg/dag/dag.go
+@@ -7,16 +7,16 @@ import (
+ )
+ 
+ var (
+-	ErrCycle    = errors.New("dag: cycle detected")
++	ErrCycle   = errors.New("dag: cycle detected")
+ 	ErrMissing = errors.New("dag: node not found")
+ )
+ 
+ // DAG is a directed acyclic graph for dependency tracking and causal ordering.
+ type DAG struct {
+-	mu       sync.RWMutex
+-	nodes    map[string]interface{}
+-	edges    map[string]map[string]bool
+-	inEdges  map[string]map[string]bool
++	mu      sync.RWMutex
++	nodes   map[string]interface{}
++	edges   map[string]map[string]bool
++	inEdges map[string]map[string]bool
+ }
+ 
+ // New creates an empty DAG.
+@@ -29,17 +29,27 @@ func (d *DAG) AddNode(id string, data interface{}) {
+ 	d.mu.Lock()
+ 	defer d.mu.Unlock()
+ 	d.nodes[id] = data
+-	if d.edges[id] == nil { d.edges[id] = make(map[string]bool) }
+-	if d.inEdges[id] == nil { d.inEdges[id] = make(map[string]bool) }
++	if d.edges[id] == nil {
++		d.edges[id] = make(map[string]bool)
++	}
++	if d.inEdges[id] == nil {
++		d.inEdges[id] = make(map[string]bool)
++	}
+ }
+ 
+ // AddEdge adds a directed edge from → to.
+ func (d *DAG) AddEdge(from, to string) error {
+ 	d.mu.Lock()
+ 	defer d.mu.Unlock()
+-	if _, ok := d.nodes[from]; !ok { return ErrMissing }
+-	if _, ok := d.nodes[to]; !ok { return ErrMissing }
+-	if d.wouldCycle(from, to) { return ErrCycle }
++	if _, ok := d.nodes[from]; !ok {
++		return ErrMissing
++	}
++	if _, ok := d.nodes[to]; !ok {
++		return ErrMissing
++	}
++	if d.wouldCycle(from, to) {
++		return ErrCycle
++	}
+ 	d.edges[from][to] = true
+ 	d.inEdges[to][from] = true
+ 	return nil
+@@ -49,9 +59,15 @@ func (d *DAG) AddEdge(from, to string) error {
+ func (d *DAG) RemoveNode(id string) {
+ 	d.mu.Lock()
+ 	defer d.mu.Unlock()
+-	for to := range d.edges[id] { delete(d.inEdges[to], id) }
+-	for from := range d.inEdges[id] { delete(d.edges[from], id) }
+-	delete(d.nodes, id); delete(d.edges, id); delete(d.inEdges, id)
++	for to := range d.edges[id] {
++		delete(d.inEdges[to], id)
++	}
++	for from := range d.inEdges[id] {
++		delete(d.edges[from], id)
++	}
++	delete(d.nodes, id)
++	delete(d.edges, id)
++	delete(d.inEdges, id)
+ }
+ 
+ // RemoveEdge removes a directed edge.
+@@ -64,13 +80,16 @@ func (d *DAG) RemoveEdge(from, to string) {
+ 
+ // HasNode checks if a node exists.
+ func (d *DAG) HasNode(id string) bool {
+-	d.mu.RLock(); defer d.mu.RUnlock()
+-	_, ok := d.nodes[id]; return ok
++	d.mu.RLock()
++	defer d.mu.RUnlock()
++	_, ok := d.nodes[id]
++	return ok
+ }
+ 
+ // HasEdge checks if an edge exists.
+ func (d *DAG) HasEdge(from, to string) bool {
+-	d.mu.RLock(); defer d.mu.RUnlock()
++	d.mu.RLock()
++	defer d.mu.RUnlock()
+ 	return d.edges[from][to]
+ }
+ 
+@@ -79,117 +98,171 @@ func (d *DAG) NodeCount() int { d.mu.RLock(); defer d.mu.RUnlock(); return len(d
+ 
+ // EdgeCount returns the number of edges.
+ func (d *DAG) EdgeCount() int {
+-	d.mu.RLock(); defer d.mu.RUnlock()
++	d.mu.RLock()
++	defer d.mu.RUnlock()
+ 	count := 0
+-	for _, m := range d.edges { count += len(m) }
++	for _, m := range d.edges {
++		count += len(m)
++	}
+ 	return count
+ }
+ 
+ // Successors returns direct successors of a node.
+ func (d *DAG) Successors(id string) []string {
+-	d.mu.RLock(); defer d.mu.RUnlock()
++	d.mu.RLock()
++	defer d.mu.RUnlock()
+ 	var result []string
+-	for to := range d.edges[id] { result = append(result, to) }
+-	sort.Strings(result); return result
++	for to := range d.edges[id] {
++		result = append(result, to)
++	}
++	sort.Strings(result)
++	return result
+ }
+ 
+ // Predecessors returns direct predecessors of a node.
+ func (d *DAG) Predecessors(id string) []string {
+-	d.mu.RLock(); defer d.mu.RUnlock()
++	d.mu.RLock()
++	defer d.mu.RUnlock()
+ 	var result []string
+-	for from := range d.inEdges[id] { result = append(result, from) }
+-	sort.Strings(result); return result
++	for from := range d.inEdges[id] {
++		result = append(result, from)
++	}
++	sort.Strings(result)
++	return result
+ }
+ 
+ // Roots returns all nodes with no incoming edges.
+ func (d *DAG) Roots() []string {
+-	d.mu.RLock(); defer d.mu.RUnlock()
++	d.mu.RLock()
++	defer d.mu.RUnlock()
+ 	var roots []string
+ 	for id := range d.nodes {
+-		if len(d.inEdges[id]) == 0 { roots = append(roots, id) }
++		if len(d.inEdges[id]) == 0 {
++			roots = append(roots, id)
++		}
+ 	}
+-	sort.Strings(roots); return roots
++	sort.Strings(roots)
++	return roots
+ }
+ 
+ // Leaves returns all nodes with no outgoing edges.
+ func (d *DAG) Leaves() []string {
+-	d.mu.RLock(); defer d.mu.RUnlock()
++	d.mu.RLock()
++	defer d.mu.RUnlock()
+ 	var leaves []string
+ 	for id := range d.nodes {
+-		if len(d.edges[id]) == 0 { leaves = append(leaves, id) }
++		if len(d.edges[id]) == 0 {
++			leaves = append(leaves, id)
++		}
+ 	}
+-	sort.Strings(leaves); return leaves
++	sort.Strings(leaves)
++	return leaves
+ }
+ 
+ // TopologicalSort returns nodes in dependency order.
+ func (d *DAG) TopologicalSort() ([]string, error) {
+-	d.mu.RLock(); defer d.mu.RUnlock()
++	d.mu.RLock()
++	defer d.mu.RUnlock()
+ 	inDeg := make(map[string]int)
+-	for id := range d.nodes { inDeg[id] = len(d.inEdges[id]) }
++	for id := range d.nodes {
++		inDeg[id] = len(d.inEdges[id])
++	}
+ 	var queue []string
+ 	for id, deg := range inDeg {
+-		if deg == 0 { queue = append(queue, id) }
++		if deg == 0 {
++			queue = append(queue, id)
++		}
+ 	}
+ 	sort.Strings(queue)
+ 	var result []string
+ 	for len(queue) > 0 {
+-		node := queue[0]; queue = queue[1:]
++		node := queue[0]
++		queue = queue[1:]
+ 		result = append(result, node)
+ 		for to := range d.edges[node] {
+ 			inDeg[to]--
+-			if inDeg[to] == 0 { queue = append(queue, to); sort.Strings(queue) }
++			if inDeg[to] == 0 {
++				queue = append(queue, to)
++				sort.Strings(queue)
++			}
+ 		}
+ 	}
+-	if len(result) != len(d.nodes) { return nil, ErrCycle }
++	if len(result) != len(d.nodes) {
++		return nil, ErrCycle
++	}
+ 	return result, nil
+ }
+ 
+ // Ancestors returns all transitive predecessors of a node.
+ func (d *DAG) Ancestors(id string) []string {
+-	d.mu.RLock(); defer d.mu.RUnlock()
++	d.mu.RLock()
++	defer d.mu.RUnlock()
+ 	visited := make(map[string]bool)
+ 	d.walkBack(id, visited)
+ 	delete(visited, id)
+ 	var result []string
+-	for v := range visited { result = append(result, v) }
+-	sort.Strings(result); return result
++	for v := range visited {
++		result = append(result, v)
++	}
++	sort.Strings(result)
++	return result
+ }
+ 
+ // Descendants returns all transitive successors of a node.
+ func (d *DAG) Descendants(id string) []string {
+-	d.mu.RLock(); defer d.mu.RUnlock()
++	d.mu.RLock()
++	defer d.mu.RUnlock()
+ 	visited := make(map[string]bool)
+ 	d.walkForward(id, visited)
+ 	delete(visited, id)
+ 	var result []string
+-	for v := range visited { result = append(result, v) }
+-	sort.Strings(result); return result
++	for v := range visited {
++		result = append(result, v)
++	}
++	sort.Strings(result)
++	return result
+ }
+ 
+ func (d *DAG) walkBack(id string, visited map[string]bool) {
+-	if visited[id] { return }
++	if visited[id] {
++		return
++	}
+ 	visited[id] = true
+-	for from := range d.inEdges[id] { d.walkBack(from, visited) }
++	for from := range d.inEdges[id] {
++		d.walkBack(from, visited)
++	}
+ }
+ 
+ func (d *DAG) walkForward(id string, visited map[string]bool) {
+-	if visited[id] { return }
++	if visited[id] {
++		return
++	}
+ 	visited[id] = true
+-	for to := range d.edges[id] { d.walkForward(to, visited) }
++	for to := range d.edges[id] {
++		d.walkForward(to, visited)
++	}
+ }
+ 
+ func (d *DAG) wouldCycle(from, to string) bool {
+-	if from == to { return true }
++	if from == to {
++		return true
++	}
+ 	visited := make(map[string]bool)
+ 	return d.reachable(to, from, visited)
+ }
+ 
+ func (d *DAG) reachable(start, target string, visited map[string]bool) bool {
+-	if start == target { return true }
+-	if visited[start] { return false }
++	if start == target {
++		return true
++	}
++	if visited[start] {
++		return false
++	}
+ 	visited[start] = true
+ 	for next := range d.edges[start] {
+-		if d.reachable(next, target, visited) { return true }
++		if d.reachable(next, target, visited) {
++			return true
++		}
+ 	}
+ 	return false
+ }
+diff --git a/base/pkg/dag/dag_test.go b/repo/pkg/dag/dag_test.go
+index 500b85d..a87ba08 100644
+--- a/base/pkg/dag/dag_test.go
++++ b/repo/pkg/dag/dag_test.go
+@@ -5,38 +5,59 @@ import "testing"
+ func TestDAG_AddNode(t *testing.T) {
+ 	d := New()
+ 	d.AddNode("a", nil)
+-	if !d.HasNode("a") { t.Fatal("should have a") }
+-	if d.NodeCount() != 1 { t.Fatal("wrong count") }
++	if !d.HasNode("a") {
++		t.Fatal("should have a")
++	}
++	if d.NodeCount() != 1 {
++		t.Fatal("wrong count")
++	}
+ }
+ 
+ func TestDAG_AddEdge(t *testing.T) {
+ 	d := New()
+-	d.AddNode("a", nil); d.AddNode("b", nil)
+-	if err := d.AddEdge("a", "b"); err != nil { t.Fatal(err) }
+-	if !d.HasEdge("a", "b") { t.Fatal("should have edge") }
++	d.AddNode("a", nil)
++	d.AddNode("b", nil)
++	if err := d.AddEdge("a", "b"); err != nil {
++		t.Fatal(err)
++	}
++	if !d.HasEdge("a", "b") {
++		t.Fatal("should have edge")
++	}
+ }
+ 
+ func TestDAG_CycleDetection(t *testing.T) {
+ 	d := New()
+-	d.AddNode("a", nil); d.AddNode("b", nil); d.AddNode("c", nil)
+-	d.AddEdge("a", "b"); d.AddEdge("b", "c")
++	d.AddNode("a", nil)
++	d.AddNode("b", nil)
++	d.AddNode("c", nil)
++	d.AddEdge("a", "b")
++	d.AddEdge("b", "c")
+ 	err := d.AddEdge("c", "a")
+-	if err != ErrCycle { t.Fatal("should detect cycle") }
++	if err != ErrCycle {
++		t.Fatal("should detect cycle")
++	}
+ }
+ 
+ func TestDAG_SelfLoop(t *testing.T) {
+ 	d := New()
+ 	d.AddNode("a", nil)
+ 	err := d.AddEdge("a", "a")
+-	if err != ErrCycle { t.Fatal("self-loop is a cycle") }
++	if err != ErrCycle {
++		t.Fatal("self-loop is a cycle")
++	}
+ }
+ 
+ func TestDAG_TopologicalSort(t *testing.T) {
+ 	d := New()
+-	d.AddNode("a", nil); d.AddNode("b", nil); d.AddNode("c", nil)
+-	d.AddEdge("a", "b"); d.AddEdge("b", "c")
++	d.AddNode("a", nil)
++	d.AddNode("b", nil)
++	d.AddNode("c", nil)
++	d.AddEdge("a", "b")
++	d.AddEdge("b", "c")
+ 	order, err := d.TopologicalSort()
+-	if err != nil { t.Fatal(err) }
++	if err != nil {
++		t.Fatal(err)
++	}
+ 	if order[0] != "a" || order[1] != "b" || order[2] != "c" {
+ 		t.Fatalf("wrong order: %v", order)
+ 	}
+@@ -44,64 +65,99 @@ func TestDAG_TopologicalSort(t *testing.T) {
+ 
+ func TestDAG_Roots(t *testing.T) {
+ 	d := New()
+-	d.AddNode("a", nil); d.AddNode("b", nil); d.AddNode("c", nil)
+-	d.AddEdge("a", "c"); d.AddEdge("b", "c")
++	d.AddNode("a", nil)
++	d.AddNode("b", nil)
++	d.AddNode("c", nil)
++	d.AddEdge("a", "c")
++	d.AddEdge("b", "c")
+ 	roots := d.Roots()
+-	if len(roots) != 2 { t.Fatalf("expected 2 roots, got %v", roots) }
++	if len(roots) != 2 {
++		t.Fatalf("expected 2 roots, got %v", roots)
++	}
+ }
+ 
+ func TestDAG_Leaves(t *testing.T) {
+ 	d := New()
+-	d.AddNode("a", nil); d.AddNode("b", nil)
++	d.AddNode("a", nil)
++	d.AddNode("b", nil)
+ 	d.AddEdge("a", "b")
+ 	leaves := d.Leaves()
+-	if len(leaves) != 1 || leaves[0] != "b" { t.Fatal("b should be leaf") }
++	if len(leaves) != 1 || leaves[0] != "b" {
++		t.Fatal("b should be leaf")
++	}
+ }
+ 
+ func TestDAG_Ancestors(t *testing.T) {
+ 	d := New()
+-	d.AddNode("a", nil); d.AddNode("b", nil); d.AddNode("c", nil)
+-	d.AddEdge("a", "b"); d.AddEdge("b", "c")
++	d.AddNode("a", nil)
++	d.AddNode("b", nil)
++	d.AddNode("c", nil)
++	d.AddEdge("a", "b")
++	d.AddEdge("b", "c")
+ 	anc := d.Ancestors("c")
+-	if len(anc) != 2 { t.Fatalf("expected 2 ancestors, got %v", anc) }
++	if len(anc) != 2 {
++		t.Fatalf("expected 2 ancestors, got %v", anc)
++	}
+ }
+ 
+ func TestDAG_Descendants(t *testing.T) {
+ 	d := New()
+-	d.AddNode("a", nil); d.AddNode("b", nil); d.AddNode("c", nil)
+-	d.AddEdge("a", "b"); d.AddEdge("a", "c")
++	d.AddNode("a", nil)
++	d.AddNode("b", nil)
++	d.AddNode("c", nil)
++	d.AddEdge("a", "b")
++	d.AddEdge("a", "c")
+ 	desc := d.Descendants("a")
+-	if len(desc) != 2 { t.Fatalf("expected 2 descendants, got %v", desc) }
++	if len(desc) != 2 {
++		t.Fatalf("expected 2 descendants, got %v", desc)
++	}
+ }
+ 
+ func TestDAG_RemoveNode(t *testing.T) {
+ 	d := New()
+-	d.AddNode("a", nil); d.AddNode("b", nil)
++	d.AddNode("a", nil)
++	d.AddNode("b", nil)
+ 	d.AddEdge("a", "b")
+ 	d.RemoveNode("a")
+-	if d.HasNode("a") { t.Fatal("should be removed") }
+-	if d.EdgeCount() != 0 { t.Fatal("edges should be cleaned") }
++	if d.HasNode("a") {
++		t.Fatal("should be removed")
++	}
++	if d.EdgeCount() != 0 {
++		t.Fatal("edges should be cleaned")
++	}
+ }
+ 
+ func TestDAG_Successors(t *testing.T) {
+ 	d := New()
+-	d.AddNode("a", nil); d.AddNode("b", nil); d.AddNode("c", nil)
+-	d.AddEdge("a", "b"); d.AddEdge("a", "c")
++	d.AddNode("a", nil)
++	d.AddNode("b", nil)
++	d.AddNode("c", nil)
++	d.AddEdge("a", "b")
++	d.AddEdge("a", "c")
+ 	s := d.Successors("a")
+-	if len(s) != 2 { t.Fatalf("expected 2, got %v", s) }
++	if len(s) != 2 {
++		t.Fatalf("expected 2, got %v", s)
++	}
+ }
+ 
+ func TestDAG_Predecessors(t *testing.T) {
+ 	d := New()
+-	d.AddNode("a", nil); d.AddNode("b", nil); d.AddNode("c", nil)
+-	d.AddEdge("a", "c"); d.AddEdge("b", "c")
++	d.AddNode("a", nil)
++	d.AddNode("b", nil)
++	d.AddNode("c", nil)
++	d.AddEdge("a", "c")
++	d.AddEdge("b", "c")
+ 	p := d.Predecessors("c")
+-	if len(p) != 2 { t.Fatalf("expected 2, got %v", p) }
++	if len(p) != 2 {
++		t.Fatalf("expected 2, got %v", p)
++	}
+ }
+ 
+ func TestDAG_MissingNode(t *testing.T) {
+ 	d := New()
+ 	d.AddNode("a", nil)
+ 	err := d.AddEdge("a", "z")
+-	if err != ErrMissing { t.Fatal("should fail for missing") }
++	if err != ErrMissing {
++		t.Fatal("should fail for missing")
++	}
+ }
+diff --git a/base/pkg/election/election.go b/repo/pkg/election/election.go
+index d66940b..c6470cb 100644
+--- a/base/pkg/election/election.go
++++ b/repo/pkg/election/election.go
+@@ -4,17 +4,23 @@ import "sync"
+ 
+ // State represents the election state of a node.
+ type State int
++
+ const (
+-	StateFollower  State = iota
++	StateFollower State = iota
+ 	StateCandidate
+ 	StateLeader
+ )
++
+ func (s State) String() string {
+ 	switch s {
+-	case StateFollower: return "follower"
+-	case StateCandidate: return "candidate"
+-	case StateLeader: return "leader"
+-	default: return "unknown"
++	case StateFollower:
++		return "follower"
++	case StateCandidate:
++		return "candidate"
++	case StateLeader:
++		return "leader"
++	default:
++		return "unknown"
+ 	}
+ }
+ 
+@@ -60,7 +66,9 @@ func (be *BullyElection) RemovePeer(id string) {
+ func (be *BullyElection) MarkAlive(id string) {
+ 	be.mu.Lock()
+ 	defer be.mu.Unlock()
+-	if be.peers[id] { be.alive[id] = true }
++	if be.peers[id] {
++		be.alive[id] = true
++	}
+ }
+ 
+ // MarkDead marks a peer as dead.
+@@ -78,7 +86,9 @@ func (be *BullyElection) RunElection() string {
+ 	be.state = StateCandidate
+ 	highestAlive := be.selfID
+ 	for id := range be.alive {
+-		if id > highestAlive { highestAlive = id }
++		if id > highestAlive {
++			highestAlive = id
++		}
+ 	}
+ 	be.leaderID = highestAlive
+ 	if highestAlive == be.selfID {
+@@ -154,7 +164,9 @@ func (re *RingElection) SetRing(ids []string) {
+ 	defer re.mu.Unlock()
+ 	re.ring = make([]string, len(ids))
+ 	copy(re.ring, ids)
+-	for _, id := range ids { re.alive[id] = true }
++	for _, id := range ids {
++		re.alive[id] = true
++	}
+ }
+ 
+ // MarkDead marks a node as dead.
+@@ -170,7 +182,9 @@ func (re *RingElection) Elect() string {
+ 	defer re.mu.Unlock()
+ 	best := re.selfID
+ 	for _, id := range re.ring {
+-		if re.alive[id] && id > best { best = id }
++		if re.alive[id] && id > best {
++			best = id
++		}
+ 	}
+ 	re.leaderID = best
+ 	return best
+diff --git a/base/pkg/election/election_test.go b/repo/pkg/election/election_test.go
+index 9473e5e..1a69090 100644
+--- a/base/pkg/election/election_test.go
++++ b/repo/pkg/election/election_test.go
+@@ -4,16 +4,22 @@ import "testing"
+ 
+ func TestBully_HighestWins(t *testing.T) {
+ 	be := NewBullyElection("node-2")
+-	be.AddPeer("node-1"); be.AddPeer("node-3")
++	be.AddPeer("node-1")
++	be.AddPeer("node-3")
+ 	leader := be.RunElection()
+-	if leader != "node-3" { t.Fatalf("expected node-3, got %s", leader) }
++	if leader != "node-3" {
++		t.Fatalf("expected node-3, got %s", leader)
++	}
+ }
+ 
+ func TestBully_SelfIsHighest(t *testing.T) {
+ 	be := NewBullyElection("node-z")
+-	be.AddPeer("node-a"); be.AddPeer("node-b")
++	be.AddPeer("node-a")
++	be.AddPeer("node-b")
+ 	be.RunElection()
+-	if !be.IsLeader() { t.Fatal("should be leader") }
++	if !be.IsLeader() {
++		t.Fatal("should be leader")
++	}
+ }
+ 
+ func TestBully_DeadPeerSkipped(t *testing.T) {
+@@ -21,44 +27,66 @@ func TestBully_DeadPeerSkipped(t *testing.T) {
+ 	be.AddPeer("node-3")
+ 	be.MarkDead("node-3")
+ 	leader := be.RunElection()
+-	if leader != "node-2" { t.Fatalf("dead peer should be skipped, got %s", leader) }
++	if leader != "node-2" {
++		t.Fatalf("dead peer should be skipped, got %s", leader)
++	}
+ }
+ 
+ func TestBully_ReElection(t *testing.T) {
+ 	be := NewBullyElection("node-1")
+ 	be.AddPeer("node-5")
+ 	be.RunElection()
+-	if be.Leader() != "node-5" { t.Fatal("node-5 should lead") }
++	if be.Leader() != "node-5" {
++		t.Fatal("node-5 should lead")
++	}
+ 	be.MarkDead("node-5")
+ 	be.RunElection()
+-	if be.Leader() != "node-1" { t.Fatal("node-1 should lead after node-5 dies") }
++	if be.Leader() != "node-1" {
++		t.Fatal("node-1 should lead after node-5 dies")
++	}
+ }
+ 
+ func TestBully_Rounds(t *testing.T) {
+ 	be := NewBullyElection("n")
+-	be.RunElection(); be.RunElection()
+-	if be.Rounds() != 2 { t.Fatal("expected 2") }
++	be.RunElection()
++	be.RunElection()
++	if be.Rounds() != 2 {
++		t.Fatal("expected 2")
++	}
+ }
+ 
+ func TestBully_PeerCount(t *testing.T) {
+ 	be := NewBullyElection("n")
+-	be.AddPeer("a"); be.AddPeer("b")
+-	if be.PeerCount() != 2 { t.Fatal("expected 2") }
++	be.AddPeer("a")
++	be.AddPeer("b")
++	if be.PeerCount() != 2 {
++		t.Fatal("expected 2")
++	}
+ 	be.RemovePeer("a")
+-	if be.PeerCount() != 1 { t.Fatal("expected 1") }
++	if be.PeerCount() != 1 {
++		t.Fatal("expected 1")
++	}
+ }
+ 
+ func TestBully_StateString(t *testing.T) {
+-	if StateFollower.String() != "follower" { t.Fatal("wrong") }
+-	if StateLeader.String() != "leader" { t.Fatal("wrong") }
+-	if StateCandidate.String() != "candidate" { t.Fatal("wrong") }
++	if StateFollower.String() != "follower" {
++		t.Fatal("wrong")
++	}
++	if StateLeader.String() != "leader" {
++		t.Fatal("wrong")
++	}
++	if StateCandidate.String() != "candidate" {
++		t.Fatal("wrong")
++	}
+ }
+ 
+ func TestRing_Elect(t *testing.T) {
+ 	re := NewRingElection("node-2")
+ 	re.SetRing([]string{"node-1", "node-2", "node-3"})
+ 	leader := re.Elect()
+-	if leader != "node-3" { t.Fatalf("expected node-3, got %s", leader) }
++	if leader != "node-3" {
++		t.Fatalf("expected node-3, got %s", leader)
++	}
+ }
+ 
+ func TestRing_DeadSkipped(t *testing.T) {
+@@ -66,5 +94,7 @@ func TestRing_DeadSkipped(t *testing.T) {
+ 	re.SetRing([]string{"node-1", "node-2", "node-3"})
+ 	re.MarkDead("node-3")
+ 	leader := re.Elect()
+-	if leader != "node-2" { t.Fatalf("expected node-2, got %s", leader) }
++	if leader != "node-2" {
++		t.Fatalf("expected node-2, got %s", leader)
++	}
+ }
+diff --git a/base/pkg/gossip/gossip_test.go b/repo/pkg/gossip/gossip_test.go
+index e8ad90d..ce7b781 100644
+--- a/base/pkg/gossip/gossip_test.go
++++ b/repo/pkg/gossip/gossip_test.go
+@@ -468,36 +468,53 @@ func TestStateStore_HashCaching_AfterDelete(t *testing.T) {
+ 		t.Fatal("hash should change after Delete")
+ 	}
+ }
++
+ // --- Stats tests ---
+ 
+ func TestStats_RecordPushPull(t *testing.T) {
+ 	s := NewStats()
+ 	s.RecordPushPull(5, 3)
+ 	snap := s.Snapshot()
+-	if snap.Rounds != 1 { t.Fatal("expected 1 round") }
+-	if snap.EntriesPushed != 5 { t.Fatalf("expected 5 pushed, got %d", snap.EntriesPushed) }
+-	if snap.EntriesPulled != 3 { t.Fatalf("expected 3 pulled, got %d", snap.EntriesPulled) }
++	if snap.Rounds != 1 {
++		t.Fatal("expected 1 round")
++	}
++	if snap.EntriesPushed != 5 {
++		t.Fatalf("expected 5 pushed, got %d", snap.EntriesPushed)
++	}
++	if snap.EntriesPulled != 3 {
++		t.Fatalf("expected 3 pulled, got %d", snap.EntriesPulled)
++	}
+ }
+ 
+ func TestStats_Uptime(t *testing.T) {
+ 	s := NewStats()
+-	if s.Uptime() <= 0 { t.Fatal("uptime should be positive") }
++	if s.Uptime() <= 0 {
++		t.Fatal("uptime should be positive")
++	}
+ }
+ 
+ func TestHealthMonitor_Basic(t *testing.T) {
+ 	hm := NewHealthMonitor(time.Second)
+ 	hm.RecordActivity("n1")
+-	if !hm.IsHealthy("n1") { t.Fatal("should be healthy") }
+-	if hm.IsHealthy("n2") { t.Fatal("unknown should be unhealthy") }
++	if !hm.IsHealthy("n1") {
++		t.Fatal("should be healthy")
++	}
++	if hm.IsHealthy("n2") {
++		t.Fatal("unknown should be unhealthy")
++	}
+ }
+ 
+ func TestHealthMonitor_NodeCount(t *testing.T) {
+ 	hm := NewHealthMonitor(time.Second)
+ 	hm.RecordActivity("n1")
+ 	hm.RecordActivity("n2")
+-	if hm.NodeCount() != 2 { t.Fatal("expected 2") }
++	if hm.NodeCount() != 2 {
++		t.Fatal("expected 2")
++	}
+ 	hm.Remove("n1")
+-	if hm.NodeCount() != 1 { t.Fatal("expected 1") }
++	if hm.NodeCount() != 1 {
++		t.Fatal("expected 1")
++	}
+ }
+ 
+ func TestHealthMonitor_HealthyNodes(t *testing.T) {
+@@ -505,5 +522,7 @@ func TestHealthMonitor_HealthyNodes(t *testing.T) {
+ 	hm.RecordActivity("n1")
+ 	hm.RecordActivity("n2")
+ 	healthy := hm.HealthyNodes()
+-	if len(healthy) != 2 { t.Fatalf("expected 2 healthy, got %d", len(healthy)) }
++	if len(healthy) != 2 {
++		t.Fatalf("expected 2 healthy, got %d", len(healthy))
++	}
+ }
+diff --git a/base/pkg/gossip/protocol.go b/repo/pkg/gossip/protocol.go
+index eed601e..51f3519 100644
+--- a/base/pkg/gossip/protocol.go
++++ b/repo/pkg/gossip/protocol.go
+@@ -208,4 +208,4 @@ func (c *Cluster) Size() int {
+ 	c.mu.RLock()
+ 	defer c.mu.RUnlock()
+ 	return len(c.nodes)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/gossip/state.go b/repo/pkg/gossip/state.go
+index 4126c0e..548f0b0 100644
+--- a/base/pkg/gossip/state.go
++++ b/repo/pkg/gossip/state.go
+@@ -263,4 +263,4 @@ func copyBytes(b []byte) []byte {
+ 	cp := make([]byte, len(b))
+ 	copy(cp, b)
+ 	return cp
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/gossip/stats.go b/repo/pkg/gossip/stats.go
+index 62e1edf..5a2054f 100644
+--- a/base/pkg/gossip/stats.go
++++ b/repo/pkg/gossip/stats.go
+@@ -8,15 +8,15 @@ import (
+ 
+ // Stats tracks gossip protocol performance metrics.
+ type Stats struct {
+-	RoundsTotal     atomic.Int64
+-	PushTotal       atomic.Int64
+-	PullTotal       atomic.Int64
+-	EntriesPushed   atomic.Int64
+-	EntriesPulled   atomic.Int64
+-	BytesSent       atomic.Int64
+-	BytesReceived   atomic.Int64
+-	LastRoundTime   atomic.Int64
+-	startTime       time.Time
++	RoundsTotal   atomic.Int64
++	PushTotal     atomic.Int64
++	PullTotal     atomic.Int64
++	EntriesPushed atomic.Int64
++	EntriesPulled atomic.Int64
++	BytesSent     atomic.Int64
++	BytesReceived atomic.Int64
++	LastRoundTime atomic.Int64
++	startTime     time.Time
+ }
+ 
+ // NewStats creates a fresh stats tracker.
+@@ -110,7 +110,9 @@ func (hm *HealthMonitor) IsHealthy(nodeID string) bool {
+ 	hm.mu.RLock()
+ 	defer hm.mu.RUnlock()
+ 	lastSeen, ok := hm.nodeLastSeen[nodeID]
+-	if !ok { return false }
++	if !ok {
++		return false
++	}
+ 	return time.Since(lastSeen) < hm.healthyThreshold
+ }
+ 
+diff --git a/base/pkg/hash/hash_test.go b/repo/pkg/hash/hash_test.go
+index a70ef4a..acab75e 100644
+--- a/base/pkg/hash/hash_test.go
++++ b/repo/pkg/hash/hash_test.go
+@@ -368,4 +368,4 @@ func TestRing_FNV_MinimalDisruption(t *testing.T) {
+ 	if moveRate > 0.60 {
+ 		t.Fatalf("too many keys moved (%.2f) — minimal disruption violated", moveRate)
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/hash/ring.go b/repo/pkg/hash/ring.go
+index a918842..dbaa4e6 100644
+--- a/base/pkg/hash/ring.go
++++ b/repo/pkg/hash/ring.go
+@@ -11,12 +11,12 @@ import (
+ // Keys are mapped to a position on a hash ring [0, 2^32), and assigned
+ // to the first node encountered clockwise from that position.
+ type Ring struct {
+-	mu           sync.RWMutex
+-	replicas     int              // virtual nodes per physical node
+-	ring         []uint32         // sorted hash positions
+-	nodeMap      map[uint32]string // hash position → physical node ID
+-	members      map[string]bool  // physical node IDs
+-	memberCount  int
++	mu          sync.RWMutex
++	replicas    int               // virtual nodes per physical node
++	ring        []uint32          // sorted hash positions
++	nodeMap     map[uint32]string // hash position → physical node ID
++	members     map[string]bool   // physical node IDs
++	memberCount int
+ }
+ 
+ // NewRing creates a consistent hash ring with the given number of virtual nodes
+@@ -230,4 +230,4 @@ func keyHash(key string) uint32 {
+ 	h := fnv.New32a()
+ 	h.Write([]byte(key))
+ 	return h.Sum32()
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/idgen/snowflake.go b/repo/pkg/idgen/snowflake.go
+index 4a28bf3..6f777eb 100644
+--- a/base/pkg/idgen/snowflake.go
++++ b/repo/pkg/idgen/snowflake.go
+@@ -26,8 +26,12 @@ type Snowflake struct {
+ 
+ // NewSnowflake creates a generator for the given node (0 to 1023).
+ func NewSnowflake(nodeID int) *Snowflake {
+-	if nodeID < 0 { nodeID = 0 }
+-	if nodeID > maxNode { nodeID = maxNode }
++	if nodeID < 0 {
++		nodeID = 0
++	}
++	if nodeID > maxNode {
++		nodeID = maxNode
++	}
+ 	return &Snowflake{nodeID: int64(nodeID)}
+ }
+ 
+@@ -67,7 +71,9 @@ func IDToBytes(id int64) []byte {
+ 
+ // BytesToID converts big-endian bytes to an ID.
+ func BytesToID(b []byte) int64 {
+-	if len(b) < 8 { return 0 }
++	if len(b) < 8 {
++		return 0
++	}
+ 	return int64(binary.BigEndian.Uint64(b))
+ }
+ 
+diff --git a/base/pkg/idgen/snowflake_test.go b/repo/pkg/idgen/snowflake_test.go
+index 451ec05..c1db4ab 100644
+--- a/base/pkg/idgen/snowflake_test.go
++++ b/repo/pkg/idgen/snowflake_test.go
+@@ -10,7 +10,9 @@ func TestSnowflake_Unique(t *testing.T) {
+ 	seen := make(map[int64]bool)
+ 	for i := 0; i < 10000; i++ {
+ 		id := s.Generate()
+-		if seen[id] { t.Fatalf("duplicate ID: %d", id) }
++		if seen[id] {
++			t.Fatalf("duplicate ID: %d", id)
++		}
+ 		seen[id] = true
+ 	}
+ }
+@@ -20,7 +22,9 @@ func TestSnowflake_Monotonic(t *testing.T) {
+ 	prev := s.Generate()
+ 	for i := 0; i < 1000; i++ {
+ 		curr := s.Generate()
+-		if curr <= prev { t.Fatal("IDs should be monotonically increasing") }
++		if curr <= prev {
++			t.Fatal("IDs should be monotonically increasing")
++		}
+ 		prev = curr
+ 	}
+ }
+@@ -29,7 +33,9 @@ func TestSnowflake_Decompose(t *testing.T) {
+ 	s := NewSnowflake(42)
+ 	id := s.Generate()
+ 	_, nodeID, _ := Decompose(id)
+-	if nodeID != 42 { t.Fatalf("expected node 42, got %d", nodeID) }
++	if nodeID != 42 {
++		t.Fatalf("expected node 42, got %d", nodeID)
++	}
+ }
+ 
+ func TestSnowflake_Concurrent(t *testing.T) {
+@@ -40,14 +46,18 @@ func TestSnowflake_Concurrent(t *testing.T) {
+ 		wg.Add(1)
+ 		go func() {
+ 			defer wg.Done()
+-			for j := 0; j < 1000; j++ { ids <- s.Generate() }
++			for j := 0; j < 1000; j++ {
++				ids <- s.Generate()
++			}
+ 		}()
+ 	}
+ 	wg.Wait()
+ 	close(ids)
+ 	seen := make(map[int64]bool)
+ 	for id := range ids {
+-		if seen[id] { t.Fatal("concurrent duplicate") }
++		if seen[id] {
++			t.Fatal("concurrent duplicate")
++		}
+ 		seen[id] = true
+ 	}
+ }
+@@ -55,30 +65,40 @@ func TestSnowflake_Concurrent(t *testing.T) {
+ func TestSnowflake_Bytes(t *testing.T) {
+ 	id := int64(123456789)
+ 	b := IDToBytes(id)
+-	if BytesToID(b) != id { t.Fatal("roundtrip failed") }
++	if BytesToID(b) != id {
++		t.Fatal("roundtrip failed")
++	}
+ }
+ 
+ func TestSnowflake_NodeID(t *testing.T) {
+ 	s := NewSnowflake(7)
+-	if s.NodeID() != 7 { t.Fatal("wrong node") }
++	if s.NodeID() != 7 {
++		t.Fatal("wrong node")
++	}
+ }
+ 
+ func TestSnowflake_ClampNode(t *testing.T) {
+ 	s := NewSnowflake(9999)
+-	if s.NodeID() != maxNode { t.Fatal("should clamp to max") }
++	if s.NodeID() != maxNode {
++		t.Fatal("should clamp to max")
++	}
+ }
+ 
+ func TestULID_Generate(t *testing.T) {
+ 	u := NewULID()
+ 	ts, rnd := u.Generate()
+-	if ts <= 0 { t.Fatal("ts should be positive") }
++	if ts <= 0 {
++		t.Fatal("ts should be positive")
++	}
+ 	_ = rnd
+ }
+ 
+ func TestULID_String(t *testing.T) {
+ 	u := NewULID()
+ 	s := u.ULIDString()
+-	if len(s) != 26 { t.Fatalf("expected 26 chars, got %d", len(s)) }
++	if len(s) != 26 {
++		t.Fatalf("expected 26 chars, got %d", len(s))
++	}
+ }
+ 
+ func TestULID_Unique(t *testing.T) {
+@@ -86,11 +106,15 @@ func TestULID_Unique(t *testing.T) {
+ 	seen := make(map[string]bool)
+ 	for i := 0; i < 1000; i++ {
+ 		s := u.ULIDString()
+-		if seen[s] { t.Fatal("duplicate ULID") }
++		if seen[s] {
++			t.Fatal("duplicate ULID")
++		}
+ 		seen[s] = true
+ 	}
+ }
+ 
+ func TestBytesToID_Short(t *testing.T) {
+-	if BytesToID([]byte{1, 2}) != 0 { t.Fatal("should return 0 for short") }
++	if BytesToID([]byte{1, 2}) != 0 {
++		t.Fatal("should return 0 for short")
++	}
+ }
+diff --git a/base/pkg/lru/lru.go b/repo/pkg/lru/lru.go
+index 68654f0..d7895be 100644
+--- a/base/pkg/lru/lru.go
++++ b/repo/pkg/lru/lru.go
+@@ -23,7 +23,9 @@ type Cache struct {
+ 
+ // NewCache creates an LRU cache with the given capacity.
+ func NewCache(capacity int) *Cache {
+-	if capacity < 1 { capacity = 1 }
++	if capacity < 1 {
++		capacity = 1
++	}
+ 	return &Cache{capacity: capacity, items: make(map[string]*list.Element), order: list.New()}
+ }
+ 
+@@ -124,7 +126,9 @@ func (c *Cache) HitRate() float64 {
+ 	c.mu.Lock()
+ 	defer c.mu.Unlock()
+ 	total := c.hits + c.misses
+-	if total == 0 { return 0 }
++	if total == 0 {
++		return 0
++	}
+ 	return float64(c.hits) / float64(total)
+ }
+ 
+@@ -138,7 +142,9 @@ func (c *Cache) Clear() {
+ 
+ func (c *Cache) evictOldest() {
+ 	back := c.order.Back()
+-	if back == nil { return }
++	if back == nil {
++		return
++	}
+ 	c.removeElement(back)
+ }
+ 
+@@ -146,5 +152,7 @@ func (c *Cache) removeElement(elem *list.Element) {
+ 	c.order.Remove(elem)
+ 	e := elem.Value.(*entry)
+ 	delete(c.items, e.key)
+-	if c.onEvict != nil { c.onEvict(e.key, e.value) }
++	if c.onEvict != nil {
++		c.onEvict(e.key, e.value)
++	}
+ }
+diff --git a/base/pkg/lru/lru_test.go b/repo/pkg/lru/lru_test.go
+index bbb5bbc..3f6b7b2 100644
+--- a/base/pkg/lru/lru_test.go
++++ b/repo/pkg/lru/lru_test.go
+@@ -4,100 +4,150 @@ import "testing"
+ 
+ func TestCache_Basic(t *testing.T) {
+ 	c := NewCache(3)
+-	c.Put("a", 1); c.Put("b", 2); c.Put("c", 3)
++	c.Put("a", 1)
++	c.Put("b", 2)
++	c.Put("c", 3)
+ 	v, ok := c.Get("b")
+-	if !ok || v.(int) != 2 { t.Fatal("should find b") }
++	if !ok || v.(int) != 2 {
++		t.Fatal("should find b")
++	}
+ }
+ 
+ func TestCache_Eviction(t *testing.T) {
+ 	c := NewCache(2)
+-	c.Put("a", 1); c.Put("b", 2); c.Put("c", 3)
++	c.Put("a", 1)
++	c.Put("b", 2)
++	c.Put("c", 3)
+ 	_, ok := c.Get("a")
+-	if ok { t.Fatal("a should be evicted") }
+-	if c.Len() != 2 { t.Fatal("len should be 2") }
++	if ok {
++		t.Fatal("a should be evicted")
++	}
++	if c.Len() != 2 {
++		t.Fatal("len should be 2")
++	}
+ }
+ 
+ func TestCache_LRUOrder(t *testing.T) {
+ 	c := NewCache(2)
+-	c.Put("a", 1); c.Put("b", 2)
++	c.Put("a", 1)
++	c.Put("b", 2)
+ 	c.Get("a")
+ 	c.Put("c", 3)
+ 	_, ok := c.Get("b")
+-	if ok { t.Fatal("b should be evicted (a was used more recently)") }
++	if ok {
++		t.Fatal("b should be evicted (a was used more recently)")
++	}
+ }
+ 
+ func TestCache_Update(t *testing.T) {
+ 	c := NewCache(2)
+-	c.Put("a", 1); c.Put("a", 2)
++	c.Put("a", 1)
++	c.Put("a", 2)
+ 	v, _ := c.Get("a")
+-	if v.(int) != 2 { t.Fatal("should be updated") }
+-	if c.Len() != 1 { t.Fatal("should not grow") }
++	if v.(int) != 2 {
++		t.Fatal("should be updated")
++	}
++	if c.Len() != 1 {
++		t.Fatal("should not grow")
++	}
+ }
+ 
+ func TestCache_Delete(t *testing.T) {
+ 	c := NewCache(5)
+ 	c.Put("a", 1)
+-	if !c.Delete("a") { t.Fatal("should succeed") }
+-	if c.Delete("a") { t.Fatal("should fail second time") }
++	if !c.Delete("a") {
++		t.Fatal("should succeed")
++	}
++	if c.Delete("a") {
++		t.Fatal("should fail second time")
++	}
+ }
+ 
+ func TestCache_Keys(t *testing.T) {
+ 	c := NewCache(5)
+-	c.Put("a", 1); c.Put("b", 2); c.Put("c", 3)
++	c.Put("a", 1)
++	c.Put("b", 2)
++	c.Put("c", 3)
+ 	c.Get("a")
+ 	keys := c.Keys()
+-	if keys[0] != "a" { t.Fatal("most recent should be first") }
++	if keys[0] != "a" {
++		t.Fatal("most recent should be first")
++	}
+ }
+ 
+ func TestCache_Contains(t *testing.T) {
+ 	c := NewCache(2)
+ 	c.Put("a", 1)
+-	if !c.Contains("a") { t.Fatal("should contain a") }
+-	if c.Contains("b") { t.Fatal("should not contain b") }
++	if !c.Contains("a") {
++		t.Fatal("should contain a")
++	}
++	if c.Contains("b") {
++		t.Fatal("should not contain b")
++	}
+ }
+ 
+ func TestCache_Peek(t *testing.T) {
+ 	c := NewCache(2)
+-	c.Put("a", 1); c.Put("b", 2)
++	c.Put("a", 1)
++	c.Put("b", 2)
+ 	v, ok := c.Peek("a")
+-	if !ok || v.(int) != 1 { t.Fatal("peek should work") }
++	if !ok || v.(int) != 1 {
++		t.Fatal("peek should work")
++	}
+ 	c.Put("c", 3)
+ 	_, ok = c.Get("a")
+-	if ok { t.Fatal("peek should not update recency") }
++	if ok {
++		t.Fatal("peek should not update recency")
++	}
+ }
+ 
+ func TestCache_Stats(t *testing.T) {
+ 	c := NewCache(5)
+ 	c.Put("a", 1)
+-	c.Get("a"); c.Get("b")
++	c.Get("a")
++	c.Get("b")
+ 	hits, misses := c.Stats()
+-	if hits != 1 || misses != 1 { t.Fatalf("expected 1/1, got %d/%d", hits, misses) }
++	if hits != 1 || misses != 1 {
++		t.Fatalf("expected 1/1, got %d/%d", hits, misses)
++	}
+ }
+ 
+ func TestCache_HitRate(t *testing.T) {
+ 	c := NewCache(5)
+ 	c.Put("a", 1)
+-	c.Get("a"); c.Get("a"); c.Get("b")
++	c.Get("a")
++	c.Get("a")
++	c.Get("b")
+ 	rate := c.HitRate()
+-	if rate < 0.6 || rate > 0.7 { t.Fatalf("expected ~0.66, got %f", rate) }
++	if rate < 0.6 || rate > 0.7 {
++		t.Fatalf("expected ~0.66, got %f", rate)
++	}
+ }
+ 
+ func TestCache_Clear(t *testing.T) {
+ 	c := NewCache(5)
+-	c.Put("a", 1); c.Put("b", 2)
++	c.Put("a", 1)
++	c.Put("b", 2)
+ 	c.Clear()
+-	if c.Len() != 0 { t.Fatal("should be empty") }
++	if c.Len() != 0 {
++		t.Fatal("should be empty")
++	}
+ }
+ 
+ func TestCache_EvictCallback(t *testing.T) {
+ 	evicted := 0
+ 	c := NewCache(1)
+ 	c.WithEvictCallback(func(k string, v interface{}) { evicted++ })
+-	c.Put("a", 1); c.Put("b", 2)
+-	if evicted != 1 { t.Fatalf("expected 1, got %d", evicted) }
++	c.Put("a", 1)
++	c.Put("b", 2)
++	if evicted != 1 {
++		t.Fatalf("expected 1, got %d", evicted)
++	}
+ }
+ 
+ func TestCache_Capacity(t *testing.T) {
+ 	c := NewCache(42)
+-	if c.Capacity() != 42 { t.Fatal("wrong capacity") }
++	if c.Capacity() != 42 {
++		t.Fatal("wrong capacity")
++	}
+ }
+diff --git a/base/pkg/membership/member.go b/repo/pkg/membership/member.go
+index b40a97d..48217f1 100644
+--- a/base/pkg/membership/member.go
++++ b/repo/pkg/membership/member.go
+@@ -9,7 +9,7 @@ import (
+ type MemberState int
+ 
+ const (
+-	StateAlive    MemberState = iota
++	StateAlive MemberState = iota
+ 	StateSuspect
+ 	StateDead
+ 	StateLeft
+@@ -263,4 +263,4 @@ func copyMeta(m map[string]string) map[string]string {
+ 		cp[k] = v
+ 	}
+ 	return cp
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/membership/membership_test.go b/repo/pkg/membership/membership_test.go
+index d0393b3..a8ec0be 100644
+--- a/base/pkg/membership/membership_test.go
++++ b/repo/pkg/membership/membership_test.go
+@@ -216,9 +216,9 @@ func TestMemberList_SuspectThenAlive(t *testing.T) {
+ 
+ // --- SWIM Detector tests ---
+ 
+-func alwaysAck(target string) ProbeResult   { return ProbeAck }
+-func alwaysNack(target string) ProbeResult  { return ProbeNack }
+-func alwaysAckIndirect(_, _ string) ProbeResult { return ProbeAck }
++func alwaysAck(target string) ProbeResult        { return ProbeAck }
++func alwaysNack(target string) ProbeResult       { return ProbeNack }
++func alwaysAckIndirect(_, _ string) ProbeResult  { return ProbeAck }
+ func alwaysNackIndirect(_, _ string) ProbeResult { return ProbeNack }
+ 
+ func TestSWIM_ProbeRound_Ack(t *testing.T) {
+@@ -326,4 +326,4 @@ func TestSWIM_HistoryBounded(t *testing.T) {
+ 	if len(h) == 0 {
+ 		t.Fatal("history should not be empty after many rounds")
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/repo/pkg/membership/scaling.go b/repo/pkg/membership/scaling.go
+new file mode 100644
+index 0000000..3afcd55
+--- /dev/null
++++ b/repo/pkg/membership/scaling.go
+@@ -0,0 +1,284 @@
++package membership
++
++import (
++	"math/bits"
++	"sync"
++	"time"
++)
++
++// ScaledConfig derives SWIM timing and fanout values from a cluster size.
++//
++// Scaling uses ceil(log2(clusterSize)) as its deterministic scale factor. A
++// cluster size of zero or one uses Base unchanged, and each subsequent log2
++// boundary adds the configured step values. The protocol period maps to
++// SWIMConfig.ProbeInterval.
++type ScaledConfig struct {
++	// Base is the SWIM configuration used for a zero or single-node cluster.
++	Base SWIMConfig
++
++	// ProtocolPeriodStep is added to Base.ProbeInterval per log2 scale step.
++	ProtocolPeriodStep time.Duration
++	// ProbeTimeoutStep is added to Base.ProbeTimeout per log2 scale step.
++	ProbeTimeoutStep time.Duration
++	// SuspicionTimeoutStep is added to Base.SuspicionTimeout per log2 scale step.
++	SuspicionTimeoutStep time.Duration
++
++	// IndirectChecksStep is added to Base.IndirectChecks per log2 scale step.
++	IndirectChecksStep int
++	// MaxIndirectChecks caps the scaled indirect check fanout. A value <= 0 means no cap.
++	MaxIndirectChecks int
++}
++
++// DefaultScaling returns log2-based scaling defaults for SWIM.
++func DefaultScaling() ScaledConfig {
++	return ScaledConfig{
++		Base:                 DefaultSWIMConfig(),
++		ProtocolPeriodStep:   250 * time.Millisecond,
++		ProbeTimeoutStep:     100 * time.Millisecond,
++		SuspicionTimeoutStep: time.Second,
++		IndirectChecksStep:   1,
++		MaxIndirectChecks:    32,
++	}
++}
++
++// Scale returns ceil(log2(clusterSize)), with zero and one mapped to zero.
++func (c ScaledConfig) Scale(clusterSize int) int {
++	return log2Scale(clusterSize)
++}
++
++// Log2Scale returns ceil(log2(clusterSize)), with zero and one mapped to zero.
++func (c ScaledConfig) Log2Scale(clusterSize int) int {
++	return c.Scale(clusterSize)
++}
++
++// ConfigFor returns a SWIMConfig scaled for clusterSize.
++func (c ScaledConfig) ConfigFor(clusterSize int) SWIMConfig {
++	return c.SWIMConfig(clusterSize)
++}
++
++// SWIMConfig returns a SWIMConfig scaled for clusterSize.
++func (c ScaledConfig) SWIMConfig(clusterSize int) SWIMConfig {
++	n := c.normalized()
++	scale := n.Scale(clusterSize)
++
++	return SWIMConfig{
++		ProbeInterval:    scaleDuration(n.Base.ProbeInterval, n.ProtocolPeriodStep, scale),
++		ProbeTimeout:     scaleDuration(n.Base.ProbeTimeout, n.ProbeTimeoutStep, scale),
++		IndirectChecks:   scaleInt(n.Base.IndirectChecks, n.IndirectChecksStep, n.MaxIndirectChecks, scale),
++		SuspicionTimeout: scaleDuration(n.Base.SuspicionTimeout, n.SuspicionTimeoutStep, scale),
++	}
++}
++
++// ProtocolPeriod returns the scaled SWIM protocol period for clusterSize.
++func (c ScaledConfig) ProtocolPeriod(clusterSize int) time.Duration {
++	return c.SWIMConfig(clusterSize).ProbeInterval
++}
++
++// ProbeTimeout returns the scaled direct probe timeout for clusterSize.
++func (c ScaledConfig) ProbeTimeout(clusterSize int) time.Duration {
++	return c.SWIMConfig(clusterSize).ProbeTimeout
++}
++
++// IndirectChecks returns the scaled indirect probe fanout for clusterSize.
++func (c ScaledConfig) IndirectChecks(clusterSize int) int {
++	return c.SWIMConfig(clusterSize).IndirectChecks
++}
++
++// SuspicionTimeout returns the scaled suspicion timeout for clusterSize.
++func (c ScaledConfig) SuspicionTimeout(clusterSize int) time.Duration {
++	return c.SWIMConfig(clusterSize).SuspicionTimeout
++}
++
++// ClusterSizeEstimator tracks observed node IDs and reports the current estimate.
++//
++// The zero value is ready to use and retains observations indefinitely. Set
++// Window to a positive duration to expire observations older than that window.
++type ClusterSizeEstimator struct {
++	// Window controls how long observations remain current. A value <= 0 retains
++	// observations indefinitely.
++	Window time.Duration
++
++	mu       sync.Mutex
++	observed map[string]time.Time
++}
++
++// NewClusterSizeEstimator returns an estimator with the given observation window.
++func NewClusterSizeEstimator(window time.Duration) *ClusterSizeEstimator {
++	return &ClusterSizeEstimator{Window: window}
++}
++
++// Observe records a node as seen at the current time.
++func (e *ClusterSizeEstimator) Observe(nodeID string) {
++	e.ObserveAt(nodeID, time.Now())
++}
++
++// ObserveAt records a node as seen at observedAt.
++func (e *ClusterSizeEstimator) ObserveAt(nodeID string, observedAt time.Time) {
++	if nodeID == "" {
++		return
++	}
++
++	e.mu.Lock()
++	defer e.mu.Unlock()
++	e.ensureObserved()
++	e.observeLocked(nodeID, observedAt)
++}
++
++// ObserveNodes records multiple nodes as seen at the current time.
++func (e *ClusterSizeEstimator) ObserveNodes(nodeIDs ...string) {
++	e.ObserveNodesAt(time.Now(), nodeIDs...)
++}
++
++// ObserveNodesAt records multiple nodes as seen at observedAt.
++func (e *ClusterSizeEstimator) ObserveNodesAt(observedAt time.Time, nodeIDs ...string) {
++	e.mu.Lock()
++	defer e.mu.Unlock()
++	e.ensureObserved()
++	for _, nodeID := range nodeIDs {
++		if nodeID != "" {
++			e.observeLocked(nodeID, observedAt)
++		}
++	}
++}
++
++// Estimate returns the current cluster size estimate.
++func (e *ClusterSizeEstimator) Estimate() int {
++	return e.EstimateAt(time.Now())
++}
++
++// EstimateAt returns the cluster size estimate at now.
++func (e *ClusterSizeEstimator) EstimateAt(now time.Time) int {
++	e.mu.Lock()
++	defer e.mu.Unlock()
++	if e.observed == nil {
++		return 0
++	}
++	e.pruneLocked(now)
++	return len(e.observed)
++}
++
++// Forget removes a node from the estimate.
++func (e *ClusterSizeEstimator) Forget(nodeID string) bool {
++	e.mu.Lock()
++	defer e.mu.Unlock()
++	if e.observed == nil {
++		return false
++	}
++	if _, ok := e.observed[nodeID]; !ok {
++		return false
++	}
++	delete(e.observed, nodeID)
++	return true
++}
++
++// Reset clears all observations.
++func (e *ClusterSizeEstimator) Reset() {
++	e.mu.Lock()
++	defer e.mu.Unlock()
++	e.observed = nil
++}
++
++func (c ScaledConfig) normalized() ScaledConfig {
++	def := DefaultScaling()
++	base := c.Base
++	if base.ProbeInterval <= 0 && base.ProbeTimeout <= 0 && base.IndirectChecks == 0 && base.SuspicionTimeout <= 0 {
++		base = def.Base
++	} else {
++		if base.ProbeInterval <= 0 {
++			base.ProbeInterval = def.Base.ProbeInterval
++		}
++		if base.ProbeTimeout <= 0 {
++			base.ProbeTimeout = def.Base.ProbeTimeout
++		}
++		if base.IndirectChecks < 0 {
++			base.IndirectChecks = 0
++		}
++		if base.SuspicionTimeout <= 0 {
++			base.SuspicionTimeout = def.Base.SuspicionTimeout
++		}
++	}
++
++	if c.ProtocolPeriodStep < 0 {
++		c.ProtocolPeriodStep = 0
++	}
++	if c.ProbeTimeoutStep < 0 {
++		c.ProbeTimeoutStep = 0
++	}
++	if c.SuspicionTimeoutStep < 0 {
++		c.SuspicionTimeoutStep = 0
++	}
++	if c.IndirectChecksStep < 0 {
++		c.IndirectChecksStep = 0
++	}
++
++	c.Base = base
++	return c
++}
++
++func log2Scale(clusterSize int) int {
++	if clusterSize <= 1 {
++		return 0
++	}
++	return bits.Len(uint(clusterSize - 1))
++}
++
++func scaleDuration(base, step time.Duration, scale int) time.Duration {
++	if base < 0 {
++		base = 0
++	}
++	if step <= 0 || scale <= 0 {
++		return base
++	}
++
++	maxDuration := time.Duration(1<<63 - 1)
++	scaledBy := time.Duration(scale)
++	if step > (maxDuration-base)/scaledBy {
++		return maxDuration
++	}
++	return base + step*scaledBy
++}
++
++func scaleInt(base, step, max, scale int) int {
++	if base < 0 {
++		base = 0
++	}
++	if step <= 0 || scale <= 0 {
++		return capInt(base, max)
++	}
++	if step > (int(^uint(0)>>1)-base)/scale {
++		return capInt(int(^uint(0)>>1), max)
++	}
++	return capInt(base+step*scale, max)
++}
++
++func capInt(value, max int) int {
++	if max > 0 && value > max {
++		return max
++	}
++	return value
++}
++
++func (e *ClusterSizeEstimator) ensureObserved() {
++	if e.observed == nil {
++		e.observed = make(map[string]time.Time)
++	}
++}
++
++func (e *ClusterSizeEstimator) observeLocked(nodeID string, observedAt time.Time) {
++	if previous, ok := e.observed[nodeID]; ok && previous.After(observedAt) {
++		return
++	}
++	e.observed[nodeID] = observedAt
++}
++
++func (e *ClusterSizeEstimator) pruneLocked(now time.Time) {
++	if e.Window <= 0 {
++		return
++	}
++	cutoff := now.Add(-e.Window)
++	for nodeID, observedAt := range e.observed {
++		if observedAt.Before(cutoff) {
++			delete(e.observed, nodeID)
++		}
++	}
++}
+diff --git a/repo/pkg/membership/scaling_test.go b/repo/pkg/membership/scaling_test.go
+new file mode 100644
+index 0000000..87ead54
+--- /dev/null
++++ b/repo/pkg/membership/scaling_test.go
+@@ -0,0 +1,186 @@
++package membership
++
++import (
++	"testing"
++	"time"
++)
++
++func TestDefaultScalingValues(t *testing.T) {
++	scaling := DefaultScaling()
++	base := DefaultSWIMConfig()
++
++	if scaling.Base != base {
++		t.Fatalf("default scaling base = %+v, want %+v", scaling.Base, base)
++	}
++	if scaling.ProtocolPeriodStep != 250*time.Millisecond {
++		t.Fatalf("protocol period step = %s, want 250ms", scaling.ProtocolPeriodStep)
++	}
++	if scaling.ProbeTimeoutStep != 100*time.Millisecond {
++		t.Fatalf("probe timeout step = %s, want 100ms", scaling.ProbeTimeoutStep)
++	}
++	if scaling.SuspicionTimeoutStep != time.Second {
++		t.Fatalf("suspicion timeout step = %s, want 1s", scaling.SuspicionTimeoutStep)
++	}
++	if scaling.IndirectChecksStep != 1 {
++		t.Fatalf("indirect checks step = %d, want 1", scaling.IndirectChecksStep)
++	}
++	if scaling.MaxIndirectChecks != 32 {
++		t.Fatalf("max indirect checks = %d, want 32", scaling.MaxIndirectChecks)
++	}
++
++	cfg := scaling.ConfigFor(1)
++	if cfg != base {
++		t.Fatalf("single-node scaled config = %+v, want %+v", cfg, base)
++	}
++	if scaling.ProtocolPeriod(0) != base.ProbeInterval {
++		t.Fatalf("zero-node period = %s, want %s", scaling.ProtocolPeriod(0), base.ProbeInterval)
++	}
++}
++
++func TestScaledConfigMonotonicPeriodGrowth(t *testing.T) {
++	scaling := DefaultScaling()
++	previous := scaling.ProtocolPeriod(0)
++
++	for size := 1; size <= 4096; size++ {
++		period := scaling.ProtocolPeriod(size)
++		if period < previous {
++			t.Fatalf("period decreased at size %d: %s < %s", size, period, previous)
++		}
++		previous = period
++	}
++}
++
++func TestScaledConfigMonotonicSWIMValues(t *testing.T) {
++	scaling := DefaultScaling()
++	prev := scaling.ConfigFor(0)
++
++	for size := 1; size <= 4096; size++ {
++		cfg := scaling.ConfigFor(size)
++		if cfg.ProbeInterval < prev.ProbeInterval {
++			t.Fatalf("probe interval decreased at size %d", size)
++		}
++		if cfg.ProbeTimeout < prev.ProbeTimeout {
++			t.Fatalf("probe timeout decreased at size %d", size)
++		}
++		if cfg.SuspicionTimeout < prev.SuspicionTimeout {
++			t.Fatalf("suspicion timeout decreased at size %d", size)
++		}
++		if cfg.IndirectChecks < prev.IndirectChecks {
++			t.Fatalf("indirect checks decreased at size %d", size)
++		}
++		prev = cfg
++	}
++}
++
++func TestScaledConfigLog2Boundaries(t *testing.T) {
++	scaling := DefaultScaling()
++	base := DefaultSWIMConfig()
++
++	tests := []struct {
++		size  int
++		scale int
++	}{
++		{0, 0},
++		{1, 0},
++		{2, 1},
++		{3, 2},
++		{4, 2},
++		{7, 3},
++		{8, 3},
++		{9, 4},
++		{16, 4},
++		{1024, 10},
++		{1 << 20, 20},
++	}
++
++	for _, tc := range tests {
++		if got := scaling.Scale(tc.size); got != tc.scale {
++			t.Fatalf("scale(%d) = %d, want %d", tc.size, got, tc.scale)
++		}
++
++		wantPeriod := base.ProbeInterval + time.Duration(tc.scale)*scaling.ProtocolPeriodStep
++		if got := scaling.ProtocolPeriod(tc.size); got != wantPeriod {
++			t.Fatalf("period(%d) = %s, want %s", tc.size, got, wantPeriod)
++		}
++
++		wantTimeout := base.ProbeTimeout + time.Duration(tc.scale)*scaling.ProbeTimeoutStep
++		if got := scaling.ProbeTimeout(tc.size); got != wantTimeout {
++			t.Fatalf("probe timeout(%d) = %s, want %s", tc.size, got, wantTimeout)
++		}
++
++		wantSuspicion := base.SuspicionTimeout + time.Duration(tc.scale)*scaling.SuspicionTimeoutStep
++		if got := scaling.SuspicionTimeout(tc.size); got != wantSuspicion {
++			t.Fatalf("suspicion timeout(%d) = %s, want %s", tc.size, got, wantSuspicion)
++		}
++	}
++}
++
++func TestScaledConfigLargeCounts(t *testing.T) {
++	scaling := DefaultScaling()
++	size := 1 << 30
++
++	if got := scaling.Scale(size); got != 30 {
++		t.Fatalf("scale(%d) = %d, want 30", size, got)
++	}
++
++	cfg := scaling.SWIMConfig(size)
++	if cfg.ProbeInterval != 8500*time.Millisecond {
++		t.Fatalf("large cluster period = %s, want 8.5s", cfg.ProbeInterval)
++	}
++	if cfg.IndirectChecks != scaling.MaxIndirectChecks {
++		t.Fatalf("large cluster indirect checks = %d, want cap %d", cfg.IndirectChecks, scaling.MaxIndirectChecks)
++	}
++}
++
++func TestClusterSizeEstimatorObservations(t *testing.T) {
++	var estimator ClusterSizeEstimator
++
++	if got := estimator.Estimate(); got != 0 {
++		t.Fatalf("empty estimate = %d, want 0", got)
++	}
++
++	estimator.Observe("n1")
++	estimator.Observe("n1")
++	if got := estimator.Estimate(); got != 1 {
++		t.Fatalf("repeated node estimate = %d, want 1", got)
++	}
++
++	estimator.ObserveNodes("n2", "n3", "n2", "")
++	if got := estimator.Estimate(); got != 3 {
++		t.Fatalf("distinct node estimate = %d, want 3", got)
++	}
++
++	if estimator.Forget("missing") {
++		t.Fatal("forget should report false for a missing node")
++	}
++	if !estimator.Forget("n2") {
++		t.Fatal("forget should report true for an observed node")
++	}
++	if got := estimator.Estimate(); got != 2 {
++		t.Fatalf("estimate after forget = %d, want 2", got)
++	}
++
++	estimator.Reset()
++	if got := estimator.Estimate(); got != 0 {
++		t.Fatalf("estimate after reset = %d, want 0", got)
++	}
++}
++
++func TestClusterSizeEstimatorWindow(t *testing.T) {
++	estimator := NewClusterSizeEstimator(time.Minute)
++	now := time.Date(2026, 6, 18, 20, 0, 0, 0, time.UTC)
++
++	estimator.ObserveAt("old", now.Add(-2*time.Minute))
++	estimator.ObserveAt("current", now.Add(-30*time.Second))
++	estimator.ObserveAt("boundary", now.Add(-time.Minute))
++	estimator.ObserveAt("current", now.Add(-2*time.Minute))
++
++	if got := estimator.EstimateAt(now); got != 2 {
++		t.Fatalf("windowed estimate = %d, want 2", got)
++	}
++
++	estimator.ObserveAt("old", now)
++	if got := estimator.EstimateAt(now); got != 3 {
++		t.Fatalf("refreshed estimate = %d, want 3", got)
++	}
++}
+diff --git a/base/pkg/membership/swim.go b/repo/pkg/membership/swim.go
+index dbdd3b9..355da60 100644
+--- a/base/pkg/membership/swim.go
++++ b/repo/pkg/membership/swim.go
+@@ -49,15 +49,15 @@ const maxProbeHistory = 10000
+ // SWIMDetector implements the SWIM protocol for failure detection.
+ // It runs probe rounds, manages suspicion timers, and updates the member list.
+ type SWIMDetector struct {
+-	mu            sync.Mutex
+-	config        SWIMConfig
+-	memberList    *MemberList
+-	suspicionMap  map[string]time.Time // nodeID → when suspicion started
+-	probeFunc     ProbeFunc
+-	indirectFunc  IndirectProbeFunc
+-	rng           *rand.Rand
+-	roundCount    uint64
+-	probeHistory  []ProbeEvent
++	mu           sync.Mutex
++	config       SWIMConfig
++	memberList   *MemberList
++	suspicionMap map[string]time.Time // nodeID → when suspicion started
++	probeFunc    ProbeFunc
++	indirectFunc IndirectProbeFunc
++	rng          *rand.Rand
++	roundCount   uint64
++	probeHistory []ProbeEvent
+ }
+ 
+ // ProbeEvent records the outcome of a single probe.
+@@ -217,4 +217,4 @@ func (sd *SWIMDetector) SuspectCount() int {
+ 	sd.mu.Lock()
+ 	defer sd.mu.Unlock()
+ 	return len(sd.suspicionMap)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/merkle/errors.go b/repo/pkg/merkle/errors.go
+index c175a81..56f7b29 100644
+--- a/base/pkg/merkle/errors.go
++++ b/repo/pkg/merkle/errors.go
+@@ -2,4 +2,4 @@ package merkle
+ 
+ import "errors"
+ 
+-var errShortData = errors.New("merkle: data too short for deserialization")
+\ No newline at end of file
++var errShortData = errors.New("merkle: data too short for deserialization")
+diff --git a/base/pkg/merkle/merkle_test.go b/repo/pkg/merkle/merkle_test.go
+index 24b73e2..802b672 100644
+--- a/base/pkg/merkle/merkle_test.go
++++ b/repo/pkg/merkle/merkle_test.go
+@@ -426,4 +426,4 @@ func TestFastDiff_AfterLazyRebuild(t *testing.T) {
+ 	if len(d.Different) != 1 || d.Different[0] != "key-10" {
+ 		t.Fatalf("expected different=[key-10], got %v", d.Different)
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/merkle/tree.go b/repo/pkg/merkle/tree.go
+index f0d3e97..b1008b8 100644
+--- a/base/pkg/merkle/tree.go
++++ b/repo/pkg/merkle/tree.go
+@@ -9,12 +9,12 @@ import (
+ 
+ // Node represents a single node in the Merkle tree.
+ type Node struct {
+-	Hash     [32]byte
+-	Key      string // non-empty for leaf nodes
+-	Value    []byte // non-empty for leaf nodes
+-	Left     *Node
+-	Right    *Node
+-	IsLeaf   bool
++	Hash   [32]byte
++	Key    string // non-empty for leaf nodes
++	Value  []byte // non-empty for leaf nodes
++	Left   *Node
++	Right  *Node
++	IsLeaf bool
+ }
+ 
+ // Tree is a binary Merkle tree built over a set of key-value pairs.
+@@ -440,4 +440,4 @@ func SerializeDiffResult(d DiffResult) []byte {
+ 	}
+ 
+ 	return buf[:offset]
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/metrics/metrics.go b/repo/pkg/metrics/metrics.go
+index 255d0c9..eb8153e 100644
+--- a/base/pkg/metrics/metrics.go
++++ b/repo/pkg/metrics/metrics.go
+@@ -57,21 +57,27 @@ func (h *Histogram) Observe(v float64) {
+ 	defer h.mu.Unlock()
+ 	h.sum += v
+ 	h.count++
+-	if v < h.min { h.min = v }
+-	if v > h.max { h.max = v }
++	if v < h.min {
++		h.min = v
++	}
++	if v > h.max {
++		h.max = v
++	}
+ 	idx := sort.SearchFloat64s(h.buckets, v)
+ 	h.counts[idx]++
+ }
+ 
+-func (h *Histogram) Count() uint64  { h.mu.Lock(); defer h.mu.Unlock(); return h.count }
+-func (h *Histogram) Sum() float64   { h.mu.Lock(); defer h.mu.Unlock(); return h.sum }
+-func (h *Histogram) Min() float64   { h.mu.Lock(); defer h.mu.Unlock(); return h.min }
+-func (h *Histogram) Max() float64   { h.mu.Lock(); defer h.mu.Unlock(); return h.max }
+-func (h *Histogram) Name() string   { return h.name }
++func (h *Histogram) Count() uint64 { h.mu.Lock(); defer h.mu.Unlock(); return h.count }
++func (h *Histogram) Sum() float64  { h.mu.Lock(); defer h.mu.Unlock(); return h.sum }
++func (h *Histogram) Min() float64  { h.mu.Lock(); defer h.mu.Unlock(); return h.min }
++func (h *Histogram) Max() float64  { h.mu.Lock(); defer h.mu.Unlock(); return h.max }
++func (h *Histogram) Name() string  { return h.name }
+ func (h *Histogram) Mean() float64 {
+ 	h.mu.Lock()
+ 	defer h.mu.Unlock()
+-	if h.count == 0 { return 0 }
++	if h.count == 0 {
++		return 0
++	}
+ 	return h.sum / float64(h.count)
+ }
+ 
+@@ -81,7 +87,8 @@ func (h *Histogram) Snapshot() ([]float64, []uint64) {
+ 	defer h.mu.Unlock()
+ 	b := make([]float64, len(h.buckets))
+ 	c := make([]uint64, len(h.counts))
+-	copy(b, h.buckets); copy(c, h.counts)
++	copy(b, h.buckets)
++	copy(c, h.counts)
+ 	return b, c
+ }
+ 
+@@ -100,22 +107,34 @@ func NewRegistry() *Registry {
+ func (r *Registry) Counter(name string) *Counter {
+ 	r.mu.Lock()
+ 	defer r.mu.Unlock()
+-	if c, ok := r.counters[name]; ok { return c }
+-	c := NewCounter(name); r.counters[name] = c; return c
++	if c, ok := r.counters[name]; ok {
++		return c
++	}
++	c := NewCounter(name)
++	r.counters[name] = c
++	return c
+ }
+ 
+ func (r *Registry) Gauge(name string) *Gauge {
+ 	r.mu.Lock()
+ 	defer r.mu.Unlock()
+-	if g, ok := r.gauges[name]; ok { return g }
+-	g := NewGauge(name); r.gauges[name] = g; return g
++	if g, ok := r.gauges[name]; ok {
++		return g
++	}
++	g := NewGauge(name)
++	r.gauges[name] = g
++	return g
+ }
+ 
+ func (r *Registry) Histogram(name string, buckets []float64) *Histogram {
+ 	r.mu.Lock()
+ 	defer r.mu.Unlock()
+-	if h, ok := r.histograms[name]; ok { return h }
+-	h := NewHistogram(name, buckets); r.histograms[name] = h; return h
++	if h, ok := r.histograms[name]; ok {
++		return h
++	}
++	h := NewHistogram(name, buckets)
++	r.histograms[name] = h
++	return h
+ }
+ 
+ // Snapshot exports all metrics as a flat map.
+@@ -123,16 +142,27 @@ func (r *Registry) Snapshot() map[string]interface{} {
+ 	r.mu.RLock()
+ 	defer r.mu.RUnlock()
+ 	snap := make(map[string]interface{})
+-	for n, c := range r.counters { snap["counter."+n] = c.Value() }
+-	for n, g := range r.gauges { snap["gauge."+n] = g.Value() }
+-	for n, h := range r.histograms { snap["histogram."+n+".count"] = h.Count(); snap["histogram."+n+".mean"] = h.Mean() }
++	for n, c := range r.counters {
++		snap["counter."+n] = c.Value()
++	}
++	for n, g := range r.gauges {
++		snap["gauge."+n] = g.Value()
++	}
++	for n, h := range r.histograms {
++		snap["histogram."+n+".count"] = h.Count()
++		snap["histogram."+n+".mean"] = h.Mean()
++	}
+ 	return snap
+ }
+ 
+ // CounterNames returns sorted counter names.
+ func (r *Registry) CounterNames() []string {
+-	r.mu.RLock(); defer r.mu.RUnlock()
++	r.mu.RLock()
++	defer r.mu.RUnlock()
+ 	names := make([]string, 0, len(r.counters))
+-	for n := range r.counters { names = append(names, n) }
+-	sort.Strings(names); return names
++	for n := range r.counters {
++		names = append(names, n)
++	}
++	sort.Strings(names)
++	return names
+ }
+diff --git a/base/pkg/metrics/metrics_test.go b/repo/pkg/metrics/metrics_test.go
+index cb612a9..e78dd8b 100644
+--- a/base/pkg/metrics/metrics_test.go
++++ b/repo/pkg/metrics/metrics_test.go
+@@ -4,45 +4,80 @@ import "testing"
+ 
+ func TestCounter_Basic(t *testing.T) {
+ 	c := NewCounter("requests")
+-	c.Inc(); c.Inc(); c.Add(3)
+-	if c.Value() != 5 { t.Fatalf("expected 5, got %d", c.Value()) }
++	c.Inc()
++	c.Inc()
++	c.Add(3)
++	if c.Value() != 5 {
++		t.Fatalf("expected 5, got %d", c.Value())
++	}
+ }
+ 
+ func TestCounter_Reset(t *testing.T) {
+-	c := NewCounter("x"); c.Add(10); c.Reset()
+-	if c.Value() != 0 { t.Fatal("should be 0") }
++	c := NewCounter("x")
++	c.Add(10)
++	c.Reset()
++	if c.Value() != 0 {
++		t.Fatal("should be 0")
++	}
+ }
+ 
+ func TestGauge_Basic(t *testing.T) {
+ 	g := NewGauge("temp")
+ 	g.Set(25.5)
+-	if g.Value() != 25.5 { t.Fatal("wrong value") }
+-	g.Inc(); g.Inc(); g.Dec()
+-	if g.Value() != 26.5 { t.Fatalf("expected 26.5, got %f", g.Value()) }
++	if g.Value() != 25.5 {
++		t.Fatal("wrong value")
++	}
++	g.Inc()
++	g.Inc()
++	g.Dec()
++	if g.Value() != 26.5 {
++		t.Fatalf("expected 26.5, got %f", g.Value())
++	}
+ }
+ 
+ func TestHistogram_Basic(t *testing.T) {
+ 	h := NewHistogram("latency", []float64{10, 50, 100, 500})
+-	h.Observe(5); h.Observe(25); h.Observe(75); h.Observe(200)
+-	if h.Count() != 4 { t.Fatalf("expected 4, got %d", h.Count()) }
+-	if h.Min() != 5 { t.Fatal("wrong min") }
+-	if h.Max() != 200 { t.Fatal("wrong max") }
++	h.Observe(5)
++	h.Observe(25)
++	h.Observe(75)
++	h.Observe(200)
++	if h.Count() != 4 {
++		t.Fatalf("expected 4, got %d", h.Count())
++	}
++	if h.Min() != 5 {
++		t.Fatal("wrong min")
++	}
++	if h.Max() != 200 {
++		t.Fatal("wrong max")
++	}
+ }
+ 
+ func TestHistogram_Mean(t *testing.T) {
+ 	h := NewHistogram("x", nil)
+-	h.Observe(10); h.Observe(20); h.Observe(30)
+-	if h.Mean() != 20 { t.Fatalf("expected 20, got %f", h.Mean()) }
++	h.Observe(10)
++	h.Observe(20)
++	h.Observe(30)
++	if h.Mean() != 20 {
++		t.Fatalf("expected 20, got %f", h.Mean())
++	}
+ }
+ 
+ func TestHistogram_Snapshot(t *testing.T) {
+ 	h := NewHistogram("x", []float64{10, 20})
+-	h.Observe(5); h.Observe(15); h.Observe(25)
++	h.Observe(5)
++	h.Observe(15)
++	h.Observe(25)
+ 	b, c := h.Snapshot()
+-	if len(b) != 2 { t.Fatal("wrong buckets") }
++	if len(b) != 2 {
++		t.Fatal("wrong buckets")
++	}
+ 	total := uint64(0)
+-	for _, v := range c { total += v }
+-	if total != 3 { t.Fatal("should total 3") }
++	for _, v := range c {
++		total += v
++	}
++	if total != 3 {
++		t.Fatal("should total 3")
++	}
+ }
+ 
+ func TestRegistry_Counters(t *testing.T) {
+@@ -50,7 +85,9 @@ func TestRegistry_Counters(t *testing.T) {
+ 	c := r.Counter("ops")
+ 	c.Inc()
+ 	c2 := r.Counter("ops")
+-	if c2.Value() != 1 { t.Fatal("should reuse") }
++	if c2.Value() != 1 {
++		t.Fatal("should reuse")
++	}
+ }
+ 
+ func TestRegistry_Snapshot(t *testing.T) {
+@@ -58,28 +95,43 @@ func TestRegistry_Snapshot(t *testing.T) {
+ 	r.Counter("a").Add(10)
+ 	r.Gauge("b").Set(3.14)
+ 	snap := r.Snapshot()
+-	if snap["counter.a"].(int64) != 10 { t.Fatal("wrong") }
+-	if snap["gauge.b"].(float64) != 3.14 { t.Fatal("wrong") }
++	if snap["counter.a"].(int64) != 10 {
++		t.Fatal("wrong")
++	}
++	if snap["gauge.b"].(float64) != 3.14 {
++		t.Fatal("wrong")
++	}
+ }
+ 
+ func TestCounter_Name(t *testing.T) {
+ 	c := NewCounter("foo")
+-	if c.Name() != "foo" { t.Fatal("wrong name") }
++	if c.Name() != "foo" {
++		t.Fatal("wrong name")
++	}
+ }
+ 
+ func TestGauge_Name(t *testing.T) {
+ 	g := NewGauge("bar")
+-	if g.Name() != "bar" { t.Fatal("wrong name") }
++	if g.Name() != "bar" {
++		t.Fatal("wrong name")
++	}
+ }
+ 
+ func TestGauge_Add(t *testing.T) {
+-	g := NewGauge("x"); g.Add(5.5)
+-	if g.Value() != 5.5 { t.Fatal("wrong") }
++	g := NewGauge("x")
++	g.Add(5.5)
++	if g.Value() != 5.5 {
++		t.Fatal("wrong")
++	}
+ }
+ 
+ func TestRegistry_CounterNames(t *testing.T) {
+ 	r := NewRegistry()
+-	r.Counter("z"); r.Counter("a"); r.Counter("m")
++	r.Counter("z")
++	r.Counter("a")
++	r.Counter("m")
+ 	names := r.CounterNames()
+-	if names[0] != "a" || names[1] != "m" || names[2] != "z" { t.Fatalf("not sorted: %v", names) }
++	if names[0] != "a" || names[1] != "m" || names[2] != "z" {
++		t.Fatalf("not sorted: %v", names)
++	}
+ }
+diff --git a/base/pkg/queue/bounded.go b/repo/pkg/queue/bounded.go
+index c2aa109..97153e9 100644
+--- a/base/pkg/queue/bounded.go
++++ b/repo/pkg/queue/bounded.go
+@@ -127,4 +127,4 @@ func (q *BoundedQueue) Clear() {
+ 	q.head = 0
+ 	q.tail = 0
+ 	q.count = 0
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/queue/deque.go b/repo/pkg/queue/deque.go
+index 2427840..a8ebe4c 100644
+--- a/base/pkg/queue/deque.go
++++ b/repo/pkg/queue/deque.go
+@@ -151,4 +151,4 @@ func (p *WorkStealingPool) WorkerCount() int {
+ 	p.mu.RLock()
+ 	defer p.mu.RUnlock()
+ 	return len(p.deques)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/queue/priority.go b/repo/pkg/queue/priority.go
+index 8113285..a12b7f0 100644
+--- a/base/pkg/queue/priority.go
++++ b/repo/pkg/queue/priority.go
+@@ -115,4 +115,4 @@ func (pq *PriorityQueue) Drain() []*Item {
+ 		result = append(result, item)
+ 	}
+ 	return result
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/queue/queue_test.go b/repo/pkg/queue/queue_test.go
+index 7bc30bb..ff81b74 100644
+--- a/base/pkg/queue/queue_test.go
++++ b/repo/pkg/queue/queue_test.go
+@@ -372,4 +372,4 @@ func TestWSP_ConcurrentSteal(t *testing.T) {
+ 	if p.StolenCount() != 1000 {
+ 		t.Fatalf("expected 1000 stolen, got %d", p.StolenCount())
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/rendezvous/hrw.go b/repo/pkg/rendezvous/hrw.go
+index ba694ab..c4c1bfa 100644
+--- a/base/pkg/rendezvous/hrw.go
++++ b/repo/pkg/rendezvous/hrw.go
+@@ -23,7 +23,9 @@ func (h *Hash) Add(node string) {
+ 	h.mu.Lock()
+ 	defer h.mu.Unlock()
+ 	for _, n := range h.nodes {
+-		if n == node { return }
++		if n == node {
++			return
++		}
+ 	}
+ 	h.nodes = append(h.nodes, node)
+ 	sort.Strings(h.nodes)
+@@ -45,7 +47,9 @@ func (h *Hash) Remove(node string) {
+ func (h *Hash) Lookup(key string) string {
+ 	h.mu.RLock()
+ 	defer h.mu.RUnlock()
+-	if len(h.nodes) == 0 { return "" }
++	if len(h.nodes) == 0 {
++		return ""
++	}
+ 	var bestNode string
+ 	var bestScore uint64
+ 	for _, node := range h.nodes {
+@@ -62,16 +66,25 @@ func (h *Hash) Lookup(key string) string {
+ func (h *Hash) LookupN(key string, n int) []string {
+ 	h.mu.RLock()
+ 	defer h.mu.RUnlock()
+-	if n > len(h.nodes) { n = len(h.nodes) }
+-	if n <= 0 { return nil }
+-	type scored struct { node string; score uint64 }
++	if n > len(h.nodes) {
++		n = len(h.nodes)
++	}
++	if n <= 0 {
++		return nil
++	}
++	type scored struct {
++		node  string
++		score uint64
++	}
+ 	scores := make([]scored, len(h.nodes))
+ 	for i, node := range h.nodes {
+ 		scores[i] = scored{node, hashCombine(key, node)}
+ 	}
+ 	sort.Slice(scores, func(i, j int) bool { return scores[i].score > scores[j].score })
+ 	result := make([]string, n)
+-	for i := 0; i < n; i++ { result[i] = scores[i].node }
++	for i := 0; i < n; i++ {
++		result[i] = scores[i].node
++	}
+ 	return result
+ }
+ 
+@@ -96,7 +109,9 @@ func (h *Hash) Distribution(keys []string) map[string]int {
+ 	dist := make(map[string]int)
+ 	for _, k := range keys {
+ 		node := h.Lookup(k)
+-		if node != "" { dist[node]++ }
++		if node != "" {
++			dist[node]++
++		}
+ 	}
+ 	return dist
+ }
+diff --git a/base/pkg/rendezvous/hrw_test.go b/repo/pkg/rendezvous/hrw_test.go
+index c384ade..105893d 100644
+--- a/base/pkg/rendezvous/hrw_test.go
++++ b/repo/pkg/rendezvous/hrw_test.go
+@@ -7,23 +7,32 @@ import (
+ 
+ func TestHRW_Lookup(t *testing.T) {
+ 	h := New()
+-	h.Add("n1"); h.Add("n2"); h.Add("n3")
++	h.Add("n1")
++	h.Add("n2")
++	h.Add("n3")
+ 	node := h.Lookup("mykey")
+-	if node == "" { t.Fatal("should return a node") }
++	if node == "" {
++		t.Fatal("should return a node")
++	}
+ }
+ 
+ func TestHRW_Consistency(t *testing.T) {
+ 	h := New()
+-	h.Add("n1"); h.Add("n2"); h.Add("n3")
++	h.Add("n1")
++	h.Add("n2")
++	h.Add("n3")
+ 	first := h.Lookup("key")
+ 	for i := 0; i < 100; i++ {
+-		if h.Lookup("key") != first { t.Fatal("inconsistent") }
++		if h.Lookup("key") != first {
++			t.Fatal("inconsistent")
++		}
+ 	}
+ }
+ 
+ func TestHRW_MinimalDisruption(t *testing.T) {
+ 	h := New()
+-	h.Add("n1"); h.Add("n2")
++	h.Add("n1")
++	h.Add("n2")
+ 	before := make(map[string]string)
+ 	keys := make([]string, 100)
+ 	for i := range keys {
+@@ -33,45 +42,71 @@ func TestHRW_MinimalDisruption(t *testing.T) {
+ 	h.Add("n3")
+ 	moved := 0
+ 	for _, k := range keys {
+-		if h.Lookup(k) != before[k] { moved++ }
++		if h.Lookup(k) != before[k] {
++			moved++
++		}
++	}
++	if moved == 0 {
++		t.Fatal("some keys should move")
++	}
++	if moved > 60 {
++		t.Fatalf("too many moved: %d", moved)
+ 	}
+-	if moved == 0 { t.Fatal("some keys should move") }
+-	if moved > 60 { t.Fatalf("too many moved: %d", moved) }
+ }
+ 
+ func TestHRW_LookupN(t *testing.T) {
+ 	h := New()
+-	h.Add("a"); h.Add("b"); h.Add("c")
++	h.Add("a")
++	h.Add("b")
++	h.Add("c")
+ 	result := h.LookupN("key", 2)
+-	if len(result) != 2 { t.Fatal("should return 2") }
++	if len(result) != 2 {
++		t.Fatal("should return 2")
++	}
+ }
+ 
+ func TestHRW_Remove(t *testing.T) {
+ 	h := New()
+-	h.Add("n1"); h.Add("n2")
++	h.Add("n1")
++	h.Add("n2")
+ 	h.Remove("n1")
+-	if h.Size() != 1 { t.Fatal("should have 1") }
+-	if h.Lookup("key") != "n2" { t.Fatal("should route to n2") }
++	if h.Size() != 1 {
++		t.Fatal("should have 1")
++	}
++	if h.Lookup("key") != "n2" {
++		t.Fatal("should route to n2")
++	}
+ }
+ 
+ func TestHRW_Distribution(t *testing.T) {
+ 	h := New()
+-	h.Add("n1"); h.Add("n2"); h.Add("n3")
++	h.Add("n1")
++	h.Add("n2")
++	h.Add("n3")
+ 	keys := make([]string, 1000)
+-	for i := range keys { keys[i] = fmt.Sprintf("k%d", i) }
++	for i := range keys {
++		keys[i] = fmt.Sprintf("k%d", i)
++	}
+ 	dist := h.Distribution(keys)
+ 	for _, count := range dist {
+-		if count < 200 || count > 500 { t.Fatalf("skewed: %v", dist) }
++		if count < 200 || count > 500 {
++			t.Fatalf("skewed: %v", dist)
++		}
+ 	}
+ }
+ 
+ func TestHRW_Empty(t *testing.T) {
+ 	h := New()
+-	if h.Lookup("key") != "" { t.Fatal("empty should return empty") }
++	if h.Lookup("key") != "" {
++		t.Fatal("empty should return empty")
++	}
+ }
+ 
+ func TestHRW_DuplicateAdd(t *testing.T) {
+ 	h := New()
+-	h.Add("n1"); h.Add("n1")
+-	if h.Size() != 1 { t.Fatal("should deduplicate") }
++	h.Add("n1")
++	h.Add("n1")
++	if h.Size() != 1 {
++		t.Fatal("should deduplicate")
++	}
+ }
+diff --git a/base/pkg/retry/retry.go b/repo/pkg/retry/retry.go
+index 531fb10..45a04dd 100644
+--- a/base/pkg/retry/retry.go
++++ b/repo/pkg/retry/retry.go
+@@ -56,22 +56,30 @@ func NewLinearBackoff(maxAttempts int, initialWait, increment time.Duration) *Po
+ 
+ // WithJitter sets the jitter fraction (0.0 to 1.0).
+ func (p *Policy) WithJitter(frac float64) *Policy {
+-	if frac < 0 { frac = 0 }
+-	if frac > 1 { frac = 1 }
++	if frac < 0 {
++		frac = 0
++	}
++	if frac > 1 {
++		frac = 1
++	}
+ 	p.JitterFrac = frac
+ 	return p
+ }
+ 
+ // WithMultiplier sets the backoff multiplier.
+ func (p *Policy) WithMultiplier(m float64) *Policy {
+-	if m < 1 { m = 1 }
++	if m < 1 {
++		m = 1
++	}
+ 	p.Multiplier = m
+ 	return p
+ }
+ 
+ // Delay returns the wait duration for the given attempt number (0-based).
+ func (p *Policy) Delay(attempt int) time.Duration {
+-	if attempt < 0 { attempt = 0 }
++	if attempt < 0 {
++		attempt = 0
++	}
+ 	base := float64(p.InitialWait) * math.Pow(p.Multiplier, float64(attempt))
+ 	if base > float64(p.MaxWait) {
+ 		base = float64(p.MaxWait)
+@@ -82,7 +90,9 @@ func (p *Policy) Delay(attempt int) time.Duration {
+ 		p.mu.Unlock()
+ 		base += jitter
+ 	}
+-	if base < 0 { base = 0 }
++	if base < 0 {
++		base = 0
++	}
+ 	return time.Duration(base)
+ }
+ 
+diff --git a/base/pkg/retry/retry_test.go b/repo/pkg/retry/retry_test.go
+index b1da4f3..935256f 100644
+--- a/base/pkg/retry/retry_test.go
++++ b/repo/pkg/retry/retry_test.go
+@@ -14,8 +14,12 @@ func TestExponentialBackoff_Delays(t *testing.T) {
+ 	d0 := p.Delay(0)
+ 	d1 := p.Delay(1)
+ 	d2 := p.Delay(2)
+-	if d1 <= d0 { t.Fatal("d1 should be > d0") }
+-	if d2 <= d1 { t.Fatal("d2 should be > d1") }
++	if d1 <= d0 {
++		t.Fatal("d1 should be > d0")
++	}
++	if d2 <= d1 {
++		t.Fatal("d2 should be > d1")
++	}
+ }
+ 
+ func TestExponentialBackoff_MaxWait(t *testing.T) {
+@@ -31,14 +35,22 @@ func TestConstantBackoff(t *testing.T) {
+ 	p := NewConstantBackoff(3, 50*time.Millisecond)
+ 	d0 := p.Delay(0)
+ 	d1 := p.Delay(1)
+-	if d0 != d1 { t.Fatal("constant backoff should be equal") }
++	if d0 != d1 {
++		t.Fatal("constant backoff should be equal")
++	}
+ }
+ 
+ func TestPolicy_ShouldRetry(t *testing.T) {
+ 	p := NewExponentialBackoff(3, time.Millisecond, time.Second)
+-	if !p.ShouldRetry(0) { t.Fatal("should retry at 0") }
+-	if !p.ShouldRetry(1) { t.Fatal("should retry at 1") }
+-	if p.ShouldRetry(2) { t.Fatal("should not retry at 2") }
++	if !p.ShouldRetry(0) {
++		t.Fatal("should retry at 0")
++	}
++	if !p.ShouldRetry(1) {
++		t.Fatal("should retry at 1")
++	}
++	if p.ShouldRetry(2) {
++		t.Fatal("should not retry at 2")
++	}
+ }
+ 
+ func TestPolicy_Do_Success(t *testing.T) {
+@@ -46,18 +58,28 @@ func TestPolicy_Do_Success(t *testing.T) {
+ 	attempt := 0
+ 	r := p.Do(func() error {
+ 		attempt++
+-		if attempt < 2 { return errTemp }
++		if attempt < 2 {
++			return errTemp
++		}
+ 		return nil
+ 	})
+-	if r.Err != nil { t.Fatalf("expected success, got %v", r.Err) }
+-	if r.Attempts != 2 { t.Fatalf("expected 2 attempts, got %d", r.Attempts) }
++	if r.Err != nil {
++		t.Fatalf("expected success, got %v", r.Err)
++	}
++	if r.Attempts != 2 {
++		t.Fatalf("expected 2 attempts, got %d", r.Attempts)
++	}
+ }
+ 
+ func TestPolicy_Do_Exhausted(t *testing.T) {
+ 	p := NewConstantBackoff(3, time.Millisecond)
+ 	r := p.Do(func() error { return errTemp })
+-	if r.Err == nil { t.Fatal("expected error") }
+-	if r.Attempts != 3 { t.Fatalf("expected 3, got %d", r.Attempts) }
++	if r.Err == nil {
++		t.Fatal("expected error")
++	}
++	if r.Attempts != 3 {
++		t.Fatalf("expected 3, got %d", r.Attempts)
++	}
+ }
+ 
+ func TestPolicy_DoWithValue(t *testing.T) {
+@@ -65,15 +87,21 @@ func TestPolicy_DoWithValue(t *testing.T) {
+ 	r := p.DoWithValue(func() (interface{}, error) {
+ 		return 42, nil
+ 	})
+-	if r.Err != nil { t.Fatal("expected success") }
+-	if r.Value.(int) != 42 { t.Fatal("expected 42") }
++	if r.Err != nil {
++		t.Fatal("expected success")
++	}
++	if r.Value.(int) != 42 {
++		t.Fatal("expected 42")
++	}
+ }
+ 
+ func TestPolicy_Schedule(t *testing.T) {
+ 	p := NewExponentialBackoff(4, 10*time.Millisecond, time.Second)
+ 	p.WithJitter(0)
+ 	s := p.Schedule()
+-	if len(s) != 3 { t.Fatalf("expected 3 delays, got %d", len(s)) }
++	if len(s) != 3 {
++		t.Fatalf("expected 3 delays, got %d", len(s))
++	}
+ }
+ 
+ func TestPolicy_WithJitter(t *testing.T) {
+@@ -91,10 +119,14 @@ func TestPolicy_WithMultiplier(t *testing.T) {
+ 	p.WithJitter(0)
+ 	d0 := p.Delay(0)
+ 	d1 := p.Delay(1)
+-	if d1 != d0*3 { t.Fatalf("expected 3x, got d0=%v d1=%v", d0, d1) }
++	if d1 != d0*3 {
++		t.Fatalf("expected 3x, got d0=%v d1=%v", d0, d1)
++	}
+ }
+ 
+ func TestLinearBackoff(t *testing.T) {
+ 	p := NewLinearBackoff(5, 10*time.Millisecond, 10*time.Millisecond)
+-	if p.MaxAttempts != 5 { t.Fatal("wrong max attempts") }
++	if p.MaxAttempts != 5 {
++		t.Fatal("wrong max attempts")
++	}
+ }
+diff --git a/base/pkg/shard/shard.go b/repo/pkg/shard/shard.go
+index adf3920..925e391 100644
+--- a/base/pkg/shard/shard.go
++++ b/repo/pkg/shard/shard.go
+@@ -26,7 +26,9 @@ type Manager struct {
+ 
+ // NewManager creates a shard manager with the given number of shards.
+ func NewManager(shardCount int) *Manager {
+-	if shardCount < 1 { shardCount = 1 }
++	if shardCount < 1 {
++		shardCount = 1
++	}
+ 	shards := make([]*Shard, shardCount)
+ 	rangeSize := uint64(1<<32) / uint64(shardCount)
+ 	for i := 0; i < shardCount; i++ {
+@@ -44,7 +46,9 @@ func NewManager(shardCount int) *Manager {
+ func (m *Manager) AssignNode(shardID int, nodeID string) bool {
+ 	m.mu.Lock()
+ 	defer m.mu.Unlock()
+-	if shardID < 0 || shardID >= m.shardCount { return false }
++	if shardID < 0 || shardID >= m.shardCount {
++		return false
++	}
+ 	m.shards[shardID].Owner = nodeID
+ 	m.nodes[nodeID] = append(m.nodes[nodeID], shardID)
+ 	return true
+@@ -58,7 +62,9 @@ func (m *Manager) ShardForKey(key string) int {
+ 	m.mu.RLock()
+ 	defer m.mu.RUnlock()
+ 	idx := sort.Search(m.shardCount, func(i int) bool { return m.shards[i].RangeMax >= hash })
+-	if idx >= m.shardCount { idx = m.shardCount - 1 }
++	if idx >= m.shardCount {
++		idx = m.shardCount - 1
++	}
+ 	return idx
+ }
+ 
+@@ -74,7 +80,9 @@ func (m *Manager) OwnerForKey(key string) string {
+ func (m *Manager) GetShard(id int) *Shard {
+ 	m.mu.RLock()
+ 	defer m.mu.RUnlock()
+-	if id < 0 || id >= m.shardCount { return nil }
++	if id < 0 || id >= m.shardCount {
++		return nil
++	}
+ 	s := *m.shards[id]
+ 	return &s
+ }
+@@ -104,7 +112,9 @@ func (m *Manager) Distribution() map[string]int {
+ 	defer m.mu.RUnlock()
+ 	dist := make(map[string]int)
+ 	for _, s := range m.shards {
+-		if s.Owner != "" { dist[s.Owner]++ }
++		if s.Owner != "" {
++			dist[s.Owner]++
++		}
+ 	}
+ 	return dist
+ }
+@@ -113,12 +123,18 @@ func (m *Manager) Distribution() map[string]int {
+ func (m *Manager) TransferShard(shardID int, fromNode, toNode string) error {
+ 	m.mu.Lock()
+ 	defer m.mu.Unlock()
+-	if shardID < 0 || shardID >= m.shardCount { return fmt.Errorf("invalid shard %d", shardID) }
+-	if m.shards[shardID].Owner != fromNode { return fmt.Errorf("shard %d not owned by %s", shardID, fromNode) }
++	if shardID < 0 || shardID >= m.shardCount {
++		return fmt.Errorf("invalid shard %d", shardID)
++	}
++	if m.shards[shardID].Owner != fromNode {
++		return fmt.Errorf("shard %d not owned by %s", shardID, fromNode)
++	}
+ 	m.shards[shardID].Owner = toNode
+ 	newList := make([]int, 0)
+ 	for _, id := range m.nodes[fromNode] {
+-		if id != shardID { newList = append(newList, id) }
++		if id != shardID {
++			newList = append(newList, id)
++		}
+ 	}
+ 	m.nodes[fromNode] = newList
+ 	m.nodes[toNode] = append(m.nodes[toNode], shardID)
+@@ -129,7 +145,9 @@ func (m *Manager) TransferShard(shardID int, fromNode, toNode string) error {
+ func (m *Manager) Rebalance(nodeIDs []string) {
+ 	m.mu.Lock()
+ 	defer m.mu.Unlock()
+-	if len(nodeIDs) == 0 { return }
++	if len(nodeIDs) == 0 {
++		return
++	}
+ 	m.nodes = make(map[string][]int)
+ 	for i, s := range m.shards {
+ 		owner := nodeIDs[i%len(nodeIDs)]
+diff --git a/base/pkg/shard/shard_test.go b/repo/pkg/shard/shard_test.go
+index 769b667..01f7344 100644
+--- a/base/pkg/shard/shard_test.go
++++ b/repo/pkg/shard/shard_test.go
+@@ -5,14 +5,18 @@ import "testing"
+ func TestManager_ShardForKey(t *testing.T) {
+ 	m := NewManager(16)
+ 	id := m.ShardForKey("hello")
+-	if id < 0 || id >= 16 { t.Fatalf("shard out of range: %d", id) }
++	if id < 0 || id >= 16 {
++		t.Fatalf("shard out of range: %d", id)
++	}
+ }
+ 
+ func TestManager_Consistency(t *testing.T) {
+ 	m := NewManager(16)
+ 	id1 := m.ShardForKey("key")
+ 	id2 := m.ShardForKey("key")
+-	if id1 != id2 { t.Fatal("should be consistent") }
++	if id1 != id2 {
++		t.Fatal("should be consistent")
++	}
+ }
+ 
+ func TestManager_AssignAndOwner(t *testing.T) {
+@@ -28,7 +32,9 @@ func TestManager_Rebalance(t *testing.T) {
+ 	m.Rebalance([]string{"n1", "n2", "n3"})
+ 	dist := m.Distribution()
+ 	for _, count := range dist {
+-		if count != 4 { t.Fatalf("expected 4 shards each, got %v", dist) }
++		if count != 4 {
++			t.Fatalf("expected 4 shards each, got %v", dist)
++		}
+ 	}
+ }
+ 
+@@ -36,39 +42,55 @@ func TestManager_Transfer(t *testing.T) {
+ 	m := NewManager(4)
+ 	m.Rebalance([]string{"n1", "n2"})
+ 	err := m.TransferShard(0, "n1", "n3")
+-	if err != nil { t.Fatal(err) }
++	if err != nil {
++		t.Fatal(err)
++	}
+ 	s := m.GetShard(0)
+-	if s.Owner != "n3" { t.Fatal("should be n3") }
++	if s.Owner != "n3" {
++		t.Fatal("should be n3")
++	}
+ }
+ 
+ func TestManager_TransferWrongOwner(t *testing.T) {
+ 	m := NewManager(4)
+ 	m.Rebalance([]string{"n1"})
+ 	err := m.TransferShard(0, "n2", "n3")
+-	if err == nil { t.Fatal("should fail for wrong owner") }
++	if err == nil {
++		t.Fatal("should fail for wrong owner")
++	}
+ }
+ 
+ func TestManager_ShardCount(t *testing.T) {
+ 	m := NewManager(32)
+-	if m.ShardCount() != 32 { t.Fatal("wrong count") }
++	if m.ShardCount() != 32 {
++		t.Fatal("wrong count")
++	}
+ }
+ 
+ func TestManager_ShardsForNode(t *testing.T) {
+ 	m := NewManager(6)
+ 	m.Rebalance([]string{"n1", "n2"})
+ 	s := m.ShardsForNode("n1")
+-	if len(s) != 3 { t.Fatalf("expected 3, got %d", len(s)) }
++	if len(s) != 3 {
++		t.Fatalf("expected 3, got %d", len(s))
++	}
+ }
+ 
+ func TestManager_NodeCount(t *testing.T) {
+ 	m := NewManager(4)
+ 	m.Rebalance([]string{"n1", "n2"})
+-	if m.NodeCount() != 2 { t.Fatal("expected 2") }
++	if m.NodeCount() != 2 {
++		t.Fatal("expected 2")
++	}
+ }
+ 
+ func TestManager_GetShard(t *testing.T) {
+ 	m := NewManager(8)
+ 	s := m.GetShard(0)
+-	if s == nil { t.Fatal("should return shard") }
+-	if s.ID != 0 { t.Fatal("wrong ID") }
++	if s == nil {
++		t.Fatal("should return shard")
++	}
++	if s.ID != 0 {
++		t.Fatal("wrong ID")
++	}
+ }
+diff --git a/base/pkg/sim/network.go b/repo/pkg/sim/network.go
+index 4f7ecb3..2063333 100644
+--- a/base/pkg/sim/network.go
++++ b/repo/pkg/sim/network.go
+@@ -11,18 +11,18 @@ import (
+ 
+ // Event represents a discrete simulation event.
+ type Event struct {
+-	Time     uint64
+-	Type     EventType
+-	Source   string
+-	Target   string
+-	Payload  interface{}
++	Time    uint64
++	Type    EventType
++	Source  string
++	Target  string
++	Payload interface{}
+ }
+ 
+ // EventType identifies the kind of simulation event.
+ type EventType int
+ 
+ const (
+-	EventGossip     EventType = iota
++	EventGossip EventType = iota
+ 	EventMerkleDiff
+ 	EventNodeJoin
+ 	EventNodeLeave
+@@ -345,4 +345,4 @@ type SimRoundResult struct {
+ 	PulledTotal int
+ 	Blocked     int
+ 	Dropped     int
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/sim/sim_test.go b/repo/pkg/sim/sim_test.go
+index 66e706c..85bb68f 100644
+--- a/base/pkg/sim/sim_test.go
++++ b/repo/pkg/sim/sim_test.go
+@@ -205,4 +205,4 @@ func TestNetworkSim_SplitBrainRecovery(t *testing.T) {
+ 		}
+ 	}
+ 	t.Fatal("split-brain recovery should converge")
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/skiplist/skiplist.go b/repo/pkg/skiplist/skiplist.go
+index 85f0c37..0c90d0f 100644
+--- a/base/pkg/skiplist/skiplist.go
++++ b/repo/pkg/skiplist/skiplist.go
+@@ -34,7 +34,9 @@ func New(seed int64) *SkipList {
+ 
+ func (sl *SkipList) randomLevel() int {
+ 	lvl := 1
+-	for lvl < maxLevel && sl.rng.Float64() < probability { lvl++ }
++	for lvl < maxLevel && sl.rng.Float64() < probability {
++		lvl++
++	}
+ 	return lvl
+ }
+ 
+@@ -45,7 +47,9 @@ func (sl *SkipList) Insert(key string, value interface{}) {
+ 	update := make([]*node, maxLevel)
+ 	current := sl.head
+ 	for i := sl.level - 1; i >= 0; i-- {
+-		for current.next[i] != nil && current.next[i].key < key { current = current.next[i] }
++		for current.next[i] != nil && current.next[i].key < key {
++			current = current.next[i]
++		}
+ 		update[i] = current
+ 	}
+ 	if current.next[0] != nil && current.next[0].key == key {
+@@ -54,7 +58,9 @@ func (sl *SkipList) Insert(key string, value interface{}) {
+ 	}
+ 	newLevel := sl.randomLevel()
+ 	if newLevel > sl.level {
+-		for i := sl.level; i < newLevel; i++ { update[i] = sl.head }
++		for i := sl.level; i < newLevel; i++ {
++			update[i] = sl.head
++		}
+ 		sl.level = newLevel
+ 	}
+ 	n := &node{key: key, value: value, next: make([]*node, newLevel)}
+@@ -71,10 +77,14 @@ func (sl *SkipList) Search(key string) (interface{}, bool) {
+ 	defer sl.mu.RUnlock()
+ 	current := sl.head
+ 	for i := sl.level - 1; i >= 0; i-- {
+-		for current.next[i] != nil && current.next[i].key < key { current = current.next[i] }
++		for current.next[i] != nil && current.next[i].key < key {
++			current = current.next[i]
++		}
+ 	}
+ 	current = current.next[0]
+-	if current != nil && current.key == key { return current.value, true }
++	if current != nil && current.key == key {
++		return current.value, true
++	}
+ 	return nil, false
+ }
+ 
+@@ -85,16 +95,24 @@ func (sl *SkipList) Delete(key string) bool {
+ 	update := make([]*node, maxLevel)
+ 	current := sl.head
+ 	for i := sl.level - 1; i >= 0; i-- {
+-		for current.next[i] != nil && current.next[i].key < key { current = current.next[i] }
++		for current.next[i] != nil && current.next[i].key < key {
++			current = current.next[i]
++		}
+ 		update[i] = current
+ 	}
+ 	target := current.next[0]
+-	if target == nil || target.key != key { return false }
++	if target == nil || target.key != key {
++		return false
++	}
+ 	for i := 0; i < sl.level; i++ {
+-		if update[i].next[i] != target { break }
++		if update[i].next[i] != target {
++			break
++		}
+ 		update[i].next[i] = target.next[i]
+ 	}
+-	for sl.level > 1 && sl.head.next[sl.level-1] == nil { sl.level-- }
++	for sl.level > 1 && sl.head.next[sl.level-1] == nil {
++		sl.level--
++	}
+ 	sl.length--
+ 	return true
+ }
+@@ -107,17 +125,28 @@ func (sl *SkipList) Len() int {
+ }
+ 
+ // Range returns all key-value pairs where from <= key <= to.
+-func (sl *SkipList) Range(from, to string) []struct{ Key string; Value interface{} } {
++func (sl *SkipList) Range(from, to string) []struct {
++	Key   string
++	Value interface{}
++} {
+ 	sl.mu.RLock()
+ 	defer sl.mu.RUnlock()
+-	var result []struct{ Key string; Value interface{} }
++	var result []struct {
++		Key   string
++		Value interface{}
++	}
+ 	current := sl.head
+ 	for i := sl.level - 1; i >= 0; i-- {
+-		for current.next[i] != nil && current.next[i].key < from { current = current.next[i] }
++		for current.next[i] != nil && current.next[i].key < from {
++			current = current.next[i]
++		}
+ 	}
+ 	current = current.next[0]
+ 	for current != nil && current.key <= to {
+-		result = append(result, struct{ Key string; Value interface{} }{current.key, current.value})
++		result = append(result, struct {
++			Key   string
++			Value interface{}
++		}{current.key, current.value})
+ 		current = current.next[0]
+ 	}
+ 	return result
+@@ -127,7 +156,9 @@ func (sl *SkipList) Range(from, to string) []struct{ Key string; Value interface
+ func (sl *SkipList) Min() (string, interface{}, bool) {
+ 	sl.mu.RLock()
+ 	defer sl.mu.RUnlock()
+-	if sl.head.next[0] == nil { return "", nil, false }
++	if sl.head.next[0] == nil {
++		return "", nil, false
++	}
+ 	n := sl.head.next[0]
+ 	return n.key, n.value, true
+ }
+@@ -138,9 +169,13 @@ func (sl *SkipList) Max() (string, interface{}, bool) {
+ 	defer sl.mu.RUnlock()
+ 	current := sl.head
+ 	for i := sl.level - 1; i >= 0; i-- {
+-		for current.next[i] != nil { current = current.next[i] }
++		for current.next[i] != nil {
++			current = current.next[i]
++		}
++	}
++	if current == sl.head {
++		return "", nil, false
+ 	}
+-	if current == sl.head { return "", nil, false }
+ 	return current.key, current.value, true
+ }
+ 
+diff --git a/base/pkg/skiplist/skiplist_test.go b/repo/pkg/skiplist/skiplist_test.go
+index e4ef1e1..16dc9ef 100644
+--- a/base/pkg/skiplist/skiplist_test.go
++++ b/repo/pkg/skiplist/skiplist_test.go
+@@ -4,46 +4,73 @@ import "testing"
+ 
+ func TestSkipList_InsertSearch(t *testing.T) {
+ 	sl := New(42)
+-	sl.Insert("b", 2); sl.Insert("a", 1); sl.Insert("c", 3)
++	sl.Insert("b", 2)
++	sl.Insert("a", 1)
++	sl.Insert("c", 3)
+ 	v, ok := sl.Search("b")
+-	if !ok || v.(int) != 2 { t.Fatal("should find b=2") }
++	if !ok || v.(int) != 2 {
++		t.Fatal("should find b=2")
++	}
+ }
+ 
+ func TestSkipList_Delete(t *testing.T) {
+ 	sl := New(42)
+ 	sl.Insert("a", 1)
+-	if !sl.Delete("a") { t.Fatal("delete should succeed") }
+-	if sl.Delete("a") { t.Fatal("second delete should fail") }
+-	if sl.Len() != 0 { t.Fatal("should be empty") }
++	if !sl.Delete("a") {
++		t.Fatal("delete should succeed")
++	}
++	if sl.Delete("a") {
++		t.Fatal("second delete should fail")
++	}
++	if sl.Len() != 0 {
++		t.Fatal("should be empty")
++	}
+ }
+ 
+ func TestSkipList_Update(t *testing.T) {
+ 	sl := New(42)
+-	sl.Insert("a", 1); sl.Insert("a", 2)
++	sl.Insert("a", 1)
++	sl.Insert("a", 2)
+ 	v, _ := sl.Search("a")
+-	if v.(int) != 2 { t.Fatal("should be updated") }
+-	if sl.Len() != 1 { t.Fatal("should not grow") }
++	if v.(int) != 2 {
++		t.Fatal("should be updated")
++	}
++	if sl.Len() != 1 {
++		t.Fatal("should not grow")
++	}
+ }
+ 
+ func TestSkipList_Range(t *testing.T) {
+ 	sl := New(42)
+-	for i := 0; i < 10; i++ { sl.Insert(string(rune('a'+i)), i) }
++	for i := 0; i < 10; i++ {
++		sl.Insert(string(rune('a'+i)), i)
++	}
+ 	r := sl.Range("c", "f")
+-	if len(r) != 4 { t.Fatalf("expected 4, got %d", len(r)) }
++	if len(r) != 4 {
++		t.Fatalf("expected 4, got %d", len(r))
++	}
+ }
+ 
+ func TestSkipList_MinMax(t *testing.T) {
+ 	sl := New(42)
+-	sl.Insert("m", 1); sl.Insert("a", 2); sl.Insert("z", 3)
++	sl.Insert("m", 1)
++	sl.Insert("a", 2)
++	sl.Insert("z", 3)
+ 	minK, _, _ := sl.Min()
+ 	maxK, _, _ := sl.Max()
+-	if minK != "a" { t.Fatalf("min should be a, got %s", minK) }
+-	if maxK != "z" { t.Fatalf("max should be z, got %s", maxK) }
++	if minK != "a" {
++		t.Fatalf("min should be a, got %s", minK)
++	}
++	if maxK != "z" {
++		t.Fatalf("max should be z, got %s", maxK)
++	}
+ }
+ 
+ func TestSkipList_Keys(t *testing.T) {
+ 	sl := New(42)
+-	sl.Insert("c", 3); sl.Insert("a", 1); sl.Insert("b", 2)
++	sl.Insert("c", 3)
++	sl.Insert("a", 1)
++	sl.Insert("b", 2)
+ 	keys := sl.Keys()
+ 	if len(keys) != 3 || keys[0] != "a" || keys[1] != "b" || keys[2] != "c" {
+ 		t.Fatalf("expected sorted [a,b,c], got %v", keys)
+@@ -53,17 +80,25 @@ func TestSkipList_Keys(t *testing.T) {
+ func TestSkipList_Empty(t *testing.T) {
+ 	sl := New(42)
+ 	_, _, ok := sl.Min()
+-	if ok { t.Fatal("empty min should fail") }
++	if ok {
++		t.Fatal("empty min should fail")
++	}
+ 	_, _, ok = sl.Max()
+-	if ok { t.Fatal("empty max should fail") }
+-	if sl.Len() != 0 { t.Fatal("should be 0") }
++	if ok {
++		t.Fatal("empty max should fail")
++	}
++	if sl.Len() != 0 {
++		t.Fatal("should be 0")
++	}
+ }
+ 
+ func TestSkipList_SearchMissing(t *testing.T) {
+ 	sl := New(42)
+ 	sl.Insert("a", 1)
+ 	_, ok := sl.Search("z")
+-	if ok { t.Fatal("should not find z") }
++	if ok {
++		t.Fatal("should not find z")
++	}
+ }
+ 
+ func TestSkipList_Large(t *testing.T) {
+@@ -71,9 +106,13 @@ func TestSkipList_Large(t *testing.T) {
+ 	for i := 0; i < 1000; i++ {
+ 		sl.Insert(string(rune(i+0x100)), i)
+ 	}
+-	if sl.Len() != 1000 { t.Fatalf("expected 1000, got %d", sl.Len()) }
++	if sl.Len() != 1000 {
++		t.Fatalf("expected 1000, got %d", sl.Len())
++	}
+ 	for i := 0; i < 1000; i++ {
+-		_, ok := sl.Search(string(rune(i+0x100)))
+-		if !ok { t.Fatalf("should find %d", i) }
++		_, ok := sl.Search(string(rune(i + 0x100)))
++		if !ok {
++			t.Fatalf("should find %d", i)
++		}
+ 	}
+ }
+diff --git a/base/pkg/transport/channel.go b/repo/pkg/transport/channel.go
+index 1c7a418..09c044b 100644
+--- a/base/pkg/transport/channel.go
++++ b/repo/pkg/transport/channel.go
+@@ -118,4 +118,4 @@ func MakeEnvelope(msgType MsgType, sender string, seqNum uint64, body []byte) *E
+ 		},
+ 		Body: body,
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/transport/codec.go b/repo/pkg/transport/codec.go
+index 61f2814..548b85b 100644
+--- a/base/pkg/transport/codec.go
++++ b/repo/pkg/transport/codec.go
+@@ -15,7 +15,7 @@ var (
+ 
+ const (
+ 	protocolVersion = 1
+-	maxPayloadSize  = 16 * 1024 * 1024 // 16 MB
++	maxPayloadSize  = 16 * 1024 * 1024      // 16 MB
+ 	headerSize      = 1 + 1 + 2 + 8 + 4 + 4 // version + type + senderLen + seqNum + bodyLen + checksum
+ )
+ 
+@@ -31,7 +31,8 @@ func NewCodec() *Codec {
+ 
+ // Encode serializes an Envelope into bytes.
+ // Wire format:
+-//   [version:1][type:1][senderLen:2][sender:N][seqNum:8][bodyLen:4][body:M][checksum:4]
++//
++//	[version:1][type:1][senderLen:2][sender:N][seqNum:8][bodyLen:4][body:M][checksum:4]
+ func (c *Codec) Encode(env *Envelope) ([]byte, error) {
+ 	senderLen := len(env.Header.Sender)
+ 	bodyLen := len(env.Body)
+@@ -205,4 +206,4 @@ func DecodeBytes(data []byte) ([]byte, int, error) {
+ 	result := make([]byte, bLen)
+ 	copy(result, data[n:n+int(bLen)])
+ 	return result, n + int(bLen), nil
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/transport/message.go b/repo/pkg/transport/message.go
+index 31bab7f..a368b8f 100644
+--- a/base/pkg/transport/message.go
++++ b/repo/pkg/transport/message.go
+@@ -6,21 +6,21 @@ import "strconv"
+ type MsgType uint8
+ 
+ const (
+-	MsgPing         MsgType = 0x01
+-	MsgPingReq      MsgType = 0x02
+-	MsgAck          MsgType = 0x03
+-	MsgNack         MsgType = 0x04
+-	MsgGossipPush   MsgType = 0x10
+-	MsgGossipPull   MsgType = 0x11
++	MsgPing           MsgType = 0x01
++	MsgPingReq        MsgType = 0x02
++	MsgAck            MsgType = 0x03
++	MsgNack           MsgType = 0x04
++	MsgGossipPush     MsgType = 0x10
++	MsgGossipPull     MsgType = 0x11
+ 	MsgGossipPushPull MsgType = 0x12
+-	MsgGossipDigest MsgType = 0x13
+-	MsgMemberJoin   MsgType = 0x20
+-	MsgMemberLeave  MsgType = 0x21
+-	MsgMemberState  MsgType = 0x22
+-	MsgMerkleDiff   MsgType = 0x30
+-	MsgMerkleSync   MsgType = 0x31
+-	MsgCRDTState    MsgType = 0x40
+-	MsgCRDTDelta    MsgType = 0x41
++	MsgGossipDigest   MsgType = 0x13
++	MsgMemberJoin     MsgType = 0x20
++	MsgMemberLeave    MsgType = 0x21
++	MsgMemberState    MsgType = 0x22
++	MsgMerkleDiff     MsgType = 0x30
++	MsgMerkleSync     MsgType = 0x31
++	MsgCRDTState      MsgType = 0x40
++	MsgCRDTDelta      MsgType = 0x41
+ )
+ 
+ // Header is the fixed-size prefix of every message.
+@@ -52,4 +52,4 @@ func (a Address) String() string {
+ 
+ func portStr(p uint16) string {
+ 	return strconv.FormatUint(uint64(p), 10)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/transport/transport_test.go b/repo/pkg/transport/transport_test.go
+index 9cd94e7..df62eb2 100644
+--- a/base/pkg/transport/transport_test.go
++++ b/repo/pkg/transport/transport_test.go
+@@ -280,7 +280,7 @@ func TestChannel_InboxFull(t *testing.T) {
+ 	ch := NewChannel(1)
+ 	ch.Register("n1")
+ 	env := MakeEnvelope(MsgPing, "n2", 1, nil)
+-	ch.Send("n1", env)  // fills buffer
++	ch.Send("n1", env)      // fills buffer
+ 	if ch.Send("n1", env) { // should drop
+ 		t.Fatal("send to full inbox should fail")
+ 	}
+@@ -323,4 +323,4 @@ func TestAddress_StringZero(t *testing.T) {
+ 	if a.String() != "0.0.0.0:0" {
+ 		t.Fatalf("expected 0.0.0.0:0, got %s", a.String())
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/ttlmap/ttlmap.go b/repo/pkg/ttlmap/ttlmap.go
+index 619512a..a3ae257 100644
+--- a/base/pkg/ttlmap/ttlmap.go
++++ b/repo/pkg/ttlmap/ttlmap.go
+@@ -46,12 +46,16 @@ func (m *Map) Get(key string) (interface{}, bool) {
+ 	m.mu.RLock()
+ 	e, ok := m.items[key]
+ 	m.mu.RUnlock()
+-	if !ok { return nil, false }
++	if !ok {
++		return nil, false
++	}
+ 	if time.Now().After(e.expiresAt) {
+ 		m.mu.Lock()
+ 		if e2, ok2 := m.items[key]; ok2 && time.Now().After(e2.expiresAt) {
+ 			delete(m.items, key)
+-			if m.onEvict != nil { m.onEvict(key, e2.value) }
++			if m.onEvict != nil {
++				m.onEvict(key, e2.value)
++			}
+ 		}
+ 		m.mu.Unlock()
+ 		return nil, false
+@@ -83,7 +87,9 @@ func (m *Map) Cleanup() int {
+ 	removed := 0
+ 	for k, e := range m.items {
+ 		if now.After(e.expiresAt) {
+-			if m.onEvict != nil { m.onEvict(k, e.value) }
++			if m.onEvict != nil {
++				m.onEvict(k, e.value)
++			}
+ 			delete(m.items, k)
+ 			removed++
+ 		}
+@@ -98,7 +104,9 @@ func (m *Map) Keys() []string {
+ 	now := time.Now()
+ 	keys := make([]string, 0)
+ 	for k, e := range m.items {
+-		if !now.After(e.expiresAt) { keys = append(keys, k) }
++		if !now.After(e.expiresAt) {
++			keys = append(keys, k)
++		}
+ 	}
+ 	return keys
+ }
+@@ -108,7 +116,9 @@ func (m *Map) Touch(key string) bool {
+ 	m.mu.Lock()
+ 	defer m.mu.Unlock()
+ 	e, ok := m.items[key]
+-	if !ok { return false }
++	if !ok {
++		return false
++	}
+ 	e.expiresAt = time.Now().Add(m.defaultTTL)
+ 	return true
+ }
+@@ -118,8 +128,12 @@ func (m *Map) TTL(key string) (time.Duration, bool) {
+ 	m.mu.RLock()
+ 	defer m.mu.RUnlock()
+ 	e, ok := m.items[key]
+-	if !ok { return 0, false }
++	if !ok {
++		return 0, false
++	}
+ 	remaining := time.Until(e.expiresAt)
+-	if remaining < 0 { return 0, false }
++	if remaining < 0 {
++		return 0, false
++	}
+ 	return remaining, true
+ }
+diff --git a/base/pkg/ttlmap/ttlmap_test.go b/repo/pkg/ttlmap/ttlmap_test.go
+index b6a0ca3..63f7348 100644
+--- a/base/pkg/ttlmap/ttlmap_test.go
++++ b/repo/pkg/ttlmap/ttlmap_test.go
+@@ -9,7 +9,9 @@ func TestMap_SetGet(t *testing.T) {
+ 	m := New(time.Second)
+ 	m.Set("k", "v")
+ 	v, ok := m.Get("k")
+-	if !ok || v.(string) != "v" { t.Fatal("should get value") }
++	if !ok || v.(string) != "v" {
++		t.Fatal("should get value")
++	}
+ }
+ 
+ func TestMap_Expiration(t *testing.T) {
+@@ -17,29 +19,42 @@ func TestMap_Expiration(t *testing.T) {
+ 	m.Set("k", "v")
+ 	time.Sleep(30 * time.Millisecond)
+ 	_, ok := m.Get("k")
+-	if ok { t.Fatal("should expire") }
++	if ok {
++		t.Fatal("should expire")
++	}
+ }
+ 
+ func TestMap_Delete(t *testing.T) {
+ 	m := New(time.Second)
+ 	m.Set("k", "v")
+-	if !m.Delete("k") { t.Fatal("should return true") }
+-	if m.Delete("k") { t.Fatal("should return false for missing") }
++	if !m.Delete("k") {
++		t.Fatal("should return true")
++	}
++	if m.Delete("k") {
++		t.Fatal("should return false for missing")
++	}
+ }
+ 
+ func TestMap_Cleanup(t *testing.T) {
+ 	m := New(10 * time.Millisecond)
+-	m.Set("a", 1); m.Set("b", 2); m.Set("c", 3)
++	m.Set("a", 1)
++	m.Set("b", 2)
++	m.Set("c", 3)
+ 	time.Sleep(20 * time.Millisecond)
+ 	removed := m.Cleanup()
+-	if removed != 3 { t.Fatalf("expected 3 removed, got %d", removed) }
++	if removed != 3 {
++		t.Fatalf("expected 3 removed, got %d", removed)
++	}
+ }
+ 
+ func TestMap_Keys(t *testing.T) {
+ 	m := New(time.Second)
+-	m.Set("a", 1); m.Set("b", 2)
++	m.Set("a", 1)
++	m.Set("b", 2)
+ 	keys := m.Keys()
+-	if len(keys) != 2 { t.Fatalf("expected 2, got %d", len(keys)) }
++	if len(keys) != 2 {
++		t.Fatalf("expected 2, got %d", len(keys))
++	}
+ }
+ 
+ func TestMap_Touch(t *testing.T) {
+@@ -49,15 +64,21 @@ func TestMap_Touch(t *testing.T) {
+ 	m.Touch("k")
+ 	time.Sleep(30 * time.Millisecond)
+ 	_, ok := m.Get("k")
+-	if !ok { t.Fatal("touched key should not expire yet") }
++	if !ok {
++		t.Fatal("touched key should not expire yet")
++	}
+ }
+ 
+ func TestMap_TTL(t *testing.T) {
+ 	m := New(time.Second)
+ 	m.Set("k", "v")
+ 	ttl, ok := m.TTL("k")
+-	if !ok { t.Fatal("should find key") }
+-	if ttl <= 0 || ttl > time.Second { t.Fatalf("unexpected ttl: %v", ttl) }
++	if !ok {
++		t.Fatal("should find key")
++	}
++	if ttl <= 0 || ttl > time.Second {
++		t.Fatalf("unexpected ttl: %v", ttl)
++	}
+ }
+ 
+ func TestMap_CustomTTL(t *testing.T) {
+@@ -65,7 +86,9 @@ func TestMap_CustomTTL(t *testing.T) {
+ 	m.SetWithTTL("k", "v", 10*time.Millisecond)
+ 	time.Sleep(20 * time.Millisecond)
+ 	_, ok := m.Get("k")
+-	if ok { t.Fatal("custom TTL should have expired") }
++	if ok {
++		t.Fatal("custom TTL should have expired")
++	}
+ }
+ 
+ func TestMap_EvictCallback(t *testing.T) {
+@@ -75,11 +98,16 @@ func TestMap_EvictCallback(t *testing.T) {
+ 	m.Set("a", 1)
+ 	time.Sleep(20 * time.Millisecond)
+ 	m.Cleanup()
+-	if evicted != 1 { t.Fatalf("expected 1 eviction callback, got %d", evicted) }
++	if evicted != 1 {
++		t.Fatalf("expected 1 eviction callback, got %d", evicted)
++	}
+ }
+ 
+ func TestMap_Len(t *testing.T) {
+ 	m := New(time.Second)
+-	m.Set("a", 1); m.Set("b", 2)
+-	if m.Len() != 2 { t.Fatal("expected 2") }
++	m.Set("a", 1)
++	m.Set("b", 2)
++	if m.Len() != 2 {
++		t.Fatal("expected 2")
++	}
+ }
+diff --git a/base/pkg/wal/wal.go b/repo/pkg/wal/wal.go
+index d79bb06..b41b7ae 100644
+--- a/base/pkg/wal/wal.go
++++ b/repo/pkg/wal/wal.go
+@@ -25,11 +25,11 @@ const (
+ 
+ // Entry represents a single WAL record.
+ type Entry struct {
+-	LSN     uint64
+-	Type    EntryType
+-	Key     []byte
+-	Value   []byte
+-	TxnID   uint64
++	LSN   uint64
++	Type  EntryType
++	Key   []byte
++	Value []byte
++	TxnID uint64
+ }
+ 
+ // Encode serializes an entry to bytes with CRC-32 integrity check.
+@@ -39,13 +39,20 @@ func (e *Entry) Encode() []byte {
+ 	size := 8 + 1 + 8 + 4 + keyLen + 4 + valLen + 4
+ 	buf := make([]byte, size)
+ 	offset := 0
+-	binary.BigEndian.PutUint64(buf[offset:], e.LSN); offset += 8
+-	buf[offset] = byte(e.Type); offset++
+-	binary.BigEndian.PutUint64(buf[offset:], e.TxnID); offset += 8
+-	binary.BigEndian.PutUint32(buf[offset:], uint32(keyLen)); offset += 4
+-	copy(buf[offset:], e.Key); offset += keyLen
+-	binary.BigEndian.PutUint32(buf[offset:], uint32(valLen)); offset += 4
+-	copy(buf[offset:], e.Value); offset += valLen
++	binary.BigEndian.PutUint64(buf[offset:], e.LSN)
++	offset += 8
++	buf[offset] = byte(e.Type)
++	offset++
++	binary.BigEndian.PutUint64(buf[offset:], e.TxnID)
++	offset += 8
++	binary.BigEndian.PutUint32(buf[offset:], uint32(keyLen))
++	offset += 4
++	copy(buf[offset:], e.Key)
++	offset += keyLen
++	binary.BigEndian.PutUint32(buf[offset:], uint32(valLen))
++	offset += 4
++	copy(buf[offset:], e.Value)
++	offset += valLen
+ 	crc := crc32.ChecksumIEEE(buf[:offset])
+ 	binary.BigEndian.PutUint32(buf[offset:], crc)
+ 	return buf
+@@ -53,20 +60,37 @@ func (e *Entry) Encode() []byte {
+ 
+ // DecodeEntry deserializes bytes into an Entry.
+ func DecodeEntry(data []byte) (*Entry, error) {
+-	if len(data) < 29 { return nil, ErrCorrupted }
++	if len(data) < 29 {
++		return nil, ErrCorrupted
++	}
+ 	offset := 0
+-	lsn := binary.BigEndian.Uint64(data[offset:]); offset += 8
+-	typ := EntryType(data[offset]); offset++
+-	txnID := binary.BigEndian.Uint64(data[offset:]); offset += 8
+-	keyLen := int(binary.BigEndian.Uint32(data[offset:])); offset += 4
+-	if offset+keyLen+4 > len(data)-4 { return nil, ErrCorrupted }
+-	key := make([]byte, keyLen); copy(key, data[offset:]); offset += keyLen
+-	valLen := int(binary.BigEndian.Uint32(data[offset:])); offset += 4
+-	if offset+valLen+4 > len(data) { return nil, ErrCorrupted }
+-	val := make([]byte, valLen); copy(val, data[offset:]); offset += valLen
++	lsn := binary.BigEndian.Uint64(data[offset:])
++	offset += 8
++	typ := EntryType(data[offset])
++	offset++
++	txnID := binary.BigEndian.Uint64(data[offset:])
++	offset += 8
++	keyLen := int(binary.BigEndian.Uint32(data[offset:]))
++	offset += 4
++	if offset+keyLen+4 > len(data)-4 {
++		return nil, ErrCorrupted
++	}
++	key := make([]byte, keyLen)
++	copy(key, data[offset:])
++	offset += keyLen
++	valLen := int(binary.BigEndian.Uint32(data[offset:]))
++	offset += 4
++	if offset+valLen+4 > len(data) {
++		return nil, ErrCorrupted
++	}
++	val := make([]byte, valLen)
++	copy(val, data[offset:])
++	offset += valLen
+ 	expectedCRC := binary.BigEndian.Uint32(data[offset:])
+ 	actualCRC := crc32.ChecksumIEEE(data[:offset])
+-	if expectedCRC != actualCRC { return nil, ErrCorrupted }
++	if expectedCRC != actualCRC {
++		return nil, ErrCorrupted
++	}
+ 	return &Entry{LSN: lsn, Type: typ, Key: key, Value: val, TxnID: txnID}, nil
+ }
+ 
+@@ -85,7 +109,9 @@ func NewLog() *Log { return &Log{nextLSN: 1} }
+ func (l *Log) Append(typ EntryType, key, value []byte, txnID uint64) (uint64, error) {
+ 	l.mu.Lock()
+ 	defer l.mu.Unlock()
+-	if l.closed { return 0, ErrClosed }
++	if l.closed {
++		return 0, ErrClosed
++	}
+ 	lsn := l.nextLSN
+ 	l.nextLSN++
+ 	e := Entry{LSN: lsn, Type: typ, Key: cp(key), Value: cp(value), TxnID: txnID}
+@@ -99,7 +125,9 @@ func (l *Log) Replay(fromLSN uint64) []Entry {
+ 	defer l.mu.Unlock()
+ 	var result []Entry
+ 	for _, e := range l.entries {
+-		if e.LSN >= fromLSN { result = append(result, e) }
++		if e.LSN >= fromLSN {
++			result = append(result, e)
++		}
+ 	}
+ 	return result
+ }
+@@ -109,7 +137,9 @@ func (l *Log) Truncate(maxLSN uint64) int {
+ 	l.mu.Lock()
+ 	defer l.mu.Unlock()
+ 	n := 0
+-	for n < len(l.entries) && l.entries[n].LSN <= maxLSN { n++ }
++	for n < len(l.entries) && l.entries[n].LSN <= maxLSN {
++		n++
++	}
+ 	l.entries = l.entries[n:]
+ 	return n
+ }
+@@ -127,6 +157,10 @@ func (l *Log) Close() { l.mu.Lock(); defer l.mu.Unlock(); l.closed = true }
+ func (l *Log) IsClosed() bool { l.mu.Lock(); defer l.mu.Unlock(); return l.closed }
+ 
+ func cp(b []byte) []byte {
+-	if b == nil { return nil }
+-	c := make([]byte, len(b)); copy(c, b); return c
++	if b == nil {
++		return nil
++	}
++	c := make([]byte, len(b))
++	copy(c, b)
++	return c
+ }
+diff --git a/base/pkg/wal/wal_test.go b/repo/pkg/wal/wal_test.go
+index 83ba049..cf0872e 100644
+--- a/base/pkg/wal/wal_test.go
++++ b/repo/pkg/wal/wal_test.go
+@@ -5,9 +5,15 @@ import "testing"
+ func TestLog_Append(t *testing.T) {
+ 	l := NewLog()
+ 	lsn, err := l.Append(EntryPut, []byte("k"), []byte("v"), 1)
+-	if err != nil { t.Fatal(err) }
+-	if lsn != 1 { t.Fatalf("expected LSN 1, got %d", lsn) }
+-	if l.Len() != 1 { t.Fatal("expected 1 entry") }
++	if err != nil {
++		t.Fatal(err)
++	}
++	if lsn != 1 {
++		t.Fatalf("expected LSN 1, got %d", lsn)
++	}
++	if l.Len() != 1 {
++		t.Fatal("expected 1 entry")
++	}
+ }
+ 
+ func TestLog_Replay(t *testing.T) {
+@@ -16,7 +22,9 @@ func TestLog_Replay(t *testing.T) {
+ 	l.Append(EntryPut, []byte("k2"), []byte("v2"), 1)
+ 	l.Append(EntryCommit, nil, nil, 1)
+ 	entries := l.Replay(1)
+-	if len(entries) != 3 { t.Fatalf("expected 3, got %d", len(entries)) }
++	if len(entries) != 3 {
++		t.Fatalf("expected 3, got %d", len(entries))
++	}
+ }
+ 
+ func TestLog_ReplayFrom(t *testing.T) {
+@@ -24,7 +32,9 @@ func TestLog_ReplayFrom(t *testing.T) {
+ 	l.Append(EntryPut, []byte("k1"), []byte("v1"), 1)
+ 	l.Append(EntryPut, []byte("k2"), []byte("v2"), 1)
+ 	entries := l.Replay(2)
+-	if len(entries) != 1 { t.Fatalf("expected 1, got %d", len(entries)) }
++	if len(entries) != 1 {
++		t.Fatalf("expected 1, got %d", len(entries))
++	}
+ }
+ 
+ func TestLog_Truncate(t *testing.T) {
+@@ -33,33 +43,51 @@ func TestLog_Truncate(t *testing.T) {
+ 	l.Append(EntryPut, []byte("k2"), []byte("v2"), 1)
+ 	l.Append(EntryPut, []byte("k3"), []byte("v3"), 1)
+ 	removed := l.Truncate(2)
+-	if removed != 2 { t.Fatalf("expected 2 removed, got %d", removed) }
+-	if l.Len() != 1 { t.Fatalf("expected 1 remaining, got %d", l.Len()) }
++	if removed != 2 {
++		t.Fatalf("expected 2 removed, got %d", removed)
++	}
++	if l.Len() != 1 {
++		t.Fatalf("expected 1 remaining, got %d", l.Len())
++	}
+ }
+ 
+ func TestLog_Close(t *testing.T) {
+ 	l := NewLog()
+ 	l.Close()
+ 	_, err := l.Append(EntryPut, []byte("k"), []byte("v"), 1)
+-	if err != ErrClosed { t.Fatal("should be closed") }
++	if err != ErrClosed {
++		t.Fatal("should be closed")
++	}
+ }
+ 
+ func TestLog_LastLSN(t *testing.T) {
+ 	l := NewLog()
+ 	l.Append(EntryPut, nil, nil, 0)
+ 	l.Append(EntryPut, nil, nil, 0)
+-	if l.LastLSN() != 2 { t.Fatalf("expected 2, got %d", l.LastLSN()) }
++	if l.LastLSN() != 2 {
++		t.Fatalf("expected 2, got %d", l.LastLSN())
++	}
+ }
+ 
+ func TestEntry_EncodeDecode(t *testing.T) {
+ 	e := &Entry{LSN: 42, Type: EntryPut, Key: []byte("hello"), Value: []byte("world"), TxnID: 7}
+ 	data := e.Encode()
+ 	decoded, err := DecodeEntry(data)
+-	if err != nil { t.Fatal(err) }
+-	if decoded.LSN != 42 { t.Fatal("LSN mismatch") }
+-	if string(decoded.Key) != "hello" { t.Fatal("key mismatch") }
+-	if string(decoded.Value) != "world" { t.Fatal("value mismatch") }
+-	if decoded.TxnID != 7 { t.Fatal("txnID mismatch") }
++	if err != nil {
++		t.Fatal(err)
++	}
++	if decoded.LSN != 42 {
++		t.Fatal("LSN mismatch")
++	}
++	if string(decoded.Key) != "hello" {
++		t.Fatal("key mismatch")
++	}
++	if string(decoded.Value) != "world" {
++		t.Fatal("value mismatch")
++	}
++	if decoded.TxnID != 7 {
++		t.Fatal("txnID mismatch")
++	}
+ }
+ 
+ func TestEntry_DecodeCorrupt(t *testing.T) {
+@@ -67,12 +95,18 @@ func TestEntry_DecodeCorrupt(t *testing.T) {
+ 	data := e.Encode()
+ 	data[len(data)-1] ^= 0xFF
+ 	_, err := DecodeEntry(data)
+-	if err != ErrCorrupted { t.Fatal("should detect corruption") }
++	if err != ErrCorrupted {
++		t.Fatal("should detect corruption")
++	}
+ }
+ 
+ func TestLog_IsClosed(t *testing.T) {
+ 	l := NewLog()
+-	if l.IsClosed() { t.Fatal("should not be closed") }
++	if l.IsClosed() {
++		t.Fatal("should not be closed")
++	}
+ 	l.Close()
+-	if !l.IsClosed() { t.Fatal("should be closed") }
++	if !l.IsClosed() {
++		t.Fatal("should be closed")
++	}
+ }

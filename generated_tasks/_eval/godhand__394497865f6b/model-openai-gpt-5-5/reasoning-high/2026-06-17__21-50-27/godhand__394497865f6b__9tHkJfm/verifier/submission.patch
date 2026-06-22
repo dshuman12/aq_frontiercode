@@ -1,0 +1,472 @@
+diff --git a/base/server/api/routers/health.py b/repo/server/api/routers/health.py
+index 66479f2..b76740e 100644
+--- a/base/server/api/routers/health.py
++++ b/repo/server/api/routers/health.py
+@@ -1,5 +1,10 @@
++from typing import Any
++
+ from fastapi import APIRouter, Request
++from fastapi.responses import JSONResponse
+ 
++from server.config import get_app_config
++from server.external.db.mongo import MongoDBClient
+ from server.utils.logging import get_app_logger
+ 
+ app_logger = get_app_logger()
+@@ -12,3 +17,60 @@ def health_check(request: Request):
+     client_host = request.client.host if request.client else "unknown"
+     app_logger.info(f"Health check received from {client_host}")
+     return {"status": "ok"}
++
++
++def _ready_check(name: str, *, ok: bool, detail: str | None = None) -> dict[str, Any]:
++    check: dict[str, Any] = {
++        "name": name,
++        "status": "ok" if ok else "failed",
++    }
++    if detail:
++        check["detail"] = detail
++    return check
++
++
++def _evaluate_readiness() -> dict[str, Any]:
++    checks: list[dict[str, Any]] = []
++
++    try:
++        cfg = get_app_config()
++        missing_config = [
++            name
++            for name in ("SECRET_KEY", "JWT_SECRET_KEY")
++            if not str(getattr(cfg, name, "") or "").strip()
++        ]
++        if missing_config:
++            checks.append(
++                _ready_check(
++                    "configuration",
++                    ok=False,
++                    detail=f"Missing required configuration: {', '.join(missing_config)}",
++                )
++            )
++        else:
++            checks.append(_ready_check("configuration", ok=True))
++    except Exception as exc:
++        checks.append(_ready_check("configuration", ok=False, detail=str(exc)))
++
++    try:
++        MongoDBClient.get_client().admin.command("ping")
++        MongoDBClient.get_db_name()
++        checks.append(_ready_check("mongodb", ok=True))
++    except Exception as exc:
++        checks.append(_ready_check("mongodb", ok=False, detail=str(exc)))
++
++    is_ready = all(check["status"] == "ok" for check in checks)
++    return {
++        "status": "ready" if is_ready else "not_ready",
++        "checks": checks,
++    }
++
++
++@health_routes.get("/health/ready")
++@health_routes.get("/ready")
++def readiness_check(request: Request):
++    client_host = request.client.host if request.client else "unknown"
++    app_logger.info(f"Readiness check received from {client_host}")
++    payload = _evaluate_readiness()
++    status_code = 200 if payload["status"] == "ready" else 503
++    return JSONResponse(status_code=status_code, content=payload)
+diff --git a/base/server/app.py b/repo/server/app.py
+index 10152a9..39502cd 100755
+--- a/base/server/app.py
++++ b/repo/server/app.py
+@@ -19,7 +19,8 @@ from server.external import initialize_services
+ # Import MiddleWare
+ from server.api.middleware.middleware import register_middleware
+ from server.api.security.rate_limit import initialize_auth_rate_limiter
+-from server.config import get_app_config
++from server.config import get_app_config
++from server.utils.startup_alerts import emit_startup_alerts
+ 
+ # Import Routers
+ from server.api.routers import register_routers
+@@ -27,11 +28,13 @@ from server.api.routers import register_routers
+ # Import Error Handler
+ from server.utils.error_handlers import register_error_handlers
+ 
+-def create_app() -> FastAPI:
+-    """Create FastAPI application."""
+-    # Create FastAPI and Register HTTP Endpoints
+-    init_time = time.time()
+-    fastapi_app = FastAPI()
++def create_app() -> FastAPI:
++    """Create FastAPI application."""
++    # Create FastAPI and Register HTTP Endpoints
++    init_time = time.time()
++    fastapi_app = FastAPI()
++    cfg = get_app_config()
++    emit_startup_alerts(role="main", config=cfg, logger=app_logger)
+ 
+     # Register Error Handlers
+     start_time = time.time()
+@@ -50,11 +53,11 @@ def create_app() -> FastAPI:
+ 
+     # Routers
+     start_time = time.time()
+-    register_routers(
+-        fastapi_app,
+-        include_chat_ws=True,
+-        include_game_ws=get_app_config().MAIN_APP_INCLUDE_GAME_WS,
+-    )
++    register_routers(
++        fastapi_app,
++        include_chat_ws=True,
++        include_game_ws=cfg.MAIN_APP_INCLUDE_GAME_WS,
++    )
+     app_logger.info(f"Registered routers [{time.time() - start_time:.2f}s]")
+ 
+     # Service Initialization
+diff --git a/base/server/game_server.py b/repo/server/game_server.py
+index 1c21f8b..ed5046f 100644
+--- a/base/server/game_server.py
++++ b/repo/server/game_server.py
+@@ -21,6 +21,7 @@ from server.config import get_app_config
+ from server.external import initialize_services
+ from server.utils.error_handlers import register_error_handlers
+ from server.utils.logging import get_app_logger
++from server.utils.startup_alerts import emit_startup_alerts
+ 
+ app_logger = get_app_logger()
+ 
+@@ -124,6 +125,7 @@ async def _register_and_heartbeat_loop() -> None:
+ def create_game_server_app() -> FastAPI:
+     init_time = time.time()
+     fastapi_app = FastAPI()
++    emit_startup_alerts(role="game_server", config=get_app_config(), logger=app_logger)
+ 
+     start_time = time.time()
+     register_error_handlers(fastapi_app)
+diff --git a/repo/server/tests/test_health_readiness.py b/repo/server/tests/test_health_readiness.py
+new file mode 100644
+index 0000000..1f0d969
+--- /dev/null
++++ b/repo/server/tests/test_health_readiness.py
+@@ -0,0 +1,63 @@
++from __future__ import annotations
++
++from server.external.db.mongo import MongoDBClient
++
++
++def test_health_liveness_response_stays_unchanged(client):
++    response = client.get("/health")
++
++    assert response.status_code == 200
++    assert response.json() == {"status": "ok"}
++
++
++def test_readiness_reports_ready_when_config_and_mongo_are_available(client):
++    response = client.get("/ready")
++
++    assert response.status_code == 200
++    assert response.json()["status"] == "ready"
++    checks = {check["name"]: check["status"] for check in response.json()["checks"]}
++    assert checks == {
++        "configuration": "ok",
++        "mongodb": "ok",
++    }
++
++
++def test_health_ready_alias_reports_ready(client):
++    response = client.get("/health/ready")
++
++    assert response.status_code == 200
++    assert response.json()["status"] == "ready"
++
++
++def test_readiness_reports_not_ready_when_mongo_is_not_initialized(client):
++    MongoDBClient.close()
++
++    response = client.get("/ready")
++
++    assert response.status_code == 503
++    payload = response.json()
++    assert payload["status"] == "not_ready"
++    checks = {check["name"]: check for check in payload["checks"]}
++    assert checks["configuration"]["status"] == "ok"
++    assert checks["mongodb"]["status"] == "failed"
++    assert "not initialized" in checks["mongodb"]["detail"]
++
++
++def test_readiness_reports_not_ready_when_config_cannot_load(client, monkeypatch):
++    def _raise_config_error():
++        raise ValueError("bad runtime config")
++
++    monkeypatch.setattr("server.api.routers.health.get_app_config", _raise_config_error)
++
++    response = client.get("/ready")
++
++    assert response.status_code == 503
++    payload = response.json()
++    assert payload["status"] == "not_ready"
++    checks = {check["name"]: check for check in payload["checks"]}
++    assert checks["configuration"] == {
++        "name": "configuration",
++        "status": "failed",
++        "detail": "bad runtime config",
++    }
++    assert checks["mongodb"]["status"] == "ok"
+diff --git a/repo/server/tests/test_startup_alerts.py b/repo/server/tests/test_startup_alerts.py
+new file mode 100644
+index 0000000..59c0b0b
+--- /dev/null
++++ b/repo/server/tests/test_startup_alerts.py
+@@ -0,0 +1,93 @@
++from __future__ import annotations
++
++import logging
++
++from server.config import ProductionConfig
++from server.utils.startup_alerts import collect_startup_alerts, emit_startup_alerts
++
++
++def _safe_production_config(**overrides):
++    values = {
++        "SECRET_KEY": "s" * 32,
++        "JWT_SECRET_KEY": "j" * 32,
++        "JWT_COOKIE_SECURE": True,
++        "CORS_ALLOWED_ORIGINS": ["https://app.example.com"],
++        "BACKEND_PUBLIC_BASE_URL": "https://api.example.com",
++        "FRONTEND_PUBLIC_BASE_URL": "https://app.example.com",
++        "GAME_WS_PUBLIC_BASE_URL": "https://game.example.com",
++        "CHAT_WS_PUBLIC_BASE_URL": "https://chat.example.com",
++        "CONTROL_PLANE_INTERNAL_BASE_URL": "https://control.internal.example.com",
++        "GAME_SERVER_CREDENTIALS_JSON": '{"server-1":{"signing_secret":"secret"}}',
++        "GAME_SERVER_SELF_ID": "server-1",
++        "GAME_SERVER_SELF_SIGNING_SECRET": "secret",
++    }
++    values.update(overrides)
++    return ProductionConfig(**values)
++
++
++def test_collect_startup_alerts_flags_risky_main_production_config():
++    config = _safe_production_config(
++        JWT_COOKIE_SECURE=False,
++        CORS_ALLOWED_ORIGINS=["*"],
++        BACKEND_PUBLIC_BASE_URL="http://localhost:5050",
++        GAME_SERVER_CREDENTIALS_JSON="",
++    )
++
++    alerts = collect_startup_alerts(config, role="main")
++
++    codes = {alert.code for alert in alerts}
++    assert "insecure-jwt-cookie" in codes
++    assert "wildcard-cors-origin" in codes
++    assert "local-public-url-backend_public_base_url" in codes
++    assert "missing-game-server-credentials" in codes
++
++
++def test_collect_startup_alerts_flags_risky_game_server_production_config():
++    config = _safe_production_config(
++        GAME_SERVER_SELF_ID="",
++        GAME_SERVER_SELF_SIGNING_SECRET="",
++        CONTROL_PLANE_INTERNAL_BASE_URL="http://localhost:5050",
++    )
++
++    alerts = collect_startup_alerts(config, role="game_server")
++
++    codes = {alert.code for alert in alerts}
++    assert "missing-game-server-self-id" in codes
++    assert "missing-game-server-signing-secret" in codes
++    assert "local-control-plane-url" in codes
++
++
++def test_emit_startup_alerts_logs_warnings_for_misconfigured_state(caplog):
++    config = _safe_production_config(JWT_COOKIE_SECURE=False)
++    logger = logging.getLogger("app")
++
++    with caplog.at_level(logging.WARNING, logger="app"):
++        alerts = emit_startup_alerts(role="main", config=config, logger=logger)
++
++    assert [alert.code for alert in alerts] == ["insecure-jwt-cookie"]
++    assert "STARTUP SAFETY ALERT [insecure-jwt-cookie]" in caplog.text
++
++
++def test_emit_startup_alerts_passes_cleanly_for_safe_config(caplog):
++    config = _safe_production_config()
++    logger = logging.getLogger("app")
++
++    with caplog.at_level(logging.WARNING, logger="app"):
++        alerts = emit_startup_alerts(role="main", config=config, logger=logger)
++
++    assert alerts == []
++    assert "STARTUP SAFETY ALERT" not in caplog.text
++
++
++def test_emit_startup_alerts_does_not_raise_when_evaluation_fails(caplog, monkeypatch):
++    def _bad_config():
++        raise RuntimeError("config unavailable")
++
++    logger = logging.getLogger("app")
++    monkeypatch.setattr("server.utils.startup_alerts.get_app_config", _bad_config)
++
++    with caplog.at_level(logging.WARNING, logger="app"):
++        alerts = emit_startup_alerts(role="main", logger=logger)
++
++    assert [alert.code for alert in alerts] == ["startup-alert-evaluation-failed"]
++    assert "config unavailable" in caplog.text
+diff --git a/repo/server/utils/startup_alerts.py b/repo/server/utils/startup_alerts.py
+new file mode 100644
+index 0000000..2e897c3
+--- /dev/null
++++ b/repo/server/utils/startup_alerts.py
+@@ -0,0 +1,152 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++from logging import Logger
++from typing import Literal
++from urllib.parse import urlparse
++
++from server.config import BaseConfig, get_app_config
++from server.utils.logging import get_app_logger
++
++StartupRole = Literal["main", "game_server"]
++
++
++@dataclass(frozen=True)
++class StartupAlert:
++    code: str
++    message: str
++
++
++def _is_blank(value: object) -> bool:
++    return not str(value or "").strip()
++
++
++def _is_production_config(config: BaseConfig) -> bool:
++    return not bool(getattr(config, "TESTING", False)) and not bool(getattr(config, "IS_DEV", False))
++
++
++def _is_wildcard_origin(origin: object) -> bool:
++    return str(origin or "").strip() == "*"
++
++
++def _is_local_url(raw_url: object) -> bool:
++    parsed = urlparse(str(raw_url or "").strip())
++    host = (parsed.hostname or "").lower()
++    return host in {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
++
++
++def collect_startup_alerts(config: BaseConfig, *, role: StartupRole) -> list[StartupAlert]:
++    """Return non-fatal startup safety alerts for risky runtime configuration."""
++    alerts: list[StartupAlert] = []
++    is_production = _is_production_config(config)
++
++    if _is_blank(config.SECRET_KEY):
++        alerts.append(
++            StartupAlert(
++                code="missing-secret-key",
++                message="SECRET_KEY is not configured; session and CSRF signing is unsafe.",
++            )
++        )
++
++    if _is_blank(config.JWT_SECRET_KEY):
++        alerts.append(
++            StartupAlert(
++                code="missing-jwt-secret-key",
++                message="JWT_SECRET_KEY is not configured; authentication tokens cannot be trusted.",
++            )
++        )
++
++    if is_production and not bool(config.JWT_COOKIE_SECURE):
++        alerts.append(
++            StartupAlert(
++                code="insecure-jwt-cookie",
++                message="JWT_COOKIE_SECURE is false in production; JWT cookies may be sent over plaintext.",
++            )
++        )
++
++    if is_production and any(_is_wildcard_origin(origin) for origin in config.CORS_ALLOWED_ORIGINS):
++        alerts.append(
++            StartupAlert(
++                code="wildcard-cors-origin",
++                message="CORS_ALLOWED_ORIGINS includes '*' in production; restrict browser origins explicitly.",
++            )
++        )
++
++    if is_production:
++        for setting_name in (
++            "BACKEND_PUBLIC_BASE_URL",
++            "FRONTEND_PUBLIC_BASE_URL",
++            "GAME_WS_PUBLIC_BASE_URL",
++            "CHAT_WS_PUBLIC_BASE_URL",
++        ):
++            if _is_local_url(getattr(config, setting_name, "")):
++                alerts.append(
++                    StartupAlert(
++                        code=f"local-public-url-{setting_name.lower()}",
++                        message=f"{setting_name} points at a local address in production.",
++                    )
++                )
++
++    if role == "main" and is_production and _is_blank(config.GAME_SERVER_CREDENTIALS_JSON):
++        alerts.append(
++            StartupAlert(
++                code="missing-game-server-credentials",
++                message=(
++                    "GAME_SERVER_CREDENTIALS_JSON is not configured; dedicated game servers "
++                    "cannot authenticate with the control plane."
++                ),
++            )
++        )
++
++    if role == "game_server" and is_production:
++        if _is_blank(config.GAME_SERVER_SELF_ID):
++            alerts.append(
++                StartupAlert(
++                    code="missing-game-server-self-id",
++                    message="GAME_SERVER_SELF_ID is not configured; this game server cannot register itself.",
++                )
++            )
++        if _is_blank(config.GAME_SERVER_SELF_SIGNING_SECRET):
++            alerts.append(
++                StartupAlert(
++                    code="missing-game-server-signing-secret",
++                    message=(
++                        "GAME_SERVER_SELF_SIGNING_SECRET is not configured; this game server "
++                        "cannot authenticate heartbeats."
++                    ),
++                )
++            )
++        if _is_local_url(config.CONTROL_PLANE_INTERNAL_BASE_URL):
++            alerts.append(
++                StartupAlert(
++                    code="local-control-plane-url",
++                    message="CONTROL_PLANE_INTERNAL_BASE_URL points at a local address in production.",
++                )
++            )
++
++    return alerts
++
++
++def emit_startup_alerts(
++    *,
++    role: StartupRole,
++    config: BaseConfig | None = None,
++    logger: Logger | None = None,
++) -> list[StartupAlert]:
++    """Log startup safety alerts without making alert evaluation fatal."""
++    alert_logger = logger or get_app_logger()
++    try:
++        runtime_config = config or get_app_config()
++        alerts = collect_startup_alerts(runtime_config, role=role)
++    except Exception as exc:
++        alerts = [
++            StartupAlert(
++                code="startup-alert-evaluation-failed",
++                message=f"Startup safety alert evaluation failed: {exc}",
++            )
++        ]
++
++    for alert in alerts:
++        alert_logger.warning(f"STARTUP SAFETY ALERT [{alert.code}] {alert.message}")
++
++    return alerts

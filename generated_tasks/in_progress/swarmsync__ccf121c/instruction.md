@@ -1,18 +1,21 @@
 # Task description
 
-The fixed-capacity LRU cache in `pkg/lru/lru.go` has two bugs:
+The LRU cache has bugs affecting both eviction order and recency tracking. It evicts wrong entries when at capacity and doesn't properly track access patterns for updated keys.
 
-1. **Incorrect eviction target**: When the cache is full and a new entry is inserted via `Put`, it removes the wrong candidate — keys that were just accessed or written are dropped first, while old, stale keys linger indefinitely. The cache should evict the entry that was least recently used.
+Fix the implementation so that:
 
-2. **Missing recency refresh on update**: When `Put` is called with a key that already exists in the cache, the entry's recency rank is not updated. A key that was just written via `Put` may be evicted before older entries that haven't been accessed in a long time.
+- Eviction removes the least-recently-used entry when capacity is exceeded
+- Both `Get` and `Put` on existing keys update recency and protect from eviction
+- Eviction callbacks fire for the correct entries
+- Public API signatures and concurrency behavior remain unchanged
 
-Fix both bugs so that when capacity is exceeded, the cache evicts the entry whose last-access time is oldest, and so that accessing an entry through `Get` or updating an existing key through `Put` both count as recent use and protect that key from eviction. The eviction callback, hit/miss tracking, and the public method signatures (`Get`, `Put`, capacity, length) must continue to behave as before. Concurrency safety and existing callback timing must remain intact.
-
-Keep the change scoped to the LRU cache. Do not alter other packages, exported names, or the cache's external API. Concurrency safety and existing callback timing must remain intact, and the eviction callback should still fire exactly once for each evicted entry with the correct key and value.
+Keep changes confined to the cache package.
 
 # Test guidelines
 
-Run `go test ./pkg/lru/...` to validate the change. Add or extend tests in `pkg/lru` to cover eviction ordering: inserting beyond capacity should drop the oldest entry, recently-read keys should survive a subsequent insert, and re-`Put` of an existing key should refresh its recency. Confirm the eviction callback receives the least-recently-used key/value and fires once per eviction.
+Run `go test ./pkg/lru/...` to verify the fix.
+
+Add tests for eviction ordering with capacity exceeded, recency refresh on `Get` and `Put`, and correct eviction callbacks. Verify the least-recently-used entries are evicted.
 
 # Lint guidelines
 

@@ -1,0 +1,307 @@
+diff --git a/base/pkg/gossip/state.go b/repo/pkg/gossip/state.go
+index 4126c0e..94e969c 100644
+--- a/base/pkg/gossip/state.go
++++ b/repo/pkg/gossip/state.go
+@@ -148,7 +148,8 @@ func (s *StateStore) Diff(remote *Digest) []*StateEntry {
+ }
+ 
+ // Apply merges a set of remote entries into the local store.
+-// Only entries with a higher version than the local entry are accepted.
++// Entries with a higher version are accepted. If versions are equal, a
++// tombstone wins over a live entry so deletes converge deterministically.
+ // Returns the number of entries that were actually applied.
+ func (s *StateStore) Apply(entries []*StateEntry) int {
+ 	s.mu.Lock()
+@@ -156,7 +157,7 @@ func (s *StateStore) Apply(entries []*StateEntry) int {
+ 	applied := 0
+ 	for _, remote := range entries {
+ 		local, ok := s.entries[remote.Key]
+-		if !ok || remote.Version > local.Version {
++		if !ok || shouldApplyRemote(local, remote) {
+ 			cp := *remote
+ 			cp.Value = copyBytes(remote.Value)
+ 			s.entries[remote.Key] = &cp
+@@ -172,6 +173,16 @@ func (s *StateStore) Apply(entries []*StateEntry) int {
+ 	return applied
+ }
+ 
++func shouldApplyRemote(local, remote *StateEntry) bool {
++	if remote.Version > local.Version {
++		return true
++	}
++	if remote.Version < local.Version {
++		return false
++	}
++	return remote.Tombstone && !local.Tombstone
++}
++
+ // Keys returns all non-tombstoned keys.
+ func (s *StateStore) Keys() []string {
+ 	s.mu.RLock()
+@@ -263,4 +274,4 @@ func copyBytes(b []byte) []byte {
+ 	cp := make([]byte, len(b))
+ 	copy(cp, b)
+ 	return cp
+-}
+\ No newline at end of file
++}
+diff --git a/repo/pkg/sim/merkle_delete_test.go b/repo/pkg/sim/merkle_delete_test.go
+new file mode 100644
+index 0000000..74d26f0
+--- /dev/null
++++ b/repo/pkg/sim/merkle_delete_test.go
+@@ -0,0 +1,135 @@
++package sim
++
++import (
++	"fmt"
++	"testing"
++
++	"github.com/Mustafa4ngin/SwarmSync/pkg/gossip"
++)
++
++func TestNetworkSim_MerkleSyncPropagatesHigherVersionDelete(t *testing.T) {
++	ns := NewNetworkSim(101)
++	ns.AddNode("n1", 1)
++	ns.AddNode("n2", 1)
++
++	seedEntry(t, ns, []string{"n1", "n2"}, &gossip.StateEntry{
++		Key:     "deleted",
++		Value:   []byte("live"),
++		Version: 1,
++		NodeID:  "n1",
++	})
++	deleteVersion := ns.GetStore("n1").Delete("deleted")
++
++	runMerkleRounds(ns, 5)
++
++	requireDeletedEntry(t, ns.GetStore("n1"), "deleted", deleteVersion)
++	requireDeletedEntry(t, ns.GetStore("n2"), "deleted", deleteVersion)
++	if !ns.Converged() {
++		t.Fatal("nodes should converge after higher-version delete")
++	}
++}
++
++func TestNetworkSim_MerkleSyncDeleteWinsAtSameVersion(t *testing.T) {
++	ns := NewNetworkSim(202)
++	ns.AddNode("n1", 1)
++	ns.AddNode("n2", 1)
++
++	const version = 7
++	seedEntry(t, ns, []string{"n1"}, &gossip.StateEntry{
++		Key:     "same-version",
++		Value:   []byte("live"),
++		Version: version,
++		NodeID:  "n1",
++	})
++	seedEntry(t, ns, []string{"n2"}, &gossip.StateEntry{
++		Key:       "same-version",
++		Version:   version,
++		NodeID:    "n2",
++		Tombstone: true,
++	})
++
++	runMerkleRounds(ns, 5)
++
++	requireDeletedEntry(t, ns.GetStore("n1"), "same-version", version)
++	requireDeletedEntry(t, ns.GetStore("n2"), "same-version", version)
++	if !ns.Converged() {
++		t.Fatal("nodes should converge when same-version tombstone meets live value")
++	}
++}
++
++func TestNetworkSim_MerkleSyncBulkDeleteConvergence(t *testing.T) {
++	ns := NewNetworkSim(303)
++	nodeIDs := []string{"n0", "n1", "n2", "n3", "n4"}
++	for _, nodeID := range nodeIDs {
++		ns.AddNode(nodeID, 1)
++	}
++
++	const keyCount = 12
++	for i := 0; i < keyCount; i++ {
++		key := fmt.Sprintf("bulk-%02d", i)
++		seedEntry(t, ns, nodeIDs, &gossip.StateEntry{
++			Key:     key,
++			Value:   []byte(fmt.Sprintf("value-%02d", i)),
++			Version: uint64(i + 1),
++			NodeID:  "n0",
++		})
++	}
++
++	deleteVersions := make(map[string]uint64, keyCount)
++	for i := 0; i < keyCount; i++ {
++		key := fmt.Sprintf("bulk-%02d", i)
++		deleteVersions[key] = ns.GetStore("n0").Delete(key)
++	}
++
++	for i := 0; i < 100; i++ {
++		ns.RunMerkleSyncRound()
++		if ns.Converged() {
++			break
++		}
++	}
++	if !ns.Converged() {
++		t.Fatal("cluster should converge after bulk deletes")
++	}
++	for _, nodeID := range nodeIDs {
++		store := ns.GetStore(nodeID)
++		for key, version := range deleteVersions {
++			requireDeletedEntry(t, store, key, version)
++		}
++	}
++}
++
++func runMerkleRounds(ns *NetworkSim, rounds int) {
++	for i := 0; i < rounds; i++ {
++		ns.RunMerkleSyncRound()
++	}
++}
++
++func seedEntry(t *testing.T, ns *NetworkSim, nodeIDs []string, entry *gossip.StateEntry) {
++	t.Helper()
++	for _, nodeID := range nodeIDs {
++		store := ns.GetStore(nodeID)
++		if store == nil {
++			t.Fatalf("missing store for node %s", nodeID)
++		}
++		if applied := store.Apply([]*gossip.StateEntry{entry}); applied != 1 {
++			t.Fatalf("expected to seed %s on %s", entry.Key, nodeID)
++		}
++	}
++}
++
++func requireDeletedEntry(t *testing.T, store *gossip.StateStore, key string, version uint64) {
++	t.Helper()
++	if _, ok := store.Get(key); ok {
++		t.Fatalf("%s should not be live", key)
++	}
++	entry, ok := store.GetEntry(key)
++	if !ok {
++		t.Fatalf("%s should have a tombstone", key)
++	}
++	if !entry.Tombstone {
++		t.Fatalf("%s should be tombstoned", key)
++	}
++	if entry.Version != version {
++		t.Fatalf("%s tombstone version = %d, want %d", key, entry.Version, version)
++	}
++}
+diff --git a/base/pkg/sim/network.go b/repo/pkg/sim/network.go
+index 4f7ecb3..dff21d1 100644
+--- a/base/pkg/sim/network.go
++++ b/repo/pkg/sim/network.go
+@@ -1,6 +1,7 @@
+ package sim
+ 
+ import (
++	"encoding/binary"
+ 	"math/rand"
+ 	"sort"
+ 	"sync"
+@@ -11,18 +12,18 @@ import (
+ 
+ // Event represents a discrete simulation event.
+ type Event struct {
+-	Time     uint64
+-	Type     EventType
+-	Source   string
+-	Target   string
+-	Payload  interface{}
++	Time    uint64
++	Type    EventType
++	Source  string
++	Target  string
++	Payload interface{}
+ }
+ 
+ // EventType identifies the kind of simulation event.
+ type EventType int
+ 
+ const (
+-	EventGossip     EventType = iota
++	EventGossip EventType = iota
+ 	EventMerkleDiff
+ 	EventNodeJoin
+ 	EventNodeLeave
+@@ -199,7 +200,8 @@ func (ns *NetworkSim) RunMerkleSyncRound() int {
+ 	}
+ 
+ 	msel := gossip.NewRandomPeerSelector(ns.rng.Int63())
+-	for nodeID, store := range ns.stores {
++	for _, nodeID := range peerList {
++		store := ns.stores[nodeID]
+ 		// Pick a random peer
+ 		peers := msel.SelectPeers(peerList, nodeID, 1)
+ 		if len(peers) == 0 {
+@@ -224,27 +226,21 @@ func (ns *NetworkSim) RunMerkleSyncRound() int {
+ 		for _, key := range diff.OnlyRemote {
+ 			e, ok := peerStore.GetEntry(key)
+ 			if ok {
+-				store.Apply([]*gossip.StateEntry{e})
+-				synced++
++				synced += store.Apply([]*gossip.StateEntry{e})
+ 			}
+ 		}
+ 		for _, key := range diff.OnlyLocal {
+ 			e, ok := store.GetEntry(key)
+ 			if ok {
+-				peerStore.Apply([]*gossip.StateEntry{e})
+-				synced++
++				synced += peerStore.Apply([]*gossip.StateEntry{e})
+ 			}
+ 		}
+ 		for _, key := range diff.Different {
+ 			le, _ := store.GetEntry(key)
+ 			re, _ := peerStore.GetEntry(key)
+ 			if le != nil && re != nil {
+-				if le.Version > re.Version {
+-					peerStore.Apply([]*gossip.StateEntry{le})
+-				} else {
+-					store.Apply([]*gossip.StateEntry{re})
+-				}
+-				synced++
++				synced += store.Apply([]*gossip.StateEntry{re})
++				synced += peerStore.Apply([]*gossip.StateEntry{le})
+ 			}
+ 		}
+ 
+@@ -261,17 +257,28 @@ func (ns *NetworkSim) RunMerkleSyncRound() int {
+ 
+ func storeToTree(store *gossip.StateStore) *merkle.Tree {
+ 	tree := merkle.NewTree()
+-	entries := make(map[string][]byte)
+-	for _, key := range store.Keys() {
+-		v, ok := store.Get(key)
++	digest := store.Digest()
++	entries := make(map[string][]byte, len(digest.Entries))
++	for key := range digest.Entries {
++		entry, ok := store.GetEntry(key)
+ 		if ok {
+-			entries[key] = v
++			entries[key] = encodeMerkleEntry(entry)
+ 		}
+ 	}
+ 	tree.PutBatch(entries)
+ 	return tree
+ }
+ 
++func encodeMerkleEntry(entry *gossip.StateEntry) []byte {
++	value := make([]byte, 9+len(entry.Value))
++	binary.BigEndian.PutUint64(value[:8], entry.Version)
++	if entry.Tombstone {
++		value[8] = 1
++	}
++	copy(value[9:], entry.Value)
++	return value
++}
++
+ func (ns *NetworkSim) peerList() []string {
+ 	list := make([]string, 0, len(ns.nodes))
+ 	for id := range ns.nodes {
+@@ -345,4 +352,4 @@ type SimRoundResult struct {
+ 	PulledTotal int
+ 	Blocked     int
+ 	Dropped     int
+-}
+\ No newline at end of file
++}

@@ -1,0 +1,40 @@
+diff --git a/pkg/ttlmap/ttlmap.go b/pkg/ttlmap/ttlmap.go
+--- a/pkg/ttlmap/ttlmap.go
++++ b/pkg/ttlmap/ttlmap.go
+@@ func (m *TTLMap) SetWithTTL(key string, value interface{}, ttl time.Duration) {
+-		expiresAt: time.Now().Add(m.defaultTTL),
++		expiresAt: time.Now().Add(ttl),
+@@ func (m *TTLMap) Cleanup() {
+-		if now.Before(e.expiresAt) {
++		if !now.Before(e.expiresAt) {
+diff --git a/pkg/ttlmap/ttlmap_sweep_test.go b/pkg/ttlmap/ttlmap_sweep_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/ttlmap/ttlmap_sweep_test.go
+@@
++package ttlmap
++
++import (
++	"testing"
++	"time"
++)
++
++// TestCleanup_SweepExpiresAndPreserves confirms a Cleanup sweep removes the
++// expired key while preserving a still-live key. On the broken base the
++// comparison direction is inverted, so this assertion fails.
++func TestCleanup_SweepExpiresAndPreserves(t *testing.T) {
++	m := New(50 * time.Millisecond)
++
++	m.Set("expired", 1)
++	time.Sleep(70 * time.Millisecond)
++	m.Set("live", 2)
++
++	m.Cleanup()
++
++	if _, ok := m.Get("live"); !ok {
++		t.Fatalf("live key should survive cleanup")
++	}
++	if _, ok := m.peek("expired"); ok {
++		t.Fatalf("expired key should be purged by cleanup")
++	}
++}

@@ -1,0 +1,560 @@
+diff --git a/base/server/api/routers/health.py b/repo/server/api/routers/health.py
+index 66479f2..35338de 100644
+--- a/base/server/api/routers/health.py
++++ b/repo/server/api/routers/health.py
+@@ -1,5 +1,10 @@
+ from fastapi import APIRouter, Request
++from fastapi.responses import JSONResponse
++from pymongo.errors import PyMongoError
+ 
++from server.config import get_app_config
++from server.external.db.mongo import MongoDBClient
++from server.utils.constants import HttpStatus
+ from server.utils.logging import get_app_logger
+ 
+ app_logger = get_app_logger()
+@@ -12,3 +17,51 @@ def health_check(request: Request):
+     client_host = request.client.host if request.client else "unknown"
+     app_logger.info(f"Health check received from {client_host}")
+     return {"status": "ok"}
++
++
++def _readiness_checks() -> dict[str, dict[str, str]]:
++    checks: dict[str, dict[str, str]] = {}
++
++    try:
++        cfg = get_app_config()
++        missing_settings = [
++            name
++            for name in ("SECRET_KEY", "JWT_SECRET_KEY")
++            if len(str(getattr(cfg, name, "") or "").encode("utf-8")) < 32
++        ]
++        if missing_settings:
++            checks["configuration"] = {
++                "status": "error",
++                "message": f"Missing or weak settings: {', '.join(missing_settings)}",
++            }
++        else:
++            checks["configuration"] = {"status": "ok"}
++    except Exception as exc:
++        checks["configuration"] = {"status": "error", "message": str(exc)}
++
++    try:
++        client = MongoDBClient.get_client()
++        client.admin.command("ping")
++        MongoDBClient.get_db_name()
++        checks["mongodb"] = {"status": "ok"}
++    except (PyMongoError, Exception) as exc:
++        checks["mongodb"] = {"status": "error", "message": str(exc)}
++
++    return checks
++
++
++@health_routes.get("/health/ready")
++def readiness_check(request: Request):
++    client_host = request.client.host if request.client else "unknown"
++    checks = _readiness_checks()
++    ready = all(check["status"] == "ok" for check in checks.values())
++    app_logger.info(f"Readiness check received from {client_host}: ready={ready}")
++
++    status_code = HttpStatus.OK if ready else HttpStatus.SERVICE_UNAVAILABLE
++    return JSONResponse(
++        status_code=status_code,
++        content={
++            "status": "ready" if ready else "not_ready",
++            "checks": checks,
++        },
++    )
+diff --git a/base/server/app.py b/repo/server/app.py
+index 10152a9..62f42d7 100755
+--- a/base/server/app.py
++++ b/repo/server/app.py
+@@ -1,70 +1,76 @@
+-"""
+-FastAPI application entrypoint.
+-
+-This module wires up routers, middleware, error handlers, service initialization,
+-and serves the static frontend from `frontend/`.
+-"""
+-from __future__ import annotations
+-import os
+-from fastapi import FastAPI
+-import time
+-import uvicorn
+-
+-from server.utils.logging import get_app_logger
+-app_logger = get_app_logger()
+-
+-# Import Services
+-from server.external import initialize_services
+-
+-# Import MiddleWare
+-from server.api.middleware.middleware import register_middleware
+-from server.api.security.rate_limit import initialize_auth_rate_limiter
+-from server.config import get_app_config
+-
+-# Import Routers
+-from server.api.routers import register_routers
+-
+-# Import Error Handler
+-from server.utils.error_handlers import register_error_handlers
+-
+-def create_app() -> FastAPI:
+-    """Create FastAPI application."""
+-    # Create FastAPI and Register HTTP Endpoints
+-    init_time = time.time()
+-    fastapi_app = FastAPI()
+-
+-    # Register Error Handlers
+-    start_time = time.time()
+-    register_error_handlers(fastapi_app)
+-    app_logger.info(f"Registered error handlers [{time.time() - start_time:.5f}s]")
+-
+-    # Register Middleware
+-    start_time = time.time()
+-    register_middleware(fastapi_app)
+-    app_logger.info(f"Registered middleware [{time.time() - start_time:.5f}s]")
+-
+-    # Initialize rate limiter
+-    start_time = time.time()
+-    initialize_auth_rate_limiter(fastapi_app)
+-    app_logger.info(f"Initialized auth rate limiter [{time.time() - start_time:.5f}s]")
+-
+-    # Routers
+-    start_time = time.time()
+-    register_routers(
+-        fastapi_app,
+-        include_chat_ws=True,
+-        include_game_ws=get_app_config().MAIN_APP_INCLUDE_GAME_WS,
+-    )
+-    app_logger.info(f"Registered routers [{time.time() - start_time:.2f}s]")
+-
+-    # Service Initialization
+-    start_time = time.time()
+-    initialize_services()
+-    app_logger.info(f"Initialized services [{time.time() - start_time:.5f}s]")
+-
+-    # Total Initialization Time
+-    app_logger.info(f"Total initialization time: [{time.time() - init_time:.5f}s]")
+-    return fastapi_app
+-
+-
+-app = create_app()
++"""
++FastAPI application entrypoint.
++
++This module wires up routers, middleware, error handlers, service initialization,
++and serves the static frontend from `frontend/`.
++"""
++from __future__ import annotations
++import os
++from fastapi import FastAPI
++import time
++import uvicorn
++
++from server.utils.logging import get_app_logger
++app_logger = get_app_logger()
++
++# Import Services
++from server.external import initialize_services
++
++# Import MiddleWare
++from server.api.middleware.middleware import register_middleware
++from server.api.security.rate_limit import initialize_auth_rate_limiter
++from server.config import get_app_config
++from server.utils.startup_alerts import emit_startup_safety_alerts
++
++# Import Routers
++from server.api.routers import register_routers
++
++# Import Error Handler
++from server.utils.error_handlers import register_error_handlers
++
++def create_app() -> FastAPI:
++    """Create FastAPI application."""
++    # Create FastAPI and Register HTTP Endpoints
++    init_time = time.time()
++    fastapi_app = FastAPI()
++
++    # Startup Safety Alerts
++    start_time = time.time()
++    emit_startup_safety_alerts(role="main")
++    app_logger.info(f"Evaluated startup safety alerts [{time.time() - start_time:.5f}s]")
++
++    # Register Error Handlers
++    start_time = time.time()
++    register_error_handlers(fastapi_app)
++    app_logger.info(f"Registered error handlers [{time.time() - start_time:.5f}s]")
++
++    # Register Middleware
++    start_time = time.time()
++    register_middleware(fastapi_app)
++    app_logger.info(f"Registered middleware [{time.time() - start_time:.5f}s]")
++
++    # Initialize rate limiter
++    start_time = time.time()
++    initialize_auth_rate_limiter(fastapi_app)
++    app_logger.info(f"Initialized auth rate limiter [{time.time() - start_time:.5f}s]")
++
++    # Routers
++    start_time = time.time()
++    register_routers(
++        fastapi_app,
++        include_chat_ws=True,
++        include_game_ws=get_app_config().MAIN_APP_INCLUDE_GAME_WS,
++    )
++    app_logger.info(f"Registered routers [{time.time() - start_time:.2f}s]")
++
++    # Service Initialization
++    start_time = time.time()
++    initialize_services()
++    app_logger.info(f"Initialized services [{time.time() - start_time:.5f}s]")
++
++    # Total Initialization Time
++    app_logger.info(f"Total initialization time: [{time.time() - init_time:.5f}s]")
++    return fastapi_app
++
++
++app = create_app()
+diff --git a/base/server/game_server.py b/repo/server/game_server.py
+index 1c21f8b..97c9bb6 100644
+--- a/base/server/game_server.py
++++ b/repo/server/game_server.py
+@@ -21,6 +21,7 @@ from server.config import get_app_config
+ from server.external import initialize_services
+ from server.utils.error_handlers import register_error_handlers
+ from server.utils.logging import get_app_logger
++from server.utils.startup_alerts import emit_startup_safety_alerts
+ 
+ app_logger = get_app_logger()
+ 
+@@ -125,6 +126,10 @@ def create_game_server_app() -> FastAPI:
+     init_time = time.time()
+     fastapi_app = FastAPI()
+ 
++    start_time = time.time()
++    emit_startup_safety_alerts(role="game_server")
++    app_logger.info(f"[GameServer] Evaluated startup safety alerts [{time.time() - start_time:.5f}s]")
++
+     start_time = time.time()
+     register_error_handlers(fastapi_app)
+     app_logger.info(f"[GameServer] Registered error handlers [{time.time() - start_time:.5f}s]")
+diff --git a/repo/server/tests/test_health_readiness_and_startup_alerts.py b/repo/server/tests/test_health_readiness_and_startup_alerts.py
+new file mode 100644
+index 0000000..703c2b0
+--- /dev/null
++++ b/repo/server/tests/test_health_readiness_and_startup_alerts.py
+@@ -0,0 +1,152 @@
++from __future__ import annotations
++
++import importlib
++import warnings
++
++from fastapi.testclient import TestClient
++
++from server.app import create_app
++from server.config import ProductionConfig
++from server.external.db.mongo import MongoDBClient
++from server.utils import startup_alerts
++
++
++def _safe_production_config() -> ProductionConfig:
++    return ProductionConfig(
++        BACKEND_PUBLIC_BASE_URL="https://api.example.com",
++        FRONTEND_PUBLIC_BASE_URL="https://app.example.com",
++        GAME_WS_PUBLIC_BASE_URL="wss://game.example.com",
++        CHAT_WS_PUBLIC_BASE_URL="wss://chat.example.com",
++        CORS_ALLOWED_ORIGINS=["https://app.example.com"],
++        SECRET_KEY="s" * 32,
++        JWT_SECRET_KEY="j" * 32,
++        JWT_COOKIE_SECURE=True,
++        GAME_SERVER_CREDENTIALS_JSON='{"game-a":{"signing_secret":"secret"}}',
++    )
++
++
++def test_liveness_endpoint_stays_unchanged(client: TestClient):
++    response = client.get("/health")
++
++    assert response.status_code == 200
++    assert response.json() == {"status": "ok"}
++
++
++def test_readiness_endpoint_reports_ready(client: TestClient):
++    response = client.get("/health/ready")
++
++    assert response.status_code == 200
++    payload = response.json()
++    assert payload["status"] == "ready"
++    assert payload["checks"]["configuration"]["status"] == "ok"
++    assert payload["checks"]["mongodb"]["status"] == "ok"
++
++
++def test_readiness_endpoint_reports_not_ready_when_mongo_is_unavailable(client: TestClient):
++    MongoDBClient.close()
++
++    response = client.get("/health/ready")
++
++    assert response.status_code == 503
++    payload = response.json()
++    assert payload["status"] == "not_ready"
++    assert payload["checks"]["configuration"]["status"] == "ok"
++    assert payload["checks"]["mongodb"]["status"] == "error"
++
++    liveness_response = client.get("/health")
++    assert liveness_response.status_code == 200
++    assert liveness_response.json() == {"status": "ok"}
++
++
++def test_startup_safety_alerts_pass_cleanly_for_safe_production_config():
++    alerts = startup_alerts.collect_startup_safety_alerts(
++        _safe_production_config(),
++        role="main",
++        environ={"FASTAPI_ENV": "production"},
++    )
++
++    assert alerts == []
++
++
++def test_startup_safety_alerts_detect_risky_production_config():
++    config = ProductionConfig(
++        SECRET_KEY="short",
++        JWT_SECRET_KEY="also-short",
++        JWT_COOKIE_SECURE=False,
++        CORS_ALLOWED_ORIGINS=["*"],
++        DEV_ADMIN_TOKEN="dev-token",
++    )
++
++    alerts = startup_alerts.collect_startup_safety_alerts(
++        config,
++        role="main",
++        environ={"FASTAPI_ENV": "production"},
++    )
++    codes = {alert.code for alert in alerts}
++
++    assert "secret_key.weak" in codes
++    assert "jwt_secret_key.weak" in codes
++    assert "jwt_cookie.insecure" in codes
++    assert "cors.wildcard" in codes
++    assert "dev_admin_token.enabled" in codes
++    assert "game_server.credentials_missing" in codes
++
++
++def test_emit_startup_safety_alerts_logs_warnings_without_raising(monkeypatch):
++    messages: list[str] = []
++    config = ProductionConfig(
++        SECRET_KEY="short",
++        JWT_SECRET_KEY="also-short",
++        JWT_COOKIE_SECURE=False,
++    )
++
++    monkeypatch.setattr(startup_alerts, "get_app_config", lambda: config)
++    monkeypatch.setattr(
++        startup_alerts.app_logger,
++        "warning",
++        lambda message, *args: messages.append(message % args),
++    )
++
++    alerts = startup_alerts.emit_startup_safety_alerts(role="main")
++
++    assert alerts
++    assert any("jwt_cookie.insecure" in message for message in messages)
++
++
++def test_emit_startup_safety_alerts_passes_cleanly_without_warning(monkeypatch):
++    messages: list[str] = []
++
++    monkeypatch.setattr(startup_alerts, "get_app_config", _safe_production_config)
++    monkeypatch.setattr(
++        startup_alerts.app_logger,
++        "warning",
++        lambda message, *args: messages.append(message % args),
++    )
++
++    alerts = startup_alerts.emit_startup_safety_alerts(role="main")
++
++    assert alerts == []
++    assert messages == []
++
++
++def test_server_entrypoints_emit_shared_startup_safety_alerts(monkeypatch):
++    calls: list[str] = []
++
++    monkeypatch.setattr(
++        "server.app.emit_startup_safety_alerts",
++        lambda *, role: calls.append(role) or [],
++    )
++
++    with warnings.catch_warnings():
++        warnings.simplefilter("ignore", DeprecationWarning)
++        game_server = importlib.import_module("server.game_server")
++
++    monkeypatch.setattr(game_server, "emit_startup_safety_alerts", lambda *, role: calls.append(role) or [])
++
++    create_app()
++    with warnings.catch_warnings():
++        warnings.simplefilter("ignore", DeprecationWarning)
++        game_server.create_game_server_app()
++
++    assert "main" in calls
++    assert "game_server" in calls
+diff --git a/repo/server/utils/startup_alerts.py b/repo/server/utils/startup_alerts.py
+new file mode 100644
+index 0000000..d2d43c6
+--- /dev/null
++++ b/repo/server/utils/startup_alerts.py
+@@ -0,0 +1,155 @@
++from __future__ import annotations
++
++import os
++from dataclasses import dataclass
++from typing import Mapping
++from urllib.parse import urlparse
++
++from server.config import BaseConfig, get_app_config
++from server.utils.logging import get_app_logger
++
++app_logger = get_app_logger()
++
++
++@dataclass(frozen=True)
++class StartupSafetyAlert:
++    code: str
++    message: str
++
++
++def _env_name(environ: Mapping[str, str] | None = None) -> str:
++    env = environ if environ is not None else os.environ
++    return (env.get("FASTAPI_ENV") or "development").strip().lower()
++
++
++def _is_production(config: BaseConfig, environ: Mapping[str, str] | None = None) -> bool:
++    return _env_name(environ) == "production" or not bool(getattr(config, "IS_DEV", False))
++
++
++def _is_local_or_insecure_url(value: str) -> bool:
++    parsed = urlparse((value or "").strip())
++    host = (parsed.hostname or "").lower()
++    return parsed.scheme == "http" or host in {"localhost", "127.0.0.1", "0.0.0.0"}
++
++
++def collect_startup_safety_alerts(
++    config: BaseConfig | None = None,
++    *,
++    role: str = "main",
++    environ: Mapping[str, str] | None = None,
++) -> list[StartupSafetyAlert]:
++    """
++    Return startup safety alerts for risky runtime configuration.
++
++    These checks intentionally do not mutate configuration or raise. Callers can
++    log the returned alerts while allowing the normal startup path to continue.
++    """
++    cfg = config if config is not None else get_app_config()
++    alerts: list[StartupSafetyAlert] = []
++
++    for setting_name in ("SECRET_KEY", "JWT_SECRET_KEY"):
++        secret_value = str(getattr(cfg, setting_name, "") or "")
++        if len(secret_value.encode("utf-8")) < 32:
++            alerts.append(
++                StartupSafetyAlert(
++                    code=f"{setting_name.lower()}.weak",
++                    message=f"{setting_name} is missing or shorter than 32 bytes.",
++                )
++            )
++
++    cors_origins = [str(origin).strip() for origin in (cfg.CORS_ALLOWED_ORIGINS or []) if str(origin).strip()]
++    if not cors_origins:
++        alerts.append(
++            StartupSafetyAlert(
++                code="cors.empty",
++                message="CORS_ALLOWED_ORIGINS is empty; browser clients may be unable to reach the API.",
++            )
++        )
++
++    if not _is_production(cfg, environ):
++        return alerts
++
++    if not bool(cfg.JWT_COOKIE_SECURE):
++        alerts.append(
++            StartupSafetyAlert(
++                code="jwt_cookie.insecure",
++                message="JWT_COOKIE_SECURE is disabled while running in production.",
++            )
++        )
++
++    if any(origin == "*" for origin in cors_origins):
++        alerts.append(
++            StartupSafetyAlert(
++                code="cors.wildcard",
++                message="CORS_ALLOWED_ORIGINS includes '*' while running in production.",
++            )
++        )
++
++    for setting_name in (
++        "BACKEND_PUBLIC_BASE_URL",
++        "FRONTEND_PUBLIC_BASE_URL",
++        "GAME_WS_PUBLIC_BASE_URL",
++        "CHAT_WS_PUBLIC_BASE_URL",
++    ):
++        setting_value = str(getattr(cfg, setting_name, "") or "")
++        if _is_local_or_insecure_url(setting_value):
++            alerts.append(
++                StartupSafetyAlert(
++                    code=f"{setting_name.lower()}.insecure",
++                    message=f"{setting_name} is local or uses plain HTTP in production: {setting_value}",
++                )
++            )
++
++    if str(getattr(cfg, "DEV_ADMIN_TOKEN", "") or "").strip():
++        alerts.append(
++            StartupSafetyAlert(
++                code="dev_admin_token.enabled",
++                message="DEV_ADMIN_TOKEN is set while running in production.",
++            )
++        )
++
++    normalized_role = role.strip().lower()
++    if normalized_role == "main" and not str(getattr(cfg, "GAME_SERVER_CREDENTIALS_JSON", "") or "").strip():
++        alerts.append(
++            StartupSafetyAlert(
++                code="game_server.credentials_missing",
++                message="GAME_SERVER_CREDENTIALS_JSON is empty; game server registry authentication is unavailable.",
++            )
++        )
++
++    if normalized_role == "game_server":
++        server_id = str(getattr(cfg, "GAME_SERVER_SELF_ID", "") or "").strip()
++        signing_secret = str(getattr(cfg, "GAME_SERVER_SELF_SIGNING_SECRET", "") or "").strip()
++        if not server_id or not signing_secret:
++            alerts.append(
++                StartupSafetyAlert(
++                    code="game_server.self_credentials_missing",
++                    message=(
++                        "GAME_SERVER_SELF_ID or GAME_SERVER_SELF_SIGNING_SECRET is empty; "
++                        "registry heartbeat will be disabled."
++                    ),
++                )
++            )
++
++    return alerts
++
++
++def emit_startup_safety_alerts(*, role: str = "main") -> list[StartupSafetyAlert]:
++    """Log startup safety alerts and never raise from the alerting path."""
++    try:
++        alerts = collect_startup_safety_alerts(role=role)
++    except Exception as exc:
++        alert = StartupSafetyAlert(
++            code="config.load_failed",
++            message=f"Unable to evaluate startup safety alerts: {exc}",
++        )
++        app_logger.warning("[StartupSafety] %s: %s", alert.code, alert.message)
++        return [alert]
++
++    for alert in alerts:
++        app_logger.warning("[StartupSafety] %s: %s", alert.code, alert.message)
++
++    if not alerts:
++        app_logger.info("[StartupSafety] No startup safety alerts for role=%s.", role)
++
++    return alerts

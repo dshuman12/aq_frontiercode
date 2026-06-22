@@ -71,6 +71,10 @@ DEFAULT_USER_AGENT = (
     "Chrome/126.0.0.0 Safari/537.36"
 )
 DEFAULT_INSTRUCTION_CONTEXT_CHARS = 80_000
+SOURCE_CONTEXT_EXTENSIONS = (
+    ".go", ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".rb", ".rs",
+    ".c", ".cc", ".cpp", ".h", ".hpp", ".cs", ".kt", ".swift", ".scala", ".php",
+)
 INSTRUCTION_GENERATION_ATTEMPTS = 2
 PROGRESS_INTERVAL_SECONDS = 5.0
 QA_STATUS_CSV_FIELDS = (
@@ -1519,7 +1523,13 @@ def create_task_files(
     )
 
     changed_paths = [path for _, path in changed]
-    allowed_prefixes = sorted(parent_prefix(path) for path in reference_test_files)
+    # Allow edits anywhere in the packages the reference fix actually touches, not
+    # just the dirs that already contained reference tests. Otherwise a multi-package
+    # task false-negatives on scope when the agent adds a test in a touched package
+    # that the reference commit happened not to add a test to.
+    allowed_prefixes = sorted(
+        {prefix for path in changed_paths if (prefix := parent_prefix(path))}
+    )
     spec = {
         "task_id": task_id,
         "repository": row["Repository"].strip(),
@@ -1703,7 +1713,9 @@ def build_instruction_prompt(
         path for path in changed_paths
         if path not in reference_test_files and not is_test_path(path)
     ][:40]
-    context = build_public_repo_context(repo, max_context_chars=max_context_chars)
+    context = build_public_repo_context(
+        repo, max_context_chars=max_context_chars, changed_paths=changed_paths
+    )
     example = """# Task description
 
 Encapsulate all warning logs in a new `auto LOG_WARNING() -> std::ostream &` method in `src/logger.h` such that:
@@ -1745,6 +1757,7 @@ Required output:
 - Mention relevant public test directories when useful, and say what behavior or edge cases those tests should cover.
 - Describe success criteria in terms of observable behavior, not just one exact patch shape.
 - Prefer clear reviewer-facing guidance over brittle implementation hints.
+- When the change must integrate with existing interfaces, types, or function signatures shown in the repository context, describe the new or modified contract so it stays consistent with those definitions (interface method sets, return types, argument lists, exported names). Never describe a contract that contradicts the existing code.
 - Do not mention the spreadsheet, task generation, fix commit, base commit, hidden tests, grader files, reference patches, answer keys, or private evaluation assets.
 - Do not include commit SHAs.
 - Do not say "source metadata", "reference", "oracle", or "hidden".
@@ -1773,12 +1786,24 @@ Public repository context:
     return system_prompt, user_prompt
 
 
-def build_public_repo_context(repo: Path, *, max_context_chars: int) -> str:
+def build_public_repo_context(
+    repo: Path, *, max_context_chars: int, changed_paths: list[str] | None = None
+) -> str:
     sections = []
     tree = "\n".join(public_repo_tree(repo, limit=450))
     if tree:
         sections.append("## File tree excerpt\n" + tree)
+    # Existing source files alongside the change come first: the instruction
+    # model needs the real local API surface (interfaces, types, signatures,
+    # exported names) so it describes the new or modified contract accurately
+    # instead of inventing one that the hidden reference tests reject.
+    context_paths: list[Path] = []
+    if changed_paths:
+        context_paths.extend(sibling_source_files(repo, changed_paths))
     for path in selected_context_files(repo):
+        if path not in context_paths:
+            context_paths.append(path)
+    for path in context_paths:
         rel = path.relative_to(repo).as_posix()
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
@@ -1790,6 +1815,31 @@ def build_public_repo_context(repo: Path, *, max_context_chars: int) -> str:
     if len(context) <= max_context_chars:
         return context
     return context[:max_context_chars].rstrip() + "\n...<repo context truncated>..."
+
+
+def sibling_source_files(repo: Path, changed_paths: list[str], *, max_files: int = 12) -> list[Path]:
+    """Existing non-test source files in the directories the change touches.
+
+    These give the instruction model the local API surface (interfaces, types,
+    signatures, naming) so a new or modified contract is described to match the
+    existing code rather than guessed.
+    """
+    changed_dirs = {parent_prefix(rel).rstrip("/") for rel in changed_paths}
+    changed_dirs.discard("")
+    changed_set = set(changed_paths)
+    selected: list[Path] = []
+    for path in iter_repo_files(repo):
+        rel = path.relative_to(repo).as_posix()
+        if rel in changed_set or is_test_path(rel) or is_low_signal_context_file(rel):
+            continue
+        if parent_prefix(rel).rstrip("/") not in changed_dirs:
+            continue
+        if not rel.lower().endswith(SOURCE_CONTEXT_EXTENSIONS):
+            continue
+        selected.append(path)
+        if len(selected) >= max_files:
+            break
+    return selected
 
 
 def trim(value: str, limit: int) -> str:
@@ -2269,7 +2319,9 @@ def choose_visible_command(
     reference_test_files: list[str],
 ) -> str:
     command = strip_parenthetical(command_guess).strip()
-    command = command.rstrip(".")
+    # Strip a sentence-ending period only — not glob patterns like ./...
+    if command.endswith(".") and not command.endswith(".."):
+        command = command[:-1].rstrip()
     if command == "make":
         target = choose_make_target(repo, row, reference_test_files)
         if target:

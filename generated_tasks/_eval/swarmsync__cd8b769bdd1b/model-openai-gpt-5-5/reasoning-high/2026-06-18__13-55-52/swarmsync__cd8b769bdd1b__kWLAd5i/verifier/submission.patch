@@ -1,0 +1,289 @@
+diff --git a/repo/pkg/membership/scaling.go b/repo/pkg/membership/scaling.go
+new file mode 100644
+index 0000000..dd0fa88
+--- /dev/null
++++ b/repo/pkg/membership/scaling.go
+@@ -0,0 +1,141 @@
++package membership
++
++import (
++	"math/bits"
++	"sync"
++	"time"
++)
++
++// ScaledConfig derives SWIM parameters from the estimated cluster size.
++//
++// The protocol period is represented by SWIMConfig.ProbeInterval. Each
++// logarithmic size bucket adds the configured step values to Base, so larger
++// clusters probe less frequently while small clusters keep the base timings.
++type ScaledConfig struct {
++	// Base is used for cluster sizes 0 and 1 before logarithmic growth applies.
++	Base SWIMConfig
++	// ProtocolPeriodStep is added to ProbeInterval for each log2 size bucket.
++	ProtocolPeriodStep time.Duration
++	// ProbeTimeoutStep is added to ProbeTimeout for each log2 size bucket.
++	ProbeTimeoutStep time.Duration
++	// SuspicionTimeoutStep is added to SuspicionTimeout for each log2 size bucket.
++	SuspicionTimeoutStep time.Duration
++	// IndirectCheckStep is added to IndirectChecks for each log2 size bucket.
++	IndirectCheckStep int
++	// MaxIndirectChecks caps scaled indirect fanout. A value of 0 means no cap.
++	MaxIndirectChecks int
++}
++
++// DefaultScaling returns log2-based defaults for deriving SWIM parameters.
++func DefaultScaling() ScaledConfig {
++	return ScaledConfig{
++		Base:                 DefaultSWIMConfig(),
++		ProtocolPeriodStep:   250 * time.Millisecond,
++		ProbeTimeoutStep:     50 * time.Millisecond,
++		SuspicionTimeoutStep: time.Second,
++		IndirectCheckStep:    1,
++		MaxIndirectChecks:    16,
++	}
++}
++
++// ConfigForClusterSize returns SWIM parameters scaled for clusterSize.
++func (c ScaledConfig) ConfigForClusterSize(clusterSize int) SWIMConfig {
++	bucket := log2Bucket(clusterSize)
++	return SWIMConfig{
++		ProbeInterval:    c.ProtocolPeriod(clusterSize),
++		ProbeTimeout:     scaledDuration(c.Base.ProbeTimeout, c.ProbeTimeoutStep, bucket),
++		IndirectChecks:   c.IndirectChecks(clusterSize),
++		SuspicionTimeout: scaledDuration(c.Base.SuspicionTimeout, c.SuspicionTimeoutStep, bucket),
++	}
++}
++
++// ProtocolPeriod returns the scaled SWIM protocol period for clusterSize.
++func (c ScaledConfig) ProtocolPeriod(clusterSize int) time.Duration {
++	return scaledDuration(c.Base.ProbeInterval, c.ProtocolPeriodStep, log2Bucket(clusterSize))
++}
++
++// IndirectChecks returns the scaled indirect probe fanout for clusterSize.
++func (c ScaledConfig) IndirectChecks(clusterSize int) int {
++	step := c.IndirectCheckStep
++	if step < 0 {
++		step = 0
++	}
++	checks := c.Base.IndirectChecks
++	if checks < 0 {
++		checks = 0
++	}
++	checks += step * log2Bucket(clusterSize)
++	if c.MaxIndirectChecks > 0 && checks > c.MaxIndirectChecks {
++		return c.MaxIndirectChecks
++	}
++	return checks
++}
++
++func scaledDuration(base, step time.Duration, bucket int) time.Duration {
++	if base < 0 {
++		base = 0
++	}
++	if step < 0 {
++		step = 0
++	}
++	return base + time.Duration(bucket)*step
++}
++
++func log2Bucket(clusterSize int) int {
++	if clusterSize <= 1 {
++		return 0
++	}
++	return bits.Len(uint(clusterSize)) - 1
++}
++
++// ClusterSizeEstimator tracks unique observed node IDs and reports a current
++// cluster size estimate for scaled configuration.
++type ClusterSizeEstimator struct {
++	mu    sync.RWMutex
++	nodes map[string]struct{}
++}
++
++// NewClusterSizeEstimator returns an empty cluster size estimator.
++func NewClusterSizeEstimator() *ClusterSizeEstimator {
++	return &ClusterSizeEstimator{
++		nodes: make(map[string]struct{}),
++	}
++}
++
++// Observe records a node ID. Repeated observations of the same ID are counted once.
++func (e *ClusterSizeEstimator) Observe(id string) int {
++	e.mu.Lock()
++	defer e.mu.Unlock()
++	if e.nodes == nil {
++		e.nodes = make(map[string]struct{})
++	}
++	e.nodes[id] = struct{}{}
++	return len(e.nodes)
++}
++
++// ObserveMembers records a batch of node IDs. Repeated IDs are counted once.
++func (e *ClusterSizeEstimator) ObserveMembers(ids ...string) int {
++	e.mu.Lock()
++	defer e.mu.Unlock()
++	if e.nodes == nil {
++		e.nodes = make(map[string]struct{})
++	}
++	for _, id := range ids {
++		e.nodes[id] = struct{}{}
++	}
++	return len(e.nodes)
++}
++
++// Estimate returns the number of unique node IDs observed.
++func (e *ClusterSizeEstimator) Estimate() int {
++	e.mu.RLock()
++	defer e.mu.RUnlock()
++	return len(e.nodes)
++}
++
++// Reset clears all observed node IDs.
++func (e *ClusterSizeEstimator) Reset() {
++	e.mu.Lock()
++	defer e.mu.Unlock()
++	e.nodes = make(map[string]struct{})
++}
+diff --git a/repo/pkg/membership/scaling_test.go b/repo/pkg/membership/scaling_test.go
+new file mode 100644
+index 0000000..f6fd1ba
+--- /dev/null
++++ b/repo/pkg/membership/scaling_test.go
+@@ -0,0 +1,136 @@
++package membership
++
++import (
++	"testing"
++	"time"
++)
++
++func TestDefaultScaling(t *testing.T) {
++	cfg := DefaultScaling()
++	base := DefaultSWIMConfig()
++
++	if cfg.Base != base {
++		t.Fatalf("expected base config %#v, got %#v", base, cfg.Base)
++	}
++	if cfg.ProtocolPeriodStep != 250*time.Millisecond {
++		t.Fatalf("expected protocol period step 250ms, got %s", cfg.ProtocolPeriodStep)
++	}
++	if cfg.ProbeTimeoutStep != 50*time.Millisecond {
++		t.Fatalf("expected probe timeout step 50ms, got %s", cfg.ProbeTimeoutStep)
++	}
++	if cfg.SuspicionTimeoutStep != time.Second {
++		t.Fatalf("expected suspicion timeout step 1s, got %s", cfg.SuspicionTimeoutStep)
++	}
++	if cfg.IndirectCheckStep != 1 {
++		t.Fatalf("expected indirect check step 1, got %d", cfg.IndirectCheckStep)
++	}
++	if cfg.MaxIndirectChecks != 16 {
++		t.Fatalf("expected max indirect checks 16, got %d", cfg.MaxIndirectChecks)
++	}
++}
++
++func TestScaledConfig_MonotonicProtocolPeriod(t *testing.T) {
++	cfg := DefaultScaling()
++	last := time.Duration(0)
++
++	for size := 0; size <= 10000; size++ {
++		period := cfg.ProtocolPeriod(size)
++		if period < last {
++			t.Fatalf("period decreased at size %d: previous %s, got %s", size, last, period)
++		}
++		last = period
++	}
++}
++
++func TestScaledConfig_Log2Boundaries(t *testing.T) {
++	cfg := DefaultScaling()
++	base := cfg.Base.ProbeInterval
++	step := cfg.ProtocolPeriodStep
++
++	tests := []struct {
++		size int
++		want time.Duration
++	}{
++		{0, base},
++		{1, base},
++		{2, base + step},
++		{3, base + step},
++		{4, base + 2*step},
++		{7, base + 2*step},
++		{8, base + 3*step},
++		{1024, base + 10*step},
++		{1 << 20, base + 20*step},
++	}
++
++	for _, tc := range tests {
++		got := cfg.ProtocolPeriod(tc.size)
++		if got != tc.want {
++			t.Fatalf("size %d: expected period %s, got %s", tc.size, tc.want, got)
++		}
++	}
++}
++
++func TestScaledConfig_ConfigForClusterSize(t *testing.T) {
++	cfg := DefaultScaling()
++	got := cfg.ConfigForClusterSize(8)
++
++	if got.ProbeInterval != cfg.Base.ProbeInterval+3*cfg.ProtocolPeriodStep {
++		t.Fatalf("unexpected probe interval: %s", got.ProbeInterval)
++	}
++	if got.ProbeTimeout != cfg.Base.ProbeTimeout+3*cfg.ProbeTimeoutStep {
++		t.Fatalf("unexpected probe timeout: %s", got.ProbeTimeout)
++	}
++	if got.SuspicionTimeout != cfg.Base.SuspicionTimeout+3*cfg.SuspicionTimeoutStep {
++		t.Fatalf("unexpected suspicion timeout: %s", got.SuspicionTimeout)
++	}
++	if got.IndirectChecks != cfg.Base.IndirectChecks+3*cfg.IndirectCheckStep {
++		t.Fatalf("unexpected indirect checks: %d", got.IndirectChecks)
++	}
++}
++
++func TestScaledConfig_LargeClusterCapsIndirectChecks(t *testing.T) {
++	cfg := DefaultScaling()
++	got := cfg.ConfigForClusterSize(1 << 20)
++
++	if got.IndirectChecks != cfg.MaxIndirectChecks {
++		t.Fatalf("expected capped indirect checks %d, got %d", cfg.MaxIndirectChecks, got.IndirectChecks)
++	}
++}
++
++func TestScaledConfig_ZeroAndSingleNodeClusters(t *testing.T) {
++	cfg := DefaultScaling()
++	zero := cfg.ConfigForClusterSize(0)
++	one := cfg.ConfigForClusterSize(1)
++
++	if zero != cfg.Base {
++		t.Fatalf("zero-node cluster should use base config: %#v", zero)
++	}
++	if one != cfg.Base {
++		t.Fatalf("single-node cluster should use base config: %#v", one)
++	}
++}
++
++func TestClusterSizeEstimator(t *testing.T) {
++	var estimator ClusterSizeEstimator
++
++	if got := estimator.Estimate(); got != 0 {
++		t.Fatalf("expected empty estimate 0, got %d", got)
++	}
++	if got := estimator.Observe("n1"); got != 1 {
++		t.Fatalf("expected estimate 1 after first node, got %d", got)
++	}
++	if got := estimator.Observe("n1"); got != 1 {
++		t.Fatalf("expected repeated node to stay at 1, got %d", got)
++	}
++	if got := estimator.ObserveMembers("n2", "n3", "n2"); got != 3 {
++		t.Fatalf("expected batch estimate 3, got %d", got)
++	}
++	if got := estimator.Estimate(); got != 3 {
++		t.Fatalf("expected final estimate 3, got %d", got)
++	}
++
++	estimator.Reset()
++	if got := estimator.Estimate(); got != 0 {
++		t.Fatalf("expected reset estimate 0, got %d", got)
++	}
++}

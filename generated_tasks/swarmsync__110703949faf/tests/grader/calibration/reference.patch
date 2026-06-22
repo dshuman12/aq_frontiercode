@@ -1,0 +1,249 @@
+diff --git a/pkg/membership/membership_test.go b/pkg/membership/membership_test.go
+index cc2a8bc..d0393b3 100644
+--- a/pkg/membership/membership_test.go
++++ b/pkg/membership/membership_test.go
+@@ -308,4 +308,22 @@ func TestSWIM_History(t *testing.T) {
+ 	if len(h) < 1 {
+ 		t.Fatal("expected at least 1 history entry")
+ 	}
++}
++
++func TestSWIM_HistoryBounded(t *testing.T) {
++	ml := NewMemberList("n1")
++	ml.Alive("n2", 0, nil)
++	ml.Alive("n3", 0, nil)
++	cfg := DefaultSWIMConfig()
++	sd := NewSWIMDetector(ml, cfg, alwaysAck, alwaysNackIndirect, 42)
++	for i := 0; i < 15000; i++ {
++		sd.RunProbeRound()
++	}
++	h := sd.History()
++	if len(h) > maxProbeHistory {
++		t.Fatalf("history should be bounded to %d, got %d", maxProbeHistory, len(h))
++	}
++	if len(h) == 0 {
++		t.Fatal("history should not be empty after many rounds")
++	}
+ }
+\ No newline at end of file
+diff --git a/pkg/membership/swim.go b/pkg/membership/swim.go
+index 354bdbb..dbdd3b9 100644
+--- a/pkg/membership/swim.go
++++ b/pkg/membership/swim.go
+@@ -44,6 +44,8 @@ type ProbeFunc func(target string) ProbeResult
+ // IndirectProbeFunc asks a mediator to probe the target on our behalf.
+ type IndirectProbeFunc func(mediator, target string) ProbeResult
+ 
++const maxProbeHistory = 10000
++
+ // SWIMDetector implements the SWIM protocol for failure detection.
+ // It runs probe rounds, manages suspicion timers, and updates the member list.
+ type SWIMDetector struct {
+@@ -107,7 +109,7 @@ func (sd *SWIMDetector) RunProbeRound() *ProbeEvent {
+ 		Indirect:  false,
+ 		Timestamp: time.Now(),
+ 	}
+-	sd.probeHistory = append(sd.probeHistory, *event)
++	sd.recordProbe(*event)
+ 
+ 	if result == ProbeAck {
+ 		delete(sd.suspicionMap, target)
+@@ -119,7 +121,7 @@ func (sd *SWIMDetector) RunProbeRound() *ProbeEvent {
+ 	indirectAck := false
+ 	for _, med := range mediators {
+ 		ir := sd.indirectFunc(med, target)
+-		sd.probeHistory = append(sd.probeHistory, ProbeEvent{
++		sd.recordProbe(ProbeEvent{
+ 			Round:     sd.roundCount,
+ 			Target:    target,
+ 			Result:    ir,
+@@ -185,6 +187,15 @@ func (sd *SWIMDetector) selectMediators(alive []string, target string, n int) []
+ 	return candidates[:n]
+ }
+ 
++// recordProbe appends a probe event, evicting the oldest half when the buffer is full.
++func (sd *SWIMDetector) recordProbe(e ProbeEvent) {
++	if len(sd.probeHistory) >= maxProbeHistory {
++		n := copy(sd.probeHistory, sd.probeHistory[len(sd.probeHistory)/2:])
++		sd.probeHistory = sd.probeHistory[:n]
++	}
++	sd.probeHistory = append(sd.probeHistory, e)
++}
++
+ // History returns the probe history.
+ func (sd *SWIMDetector) History() []ProbeEvent {
+ 	sd.mu.Lock()
+diff --git a/pkg/queue/deque.go b/pkg/queue/deque.go
+index 7b10f7e..2427840 100644
+--- a/pkg/queue/deque.go
++++ b/pkg/queue/deque.go
+@@ -1,6 +1,9 @@
+ package queue
+ 
+-import "sync"
++import (
++	"sync"
++	"sync/atomic"
++)
+ 
+ // Deque is a double-ended queue that supports work-stealing.
+ // The owner pushes and pops from the bottom; stealers steal from the top.
+@@ -69,7 +72,7 @@ func (d *Deque) IsEmpty() bool {
+ type WorkStealingPool struct {
+ 	mu     sync.RWMutex
+ 	deques map[string]*Deque
+-	stolen uint64
++	stolen atomic.Uint64
+ }
+ 
+ // NewWorkStealingPool creates a pool.
+@@ -120,7 +123,7 @@ func (p *WorkStealingPool) Steal(thiefID string) (interface{}, string, bool) {
+ 		}
+ 		item, ok := d.StealTop()
+ 		if ok {
+-			p.stolen++
++			p.stolen.Add(1)
+ 			return item, workerID, true
+ 		}
+ 	}
+@@ -140,9 +143,7 @@ func (p *WorkStealingPool) TotalPending() int {
+ 
+ // StolenCount returns the total number of successful steals.
+ func (p *WorkStealingPool) StolenCount() uint64 {
+-	p.mu.RLock()
+-	defer p.mu.RUnlock()
+-	return p.stolen
++	return p.stolen.Load()
+ }
+ 
+ // WorkerCount returns the number of registered workers.
+diff --git a/pkg/queue/queue_test.go b/pkg/queue/queue_test.go
+index 1e71cd3..7bc30bb 100644
+--- a/pkg/queue/queue_test.go
++++ b/pkg/queue/queue_test.go
+@@ -1,6 +1,7 @@
+ package queue
+ 
+ import (
++	"fmt"
+ 	"sync"
+ 	"testing"
+ )
+@@ -342,4 +343,33 @@ func TestWSP_SubmitUnregistered(t *testing.T) {
+ 	if p.Submit("ghost", "task") {
+ 		t.Fatal("submit to unregistered should fail")
+ 	}
++}
++
++func TestWSP_ConcurrentSteal(t *testing.T) {
++	p := NewWorkStealingPool()
++	p.Register("producer")
++	for i := 0; i < 10; i++ {
++		p.Register(fmt.Sprintf("stealer-%d", i))
++	}
++	for i := 0; i < 1000; i++ {
++		p.Submit("producer", fmt.Sprintf("task-%d", i))
++	}
++	var wg sync.WaitGroup
++	for i := 0; i < 10; i++ {
++		wg.Add(1)
++		go func(id int) {
++			defer wg.Done()
++			thiefID := fmt.Sprintf("stealer-%d", id)
++			for {
++				_, _, ok := p.Steal(thiefID)
++				if !ok {
++					return
++				}
++			}
++		}(i)
++	}
++	wg.Wait()
++	if p.StolenCount() != 1000 {
++		t.Fatalf("expected 1000 stolen, got %d", p.StolenCount())
++	}
+ }
+\ No newline at end of file
+diff --git a/pkg/sim/network.go b/pkg/sim/network.go
+index e7b205d..813dade 100644
+--- a/pkg/sim/network.go
++++ b/pkg/sim/network.go
+@@ -30,6 +30,8 @@ const (
+ 	EventHeal
+ )
+ 
++const maxEventLog = 100000
++
+ // NetworkSim simulates a cluster of gossip nodes with configurable
+ // network conditions: latency, packet loss, and partitions.
+ type NetworkSim struct {
+@@ -62,7 +64,7 @@ func (ns *NetworkSim) AddNode(nodeID string, fanout int) {
+ 	proto := gossip.NewProtocol(nodeID, store, sel, fanout)
+ 	ns.nodes[nodeID] = proto
+ 	ns.stores[nodeID] = store
+-	ns.events = append(ns.events, Event{
++	ns.recordEvent(Event{
+ 		Time:   ns.clock,
+ 		Type:   EventNodeJoin,
+ 		Source: nodeID,
+@@ -79,7 +81,7 @@ func (ns *NetworkSim) RemoveNode(nodeID string) {
+ 	for _, blocked := range ns.partitions {
+ 		delete(blocked, nodeID)
+ 	}
+-	ns.events = append(ns.events, Event{
++	ns.recordEvent(Event{
+ 		Time:   ns.clock,
+ 		Type:   EventNodeLeave,
+ 		Source: nodeID,
+@@ -105,7 +107,7 @@ func (ns *NetworkSim) Partition(a, b string) {
+ 	}
+ 	ns.partitions[a][b] = true
+ 	ns.partitions[b][a] = true
+-	ns.events = append(ns.events, Event{
++	ns.recordEvent(Event{
+ 		Time:   ns.clock,
+ 		Type:   EventPartition,
+ 		Source: a,
+@@ -123,7 +125,7 @@ func (ns *NetworkSim) Heal(a, b string) {
+ 	if ns.partitions[b] != nil {
+ 		delete(ns.partitions[b], a)
+ 	}
+-	ns.events = append(ns.events, Event{
++	ns.recordEvent(Event{
+ 		Time:   ns.clock,
+ 		Type:   EventHeal,
+ 		Source: a,
+@@ -172,7 +174,7 @@ func (ns *NetworkSim) RunGossipRound() SimRoundResult {
+ 			result.PushedTotal += exchange.PushedTo
+ 			result.PulledTotal += exchange.PulledFrom
+ 
+-			ns.events = append(ns.events, Event{
++			ns.recordEvent(Event{
+ 				Time:    ns.clock,
+ 				Type:    EventGossip,
+ 				Source:  nodeID,
+@@ -246,7 +248,7 @@ func (ns *NetworkSim) RunMerkleSyncRound() int {
+ 			}
+ 		}
+ 
+-		ns.events = append(ns.events, Event{
++		ns.recordEvent(Event{
+ 			Time:    ns.clock,
+ 			Type:    EventMerkleDiff,
+ 			Source:  nodeID,
+@@ -311,6 +313,15 @@ func (ns *NetworkSim) Clock() uint64 {
+ 	return ns.clock
+ }
+ 
++// recordEvent appends an event, evicting the oldest half when the buffer is full.
++func (ns *NetworkSim) recordEvent(e Event) {
++	if len(ns.events) >= maxEventLog {
++		n := copy(ns.events, ns.events[len(ns.events)/2:])
++		ns.events = ns.events[:n]
++	}
++	ns.events = append(ns.events, e)
++}
++
+ // EventLog returns all recorded events.
+ func (ns *NetworkSim) EventLog() []Event {
+ 	ns.mu.Lock()

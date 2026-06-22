@@ -1,0 +1,719 @@
+diff --git a/server/Dockerfile b/server/Dockerfile
+index 29a034f..4b261a0 100644
+--- a/server/Dockerfile
++++ b/server/Dockerfile
+@@ -16,4 +16,4 @@ RUN pip install --upgrade pip && \
+ COPY server /app/server
+ 
+ EXPOSE 5000
+-CMD ["gunicorn", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:5000", "server.app:app"]
++CMD ["gunicorn", "-w", "1", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:5000", "server.app:app"]
+diff --git a/server/api/routers/messaging.py b/server/api/routers/messaging.py
+index b1820c3..f451e26 100644
+--- a/server/api/routers/messaging.py
++++ b/server/api/routers/messaging.py
+@@ -1,25 +1,19 @@
+ from __future__ import annotations
+ 
+-from fastapi import APIRouter
++from fastapi import APIRouter, Request
+ from fastapi.responses import JSONResponse
+ from pydantic import BaseModel, Field
+ 
++from server.api.security.jwt import JWTService
+ from server.api.websockets.lobby_chat import chat_service, connection_hub
++from server.external.db.models.user import User
+ from server.domain.messaging.errors import InvalidMessageError
+-from server.utils.constants import HttpStatus
+-from server.utils.error_handlers import DomainValidationError
++from server.utils.constants import HttpStatus, ResponseMessages
++from server.utils.error_handlers import AuthenticationError, DomainValidationError
+ 
+ messaging_routes = APIRouter(prefix="/api/v1/messaging", tags=["messaging"])
+ 
+-
+-class PresenceRequest(BaseModel):
+-    # Optional username to include in join/leave system messages.
+-    username: str | None = None
+-
+-
+ class SendMessageRequest(BaseModel):
+-    # Display name of the sender.
+-    user: str = Field(min_length=1)
+     # Raw message content (validated by domain rules in ChatService).
+     text: str
+ 
+@@ -33,46 +27,17 @@ async def get_lobby_status(lobby_id: str):
+         status_code=HttpStatus.OK,
+     )
+ 
+-
+-@messaging_routes.post("/lobbies/{lobby_id}/join", status_code=HttpStatus.OK)
+-async def join_lobby(lobby_id: str, payload: PresenceRequest):
+-    """Broadcast a system 'joined' event for the lobby and return an ack payload."""
+-    await chat_service.on_join(lobby_id, payload.username)
+-    count = await connection_hub.lobby_size(lobby_id)
+-    return JSONResponse(
+-        {
+-            "ok": True,
+-            "event": "join",
+-            "lobbyId": lobby_id,
+-            "username": payload.username,
+-            "count": count,
+-        },
+-        status_code=HttpStatus.OK,
+-    )
+-
+-
+-@messaging_routes.post("/lobbies/{lobby_id}/leave", status_code=HttpStatus.OK)
+-async def leave_lobby(lobby_id: str, payload: PresenceRequest):
+-    """Broadcast a system 'left' event for the lobby and return an ack payload."""
+-    await chat_service.on_leave(lobby_id, payload.username)
+-    count = await connection_hub.lobby_size(lobby_id)
+-    return JSONResponse(
+-        {
+-            "ok": True,
+-            "event": "leave",
+-            "lobbyId": lobby_id,
+-            "username": payload.username,
+-            "count": count,
+-        },
+-        status_code=HttpStatus.OK,
+-    )
+-
+-
+ @messaging_routes.post("/lobbies/{lobby_id}/messages", status_code=HttpStatus.OK)
+-async def send_lobby_message(lobby_id: str, payload: SendMessageRequest):
+-    """Validate and broadcast a chat message; map domain validation failures to HTTP 400."""
++async def send_lobby_message(lobby_id: str, payload: SendMessageRequest, request: Request):
++    """Validate and broadcast a chat message from authenticated user identity."""
++    claims = JWTService.require_access(request)
++    user_id = str(claims.get("sub") or "")
++    user = User.get_by_id(user_id)
++    if not user or not user.username:
++        raise AuthenticationError(ResponseMessages.INVALID_OR_EXPIRED_TOKEN)
++
+     try:
+-        await chat_service.send_message(lobby_id, payload.user, payload.text)
++        await chat_service.send_message(lobby_id, user.username, payload.text)
+     except InvalidMessageError as exc:
+         raise DomainValidationError(str(exc)) from exc
+ 
+@@ -81,7 +46,7 @@ async def send_lobby_message(lobby_id: str, payload: SendMessageRequest):
+             "ok": True,
+             "event": "message",
+             "lobbyId": lobby_id,
+-            "user": payload.user,
++            "user": user.username,
+         },
+         status_code=HttpStatus.OK,
+-    )
++    )
+\ No newline at end of file
+diff --git a/server/api/security/jwt.py b/server/api/security/jwt.py
+index 03c3fbf..b1a56d4 100644
+--- a/server/api/security/jwt.py
++++ b/server/api/security/jwt.py
+@@ -8,6 +8,7 @@ from uuid import uuid4
+ 
+ import jwt
+ from fastapi import Request, Response
++from fastapi import WebSocket
+ 
+ from server.api.security.cookies import CookieUtils
+ from server.config import get_app_config
+@@ -160,6 +161,26 @@ class JWTService:
+             app_logger.warning(f"JWT access check failed: {exc}")
+             raise AuthenticationError(ResponseMessages.INVALID_OR_EXPIRED_TOKEN)
+ 
++    @staticmethod
++    def require_access_websocket(websocket: WebSocket) -> dict[str, Any]:
++        """
++        Validate access JWT for websocket handshakes.
++        Unlike HTTP access checks, websocket auth does not require CSRF header/cookie
++        pairing because browsers do not allow setting custom headers for native WS APIs.
++        """
++        raw_token = websocket.cookies.get(_ACCESS_TOKEN_COOKIE)
++        if not raw_token:
++            raise AuthenticationError(ResponseMessages.INVALID_OR_EXPIRED_TOKEN)
++        try:
++            claims = JWTService._decode_token(raw_token)
++        except Exception as exc:
++            app_logger.warning(f"WS JWT decode failed: {exc}")
++            raise AuthenticationError(ResponseMessages.INVALID_OR_EXPIRED_TOKEN)
++
++        if claims.get("type") != "access" or not claims.get("sub"):
++            raise AuthenticationError(ResponseMessages.INVALID_OR_EXPIRED_TOKEN)
++        return claims
++
+     @staticmethod
+     def require_refresh(request: Request) -> dict[str, Any]:
+         try:
+diff --git a/server/api/websockets/connection_hub.py b/server/api/websockets/connection_hub.py
+index 57b2559..3cb7954 100644
+--- a/server/api/websockets/connection_hub.py
++++ b/server/api/websockets/connection_hub.py
+@@ -32,13 +32,27 @@ class ConnectionHub:
+         username: str | None = None,
+     ) -> None:
+         await websocket.accept()
++        replaced_sockets: list[WebSocket] = []
+         async with self._lock:
+             self._lobbies.setdefault(lobby_id, {})
++            if user_id:
++                replaced_sockets = [
++                    ws
++                    for ws, info in self._lobbies[lobby_id].items()
++                    if info.user_id == user_id and ws is not websocket
++                ]
++                for ws in replaced_sockets:
++                    self._lobbies[lobby_id].pop(ws, None)
+             self._lobbies[lobby_id][websocket] = ConnectionInfo(
+                 websocket=websocket,
+                 user_id=user_id,
+                 username=username,
+             )
++        for ws in replaced_sockets:
++            try:
++                await ws.close(code=1008)
++            except Exception:
++                pass
+ 
+     async def disconnect(self, lobby_id: str, websocket: WebSocket) -> None:
+         async with self._lock:
+@@ -83,3 +97,23 @@ class ConnectionHub:
+         async with self._lock:
+             return len(self._lobbies.get(lobby_id, {}))
+ 
++    async def get_connection_info(
++        self,
++        lobby_id: str,
++        websocket: WebSocket,
++    ) -> ConnectionInfo | None:
++        async with self._lock:
++            lobby = self._lobbies.get(lobby_id, {})
++            return lobby.get(websocket)
++
++    async def lobby_members(self, lobby_id: str) -> list[ConnectionInfo]:
++        async with self._lock:
++            lobby = self._lobbies.get(lobby_id, {})
++            return list(lobby.values())
++
++    async def is_user_connected(self, lobby_id: str, user_id: str) -> bool:
++        if not user_id:
++            return False
++        async with self._lock:
++            lobby = self._lobbies.get(lobby_id, {})
++            return any(info.user_id == user_id for info in lobby.values())
+diff --git a/server/api/websockets/lobby_chat.py b/server/api/websockets/lobby_chat.py
+index f85af12..88229a7 100644
+--- a/server/api/websockets/lobby_chat.py
++++ b/server/api/websockets/lobby_chat.py
+@@ -6,8 +6,11 @@ from typing import Any
+ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+ 
+ from server.api.websockets.connection_hub import ConnectionHub
++from server.api.security.jwt import JWTService
+ from server.application.messaging.chat_service import ChatService
+ from server.domain.messaging.errors import InvalidMessageError
++from server.external.db.models.user import User
++from server.utils.error_handlers import AuthenticationError
+ 
+ router = APIRouter(prefix="/api/v1")
+ 
+@@ -16,32 +19,71 @@ chat_service = ChatService(connection_hub, connection_hub.lobby_size)
+ 
+ 
+ def _safe_parse_json(text: str) -> dict[str, Any]:
+-    try:
+-        val = json.loads(text)
+-        return val if isinstance(val, dict) else {"text": text}
+-    except Exception:
+-        return {"text": text}
++    val = json.loads(text)
++    if not isinstance(val, dict):
++        raise ValueError("Expected a JSON object payload.")
++    if set(val.keys()) != {"text"}:
++        raise ValueError("Payload must only include the 'text' field.")
++    raw_text = val.get("text")
++    if not isinstance(raw_text, str):
++        raise ValueError("Field 'text' must be a string.")
++    return {"text": raw_text}
++
++
++async def _send_error(websocket: WebSocket, code: str, detail: str) -> None:
++    await websocket.send_json(
++        {
++            "type": "error",
++            "code": code,
++            "detail": detail,
++        }
++    )
+ 
+ 
+ @router.websocket("/ws/lobby/{lobby_id}")
+ async def lobby_chat_ws(websocket: WebSocket, lobby_id: str) -> None:
+-    username: str | None = websocket.query_params.get("user")
+-    await connection_hub.connect(lobby_id, websocket, username=username)
+-    await chat_service.on_join(lobby_id, username)
++    try:
++        claims = JWTService.require_access_websocket(websocket)
++    except AuthenticationError:
++        await websocket.close(code=1008)
++        return
++
++    # Get user info from DB
++    user_id = str(claims.get("sub"))
++    user = User.get_by_id(user_id)
++    if not user or not user.username:
++        await websocket.close(code=1008)
++        return
++    username = user.username
++
++    # If user already connected, close old connection and replace with new one
++    already_connected = await connection_hub.is_user_connected(lobby_id, user_id)
++    await connection_hub.connect(lobby_id, websocket, user_id=user_id, username=username)
++    if not already_connected: # Emit on_join only for NEW connections, not reconnections
++        await chat_service.on_join(lobby_id, username)
+ 
+     try:
++        # Main receive and send loop; exit on disconnect or error
+         while True:
+             raw = await websocket.receive_text()
+-            incoming = _safe_parse_json(raw)
+-            text = str(incoming.get("text") or "")
+-            user = str(incoming.get("user") or username or "anonymous")
+             try:
+-                await chat_service.send_message(lobby_id, user, text)
+-            except InvalidMessageError:
++                incoming = _safe_parse_json(raw)
++            except (json.JSONDecodeError, ValueError) as exc:
++                await _send_error(websocket, "invalid_payload", str(exc))
+                 continue
++
++            try:
++                await chat_service.send_message(lobby_id, username, incoming["text"])
++            except InvalidMessageError as exc:
++                await _send_error(websocket, "invalid_message", str(exc))
+     except WebSocketDisconnect:
+-        await connection_hub.disconnect(lobby_id, websocket)
+-        await chat_service.on_leave(lobby_id, username)
++        pass
+     except Exception:
++        pass
++    finally:
++        # Disconnect and emit leave if user was connected
++        info = await connection_hub.get_connection_info(lobby_id, websocket)
++        if info is None:
++            return
+         await connection_hub.disconnect(lobby_id, websocket)
+-
++        await chat_service.on_leave(lobby_id, info.username)
+diff --git a/server/docs/messaging.md b/server/docs/messaging.md
+index 26ca4d1..552531b 100644
+--- a/server/docs/messaging.md
++++ b/server/docs/messaging.md
+@@ -1,29 +1,58 @@
+-`server/api/routers/messaging.py`
+-REST endpoints for messaging features. Delegates messaging actions to `chat_service`
++# Backend Messaging Reference
+ 
+-`server/api/websockets/lobby_chat.py`
+-WebSocket entry points for messaging.
+-Use `connection_hub` for connect, disconnect, etc (real-time websocket handling)
+-Use `chat_service` for...
+- * send_message
+- * on_join, on_leave (business semantics e.g. is banned? or is allowed to join?)
++## Transport
+ 
+-`server/api/websockets/connection_hub.py`
+-In-memory connection manager for lobby messaging. Tracks active WebSocket connections and handles broadcast.
++- WebSocket endpoint: `GET /api/v1/ws/lobby/{lobby_id}`
++- REST endpoints: `/api/v1/messaging/*`
+ 
+-`server/application/messaging/chat_service.py`
+-Handles messaging use-cases. Coordinates actions such as join, leave, send message, and validation by applying domain rules.
+-Use `broadcaster` for broadcasting messages to lobbies.
++## WebSocket Authentication
+ 
+-`server/application/messaging/broadcaster.py`
+-Defines the Broadcaster used by `chat_service` to emit events.
+-Concrete implementations may deliver via Websockets(`connection_hub`), Mock Broadcaster (for testing), etc
++- Requires valid `access_token_cookie`.
++- Connections without a valid access token are rejected with close code `1008`.
+ 
+-`server/domain/messaging/models.py`
+-Core domain models for messaging (e.g., ChatMessage, identifiers, value objects).
++## WebSocket Message Contract
+ 
+-`server/domain/messaging/rules.py`
+-Handles message validation, length limits, etc.
++### Client -> Server
+ 
+-`server/domain/messaging/errors.py`
+-Domain specific error types for rule violations (e.g. InvalidMessageError)
+\ No newline at end of file
++Accepted payload shape:
++
++```json
++{ "text": "hello" }
++```
++
++Rules:
++
++- Payload must be a JSON object.
++- Only the `text` key is accepted.
++- `text` must be a string and must satisfy domain validation rules.
++
++### Server -> Client Events
++
++- `chat`: `{ "type": "chat", "lobbyId": "...", "user": "...", "text": "...", "ts": 123 }`
++- `system`: `{ "type": "system", "lobbyId": "...", "text": "...", "count": 1, "ts": 123 }`
++- `error`: `{ "type": "error", "code": "...", "detail": "..." }`
++
++Error events are sent for invalid payloads and invalid messages. The socket remains open.
++
++## REST Endpoints
++
++### `GET /api/v1/messaging/lobbies/{lobby_id}`
++
++- Returns current websocket connection count for the lobby.
++
++### `POST /api/v1/messaging/lobbies/{lobby_id}/messages`
++
++- Requires authenticated access token + CSRF header/cookie checks.
++- Message sender is derived from authenticated identity.
++- Not sure if we need this, but keeping it for compatibility?
++
++## Core Modules
++
++- `server/api/routers/messaging.py`: REST handlers for lobby status and authenticated message broadcast.
++- `server/api/websockets/lobby_chat.py`: authenticated websocket protocol handling and dispatch.
++- `server/api/websockets/connection_hub.py`: in-memory connection/presence manager and broadcaster.
++- `server/application/messaging/chat_service.py`: messaging use-cases and domain-rule orchestration.
++- `server/application/messaging/broadcaster.py`: broadcaster protocol.
++- `server/domain/messaging/models.py`: message payload models.
++- `server/domain/messaging/rules.py`: message validation rules.
++- `server/domain/messaging/errors.py`: domain exceptions.
+diff --git a/server/tests/test_messaging_api.py b/server/tests/test_messaging_api.py
+index 11dc099..ff93a93 100644
+--- a/server/tests/test_messaging_api.py
++++ b/server/tests/test_messaging_api.py
+@@ -3,6 +3,21 @@ from __future__ import annotations
+ from fastapi.testclient import TestClient
+ 
+ from server.app import create_app
++from server.tests.conftest import (
++    get_auth_csrf,
++    get_latest_verification_token,
++    login_user,
++    register_user,
++    verify_email_token,
++)
++
++
++def _create_and_login(client: TestClient, email: str) -> str:
++    register_user(client, email=email, password="StrongPass123")
++    token = get_latest_verification_token()
++    verify_email_token(client, token=token)
++    user = login_user(client, email=email, password="StrongPass123")
++    return user["username"]
+ 
+ 
+ def test_get_lobby_status_returns_count_zero_initially():
+@@ -15,77 +30,64 @@ def test_get_lobby_status_returns_count_zero_initially():
+         assert data["count"] == 0
+ 
+ 
+-def test_join_endpoint_returns_ack_payload():
+-    app = create_app()
+-    with TestClient(app) as client:
+-        r = client.post(
+-            "/api/v1/messaging/lobbies/l1/join",
+-            json={"username": "alice"},
+-        )
+-        assert r.status_code == 200
+-        data = r.json()
+-        assert data["ok"] is True
+-        assert data["event"] == "join"
+-        assert data["lobbyId"] == "l1"
+-        assert data["username"] == "alice"
+-        assert isinstance(data["count"], int)
+-
+-
+-def test_leave_endpoint_returns_ack_payload():
++def test_send_message_endpoint_accepts_valid_message():
+     app = create_app()
+     with TestClient(app) as client:
+-        # leave without joining is still a valid "broadcast attempt" in your current code
++        username = _create_and_login(client, "alice@example.com")
++        csrf = get_auth_csrf(client)
+         r = client.post(
+-            "/api/v1/messaging/lobbies/l1/leave",
+-            json={"username": "alice"},
++            "/api/v1/messaging/lobbies/l1/messages",
++            json={"text": "hello"},
++            headers={"X-CSRF-TOKEN": csrf},
+         )
+         assert r.status_code == 200
+         data = r.json()
+         assert data["ok"] is True
+-        assert data["event"] == "leave"
++        assert data["event"] == "message"
+         assert data["lobbyId"] == "l1"
+-        assert data["username"] == "alice"
+-        assert isinstance(data["count"], int)
++        assert data["user"] == username
+ 
+ 
+-def test_send_message_endpoint_accepts_valid_message():
++def test_send_message_endpoint_returns_400_on_invalid_message():
+     app = create_app()
+     with TestClient(app) as client:
++        _create_and_login(client, "alice@example.com")
++        csrf = get_auth_csrf(client)
+         r = client.post(
+             "/api/v1/messaging/lobbies/l1/messages",
+-            json={"user": "alice", "text": "hello"},
++            json={"text": "   "},  # invalid per domain rules
++            headers={"X-CSRF-TOKEN": csrf},
+         )
+-        assert r.status_code == 200
+-        data = r.json()
+-        assert data["ok"] is True
+-        assert data["event"] == "message"
+-        assert data["lobbyId"] == "l1"
+-        assert data["user"] == "alice"
++        assert r.status_code == 400  # DomainValidationError should map to 400
+ 
+ 
+-def test_send_message_endpoint_returns_400_on_invalid_message():
++def test_send_message_endpoint_requires_authentication():
+     app = create_app()
+     with TestClient(app) as client:
+         r = client.post(
+             "/api/v1/messaging/lobbies/l1/messages",
+-            json={"user": "alice", "text": "   "},  # invalid per your domain rules
++            json={"text": "hello"},
+         )
+-        assert r.status_code == 400  # DomainValidationError should map to 400
++        assert r.status_code == 401
++
+ 
+ def test_rest_send_message_broadcasts_to_ws_clients():
+     app = create_app()
+     with TestClient(app) as client:
+-        with client.websocket_connect("/api/v1/ws/lobby/l1?user=bob") as ws:
++        _create_and_login(client, "bob@example.com")
++        with client.websocket_connect("/api/v1/ws/lobby/l1") as ws:
+             ws.receive_json()  # initial join message
++            csrf = get_auth_csrf(client)
+ 
+             r = client.post(
+                 "/api/v1/messaging/lobbies/l1/messages",
+-                json={"user": "alice", "text": "hello via rest"},
++                json={"text": "hello via rest"},
++                headers={"X-CSRF-TOKEN": csrf},
+             )
+             assert r.status_code == 200
+ 
+             msg = ws.receive_json()
+             assert msg["type"] == "chat"
+             assert msg["lobbyId"] == "l1"
+-            assert msg["user"] == "alice"
+-            assert msg["text"] == "hello via rest"
+\ No newline at end of file
++            assert msg["user"] == "bob"
++            assert msg["text"] == "hello via rest"
+diff --git a/server/tests/test_messaging_ws.py b/server/tests/test_messaging_ws.py
+index 4318fc0..9749b25 100644
+--- a/server/tests/test_messaging_ws.py
++++ b/server/tests/test_messaging_ws.py
+@@ -1,8 +1,18 @@
+ from __future__ import annotations
+ 
++import json
++
++from starlette.websockets import WebSocketDisconnect
+ from fastapi.testclient import TestClient
+ 
+ from server.app import create_app
++from server.domain.messaging.rules import MAX_MESSAGE_LENGTH
++from server.tests.conftest import (
++    get_latest_verification_token,
++    login_user,
++    register_user,
++    verify_email_token,
++)
+ 
+ 
+ def _json_recv(ws):
+@@ -11,78 +21,102 @@ def _json_recv(ws):
+     return payload
+ 
+ 
++def _create_and_login(client: TestClient, email: str) -> str:
++    register_user(client, email=email, password="StrongPass123")
++    token = get_latest_verification_token()
++    verify_email_token(client, token=token)
++    user = login_user(client, email=email, password="StrongPass123")
++    return user["username"]
++
++
++def test_ws_connect_without_auth_is_rejected():
++    app = create_app()
++    with TestClient(app) as client:
++        try:
++            with client.websocket_connect("/api/v1/ws/lobby/test-lobby") as ws:
++                ws.receive_text()
++        except WebSocketDisconnect as exc:
++            assert exc.code == 1008
++        else:
++            assert False, "Expected websocket authentication rejection"
++
++
+ def test_connect_emits_join_system_message_with_count():
+     app = create_app()
+     with TestClient(app) as client:
++        username = _create_and_login(client, "alice@example.com")
+         with client.websocket_connect("/api/v1/ws/lobby/test-lobby") as ws:
+             msg = _json_recv(ws)
+             assert msg["type"] == "system"
+             assert msg["lobbyId"] == "test-lobby"
+-            assert msg["text"] == "Someone joined"
++            assert msg["text"] == f"{username} joined"
+             assert msg["count"] == 1
+             assert isinstance(msg["ts"], int)
+ 
+ 
+-def test_two_clients_receive_chat_broadcast():
++def test_two_clients_receive_chat_broadcast_and_sender_is_not_spoofable():
+     app = create_app()
+     with TestClient(app) as client:
+-        with client.websocket_connect("/api/v1/ws/lobby/l1?user=alice") as ws1:
++        username_alice = _create_and_login(client, "alice@example.com")
++        with client.websocket_connect("/api/v1/ws/lobby/l1") as ws1:
+             _json_recv(ws1)
+-            with client.websocket_connect("/api/v1/ws/lobby/l1?user=bob") as ws2:
++            _create_and_login(client, "bob@example.com")
++            with client.websocket_connect("/api/v1/ws/lobby/l1") as ws2:
+                 _json_recv(ws2)
+                 _json_recv(ws1)
+ 
++                ws1.send_json({"text": "hello from one", "user": "mallory"})
++                err = _json_recv(ws1)
++                assert err["type"] == "error"
++                assert err["code"] == "invalid_payload"
++
+                 ws1.send_json({"text": "hello from one"})
++
+                 msg1 = _json_recv(ws1)
+                 msg2 = _json_recv(ws2)
+-
+                 for msg in (msg1, msg2):
+                     assert msg["type"] == "chat"
+                     assert msg["lobbyId"] == "l1"
+-                    assert msg["user"] == "alice"
++                    assert msg["user"] == username_alice
+                     assert msg["text"] == "hello from one"
+                     assert isinstance(msg["ts"], int)
+ 
+ 
+-def test_malformed_json_falls_back_to_text():
++def test_invalid_payload_and_invalid_message_emit_error_events():
+     app = create_app()
+     with TestClient(app) as client:
+-        with client.websocket_connect("/api/v1/ws/lobby/l2?user=neo") as ws:
++        _create_and_login(client, "neo@example.com")
++        with client.websocket_connect("/api/v1/ws/lobby/l2") as ws:
+             _json_recv(ws)
+             ws.send_text("not-json")
+-            msg = _json_recv(ws)
+-            assert msg["type"] == "chat"
+-            assert msg["lobbyId"] == "l2"
+-            assert msg["user"] == "neo"
+-            assert msg["text"] == "not-json"
+-
++            err = _json_recv(ws)
++            assert err["type"] == "error"
++            assert err["code"] == "invalid_payload"
+ 
+-def test_empty_or_whitespace_messages_are_ignored():
+-    app = create_app()
+-    with TestClient(app) as client:
+-        with client.websocket_connect("/api/v1/ws/lobby/l3?user=alice") as ws1:
+-            _json_recv(ws1)
+-            with client.websocket_connect("/api/v1/ws/lobby/l3?user=bob") as ws2:
+-                _json_recv(ws2)
+-                _json_recv(ws1)
++            ws.send_json({"text": "   "})
++            err = _json_recv(ws)
++            assert err["type"] == "error"
++            assert err["code"] == "invalid_message"
+ 
+-                ws1.send_json({"text": "   "})
+-                ws1.send_json({"text": "valid"})
++            ws.send_json({"text": "x" * (MAX_MESSAGE_LENGTH + 1)})
++            err = _json_recv(ws)
++            assert err["type"] == "error"
++            assert err["code"] == "invalid_message"
+ 
+-                msg1 = _json_recv(ws1)
+-                msg2 = _json_recv(ws2)
+-                assert msg1["type"] == "chat"
+-                assert msg2["type"] == "chat"
+-                assert msg1["text"] == "valid"
+-                assert msg2["text"] == "valid"
++            ws.send_text(json.dumps({"text": "valid"}))
++            msg = _json_recv(ws)
++            assert msg["type"] == "chat"
++            assert msg["text"] == "valid"
+ 
+ 
+ def test_disconnect_emits_leave_message_with_updated_count():
+     app = create_app()
+     with TestClient(app) as client:
+-        with client.websocket_connect("/api/v1/ws/lobby/l4?user=alice") as ws1:
++        _create_and_login(client, "alice@example.com")
++        with client.websocket_connect("/api/v1/ws/lobby/l4") as ws1:
+             _json_recv(ws1)
+-            with client.websocket_connect("/api/v1/ws/lobby/l4?user=bob") as ws2:
++            _create_and_login(client, "bob@example.com")
++            with client.websocket_connect("/api/v1/ws/lobby/l4") as ws2:
+                 _json_recv(ws2)
+                 _json_recv(ws1)
+             leave = _json_recv(ws1)
+@@ -92,3 +126,33 @@ def test_disconnect_emits_leave_message_with_updated_count():
+             assert leave["count"] == 1
+             assert isinstance(leave["ts"], int)
+ 
++
++def test_same_user_reconnect_replaces_socket_without_presence_churn():
++    app = create_app()
++    with TestClient(app) as client:
++        _create_and_login(client, "alice@example.com")
++        with client.websocket_connect("/api/v1/ws/lobby/l5") as ws1:
++            _json_recv(ws1)  # alice joined
++
++            _create_and_login(client, "bob@example.com")
++            with client.websocket_connect("/api/v1/ws/lobby/l5") as ws2:
++                _json_recv(ws2)  # bob joined
++                _json_recv(ws1)  # bob joined broadcast to alice
++
++                login_user(client, email="alice@example.com", password="StrongPass123")
++                with client.websocket_connect("/api/v1/ws/lobby/l5") as ws3:
++                    # Previous alice socket should be replaced/closed.
++                    try:
++                        ws1.receive_text()
++                    except WebSocketDisconnect as exc:
++                        assert exc.code == 1008
++                    else:
++                        assert False, "Expected replaced socket to be closed"
++
++                    # No queued presence churn should appear for bob.
++                    ws3.send_json({"text": "after reconnect"})
++                    msg = _json_recv(ws2)
++                    assert msg["type"] == "chat"
++                    assert msg["lobbyId"] == "l5"
++                    assert msg["user"] == "alice"
++                    assert msg["text"] == "after reconnect"

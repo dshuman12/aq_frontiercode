@@ -48,6 +48,7 @@ def run_harbor(
     artifact_paths: list[str] | None = None,
     timeout_seconds: int | None = None,
     n_concurrent: int | None = None,
+    job_name: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [
         harbor_bin,
@@ -63,6 +64,8 @@ def run_harbor(
         "--jobs-dir",
         str(jobs_dir),
     ]
+    if job_name is not None:
+        command.extend(["--job-name", job_name])
     if n_concurrent is not None:
         command.extend(["--n-concurrent", str(n_concurrent)])
     for model in models:

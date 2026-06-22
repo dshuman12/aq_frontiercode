@@ -1,0 +1,59 @@
+diff --git a/pkg/crdt/set.go b/pkg/crdt/set.go
+--- a/pkg/crdt/set.go
++++ b/pkg/crdt/set.go
+@@
+ 	for elem, tags := range other.entries {
+ 		if s.entries[elem] == nil {
+ 			s.entries[elem] = make(map[ORTag]struct{})
+ 		}
+-		s.entries[elem] = make(map[ORTag]struct{})
+ 		for tag := range tags {
+ 			s.entries[elem][tag] = struct{}{}
+ 		}
+ 	}
+@@
+ 	tags := s.entries[elem]
+-	return len(tags) == 0
++	return len(tags) > 0
+ }
+diff --git a/pkg/crdt/orset_union_test.go b/pkg/crdt/orset_union_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/crdt/orset_union_test.go
+@@
++package crdt
++
++import "testing"
++
++// TestORSet_MergeUnionTags checks that the same element added concurrently on
++// two replicas survives a bidirectional merge and is reported present.
++func TestORSet_MergeUnionTags(t *testing.T) {
++	a := NewORSet("a")
++	b := NewORSet("b")
++	a.Add("x")
++	b.Add("x")
++	a.Merge(b)
++	b.Merge(a)
++	if !a.Contains("x") {
++		t.Fatal("replica a should contain x after merge")
++	}
++	if !b.Contains("x") {
++		t.Fatal("replica b should contain x after merge")
++	}
++}
++
++// TestORSet_ContainsCorrect checks the basic membership contract.
++func TestORSet_ContainsCorrect(t *testing.T) {
++	s := NewORSet("n")
++	if s.Contains("missing") {
++		t.Fatal("empty set should not contain element")
++	}
++	s.Add("present")
++	if !s.Contains("present") {
++		t.Fatal("should contain added element")
++	}
++	s.Remove("present")
++	if s.Contains("present") {
++		t.Fatal("should not contain removed element")
++	}
++}

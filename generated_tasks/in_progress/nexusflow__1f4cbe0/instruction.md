@@ -1,16 +1,21 @@
 # Task description
 
-The cron scheduler in `nexusflow/tasks/scheduler.py` computes next-run times using naive `datetime` arithmetic combined with a fixed UTC offset. This approach breaks whenever the configured timezone observes daylight saving time: because the fixed offset cannot track DST transitions, scheduled tasks resolve to incorrect UTC epochs around spring-forward and fall-back boundaries, firing an hour early or late.
+The cron scheduler fails to correctly compute next-run times when the task is configured for a timezone that observes daylight saving time. Scheduled tasks fire at incorrect times around DST boundaries (typically off by one hour).
 
-Make next-run computation fully timezone-aware so that the resulting UTC epoch is correct across DST transitions. Resolve wall-clock cron times within the task's configured timezone using a real zone implementation (for example `zoneinfo.ZoneInfo`) rather than a constant offset, then convert to UTC for scheduling. Times that fall in a skipped or repeated wall-clock window must resolve to a sensible, well-defined UTC instant rather than a naive miscalculation.
+Identify and fix the timezone handling in the scheduler so that:
 
-Preserve the existing public interface of the scheduler: method names, argument lists, and return types (UTC epoch seconds / aware datetimes) must remain unchanged so callers and other task components are unaffected. Behavior for UTC and fixed-offset zones without DST must stay identical to today. Keep the change confined to the scheduler; do not modify the queue, worker, or dead letter modules.
+- Cron schedules respect DST transitions in the configured timezone
+- The computed UTC epoch for the next run is correct even around spring-forward and fall-back dates
+- The fix works for any configured timezone, including UTC and fixed offsets
+- Public method signatures and return types are unchanged
+
+Do not modify queue, worker, or dead-letter modules. Keep changes confined to the scheduler.
 
 # Test guidelines
 
-Run `python -m pytest tests/test_tasks/ -x -q` and ensure it passes.
+Run `python -m pytest tests/ -x -q --ignore=tests/test_auth --ignore=tests/test_db --ignore=tests/test_plugins` to verify the fix passes all tests.
 
-Extend `tests/test_tasks/test_scheduler.py` to cover DST behavior: spring-forward (a skipped local hour), fall-back (a repeated local hour), and at least one non-DST zone to confirm unchanged behavior. Assert on the computed UTC epoch, not on naive local values. Avoid relying on the host machine's local timezone—construct zones explicitly so tests are deterministic.
+Add tests that verify correct UTC epoch computation around DST transitions (both spring-forward and fall-back scenarios), and ensure non-DST timezones work correctly. Tests must use explicit timezone objects, not the host machine's local timezone.
 
 # Lint guidelines
 

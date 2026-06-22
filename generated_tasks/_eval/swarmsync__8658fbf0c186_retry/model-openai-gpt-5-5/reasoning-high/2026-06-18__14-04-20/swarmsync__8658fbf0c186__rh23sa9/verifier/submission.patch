@@ -1,0 +1,424 @@
+diff --git a/base/pkg/gossip/gossip_test.go b/repo/pkg/gossip/gossip_test.go
+index 8028fe2..2038818 100644
+--- a/base/pkg/gossip/gossip_test.go
++++ b/repo/pkg/gossip/gossip_test.go
+@@ -17,12 +17,43 @@ func TestStateStore_PutGet(t *testing.T) {
+ 	}
+ }
+ 
++func TestStateStore_GetCopiesAndGetRefAliasesStoredValue(t *testing.T) {
++	s := NewStateStore("n1")
++	input := []byte("value")
++	s.Put("key1", input)
++	input[0] = 'X'
++
++	v, ok := s.Get("key1")
++	if !ok || string(v) != "value" {
++		t.Fatalf("expected stored copy value, got (%q, %v)", v, ok)
++	}
++	v[0] = 'Y'
++	v, ok = s.Get("key1")
++	if !ok || string(v) != "value" {
++		t.Fatalf("Get result mutation should not affect store, got (%q, %v)", v, ok)
++	}
++
++	ref, ok := s.GetRef("key1")
++	if !ok || string(ref) != "value" {
++		t.Fatalf("expected live ref value, got (%q, %v)", ref, ok)
++	}
++	ref[0] = 'Z'
++	v, ok = s.Get("key1")
++	if !ok || string(v) != "Zalue" {
++		t.Fatalf("GetRef should alias stored value, got (%q, %v)", v, ok)
++	}
++}
++
+ func TestStateStore_GetMissing(t *testing.T) {
+ 	s := NewStateStore("n1")
+ 	_, ok := s.Get("missing")
+ 	if ok {
+ 		t.Fatal("expected false for missing key")
+ 	}
++	_, ok = s.GetRef("missing")
++	if ok {
++		t.Fatal("expected false from GetRef for missing key")
++	}
+ }
+ 
+ func TestStateStore_PutOverwrite(t *testing.T) {
+@@ -43,6 +74,10 @@ func TestStateStore_Delete(t *testing.T) {
+ 	if ok {
+ 		t.Fatal("expected false after delete")
+ 	}
++	_, ok = s.GetRef("k")
++	if ok {
++		t.Fatal("expected false from GetRef after delete")
++	}
+ }
+ 
+ func TestStateStore_DeleteThenPut(t *testing.T) {
+@@ -216,6 +251,48 @@ func TestStateStore_ThreadSafety(t *testing.T) {
+ 	}
+ }
+ 
++func TestStateStore_GetRefConcurrentReadOnlyAccess(t *testing.T) {
++	s := NewStateStore("n1")
++	s.Put("hot", []byte("value-0"))
++
++	const iterations = 1000
++	start := make(chan struct{})
++	var wg sync.WaitGroup
++	for i := 0; i < 8; i++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			<-start
++			for j := 0; j < iterations; j++ {
++				if v, ok := s.GetRef("hot"); ok && len(v) > 0 {
++					_ = v[0]
++					_ = v[len(v)-1]
++				}
++				if v, ok := s.Get("hot"); ok && len(v) > 0 {
++					v[0] = 'x'
++				}
++				_ = s.Hash()
++			}
++		}()
++	}
++
++	wg.Add(1)
++	go func() {
++		defer wg.Done()
++		<-start
++		for j := 0; j < iterations; j++ {
++			s.Put("hot", []byte(fmt.Sprintf("value-%d", j)))
++			s.Put(fmt.Sprintf("cold-%d", j), []byte("value"))
++			if j%10 == 0 {
++				s.Delete("deleted")
++			}
++		}
++	}()
++
++	close(start)
++	wg.Wait()
++}
++
+ // --- PeerSelector tests ---
+ 
+ func TestRandomPeerSelector_ExcludesSelf(t *testing.T) {
+@@ -443,4 +520,4 @@ func TestStateStore_HashCaching_AfterDelete(t *testing.T) {
+ 	if h1 == h2 {
+ 		t.Fatal("hash should change after Delete")
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/gossip/protocol.go b/repo/pkg/gossip/protocol.go
+index eed601e..51f3519 100644
+--- a/base/pkg/gossip/protocol.go
++++ b/repo/pkg/gossip/protocol.go
+@@ -208,4 +208,4 @@ func (c *Cluster) Size() int {
+ 	c.mu.RLock()
+ 	defer c.mu.RUnlock()
+ 	return len(c.nodes)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/gossip/state.go b/repo/pkg/gossip/state.go
+index e243b57..e5c3379 100644
+--- a/base/pkg/gossip/state.go
++++ b/repo/pkg/gossip/state.go
+@@ -79,6 +79,18 @@ func (s *StateStore) Get(key string) ([]byte, bool) {
+ 	return copyBytes(e.Value), true
+ }
+ 
++// GetRef retrieves a value by key without copying it.
++// The returned slice aliases store memory and must be treated as read-only.
++func (s *StateStore) GetRef(key string) ([]byte, bool) {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	e, ok := s.entries[key]
++	if !ok || e.Tombstone {
++		return nil, false
++	}
++	return e.Value, true
++}
++
+ // Delete marks a key as tombstoned.
+ func (s *StateStore) Delete(key string) uint64 {
+ 	s.mu.Lock()
+@@ -252,4 +264,4 @@ func copyBytes(b []byte) []byte {
+ 	cp := make([]byte, len(b))
+ 	copy(cp, b)
+ 	return cp
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/hash/hash_test.go b/repo/pkg/hash/hash_test.go
+index a552b6e..7dee259 100644
+--- a/base/pkg/hash/hash_test.go
++++ b/repo/pkg/hash/hash_test.go
+@@ -262,6 +262,103 @@ func TestRing_DefaultReplicas(t *testing.T) {
+ 	}
+ }
+ 
++func TestRing_AddMaintainsSortedOrderAfterManyInserts(t *testing.T) {
++	const (
++		nodes    = 1000
++		replicas = 17
++	)
++	r := NewRing(replicas)
++	for i := nodes - 1; i >= 0; i-- {
++		r.Add(fmt.Sprintf("node-%04d", i))
++	}
++
++	if got, want := len(r.ring), nodes*replicas; got != want {
++		t.Fatalf("expected %d virtual nodes, got %d", want, got)
++	}
++	if len(r.nodes) != len(r.ring) {
++		t.Fatalf("owner index length mismatch: ring=%d nodes=%d", len(r.ring), len(r.nodes))
++	}
++	for i := 1; i < len(r.ring); i++ {
++		if r.ring[i-1] > r.ring[i] {
++			t.Fatalf("ring out of order at %d: %d > %d", i, r.ring[i-1], r.ring[i])
++		}
++	}
++}
++
++func TestRing_LookupWrapAroundAtEnd(t *testing.T) {
++	key, h := keyMatchingHash(t, "wrap", func(h uint32) bool { return h > 1000 })
++	r := &Ring{
++		ring:        []uint32{h - 100, h - 50},
++		nodes:       []string{"first", "second"},
++		nodeMap:     map[uint32]string{h - 100: "first", h - 50: "second"},
++		members:     map[string]bool{"first": true, "second": true},
++		memberCount: 2,
++	}
++
++	if got := r.Lookup(key); got != "first" {
++		t.Fatalf("expected wrap-around owner first, got %q", got)
++	}
++}
++
++func TestRing_LookupDuplicatePointsStable(t *testing.T) {
++	key, h := keyMatchingHash(t, "duplicate", func(h uint32) bool {
++		return h > 10 && h < ^uint32(0)-10
++	})
++	r := &Ring{
++		ring: []uint32{h - 1, h, h, h + 1},
++		nodes: []string{
++			"before",
++			"first-duplicate",
++			"second-duplicate",
++			"after",
++		},
++		nodeMap: map[uint32]string{
++			h - 1: "before",
++			h:     "first-duplicate",
++			h + 1: "after",
++		},
++		members: map[string]bool{
++			"before":           true,
++			"first-duplicate":  true,
++			"second-duplicate": true,
++			"after":            true,
++		},
++		memberCount: 4,
++	}
++
++	if got := r.Lookup(key); got != "first-duplicate" {
++		t.Fatalf("expected first duplicate owner, got %q", got)
++	}
++	gotN := r.LookupN(key, 3)
++	wantN := []string{"first-duplicate", "second-duplicate", "after"}
++	if len(gotN) != len(wantN) {
++		t.Fatalf("LookupN duplicate order mismatch: got %v want %v", gotN, wantN)
++	}
++	for i := range wantN {
++		if gotN[i] != wantN[i] {
++			t.Fatalf("LookupN duplicate order mismatch: got %v want %v", gotN, wantN)
++		}
++	}
++
++	r.Remove("first-duplicate")
++	if got := r.Lookup(key); got != "second-duplicate" {
++		t.Fatalf("expected remaining duplicate owner after remove, got %q", got)
++	}
++}
++
++func keyMatchingHash(t *testing.T, prefix string, match func(uint32) bool) (string, uint32) {
++	t.Helper()
++	for i := 0; i < 1_000_000; i++ {
++		key := fmt.Sprintf("%s-%d", prefix, i)
++		h := keyHash(key)
++		if match(h) {
++			return key, h
++		}
++	}
++	t.Fatalf("could not find key matching hash predicate for %q", prefix)
++	return "", 0
++}
++
+ // --- FNV hash distribution tests ---
+ 
+ func TestRing_FNV_Consistency(t *testing.T) {
+@@ -338,4 +435,4 @@ func TestRing_FNV_MinimalDisruption(t *testing.T) {
+ 	if moveRate > 0.60 {
+ 		t.Fatalf("too many keys moved (%.2f) — minimal disruption violated", moveRate)
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/hash/ring.go b/repo/pkg/hash/ring.go
+index c1e2d92..cc0f597 100644
+--- a/base/pkg/hash/ring.go
++++ b/repo/pkg/hash/ring.go
+@@ -11,12 +11,13 @@ import (
+ // Keys are mapped to a position on a hash ring [0, 2^32), and assigned
+ // to the first node encountered clockwise from that position.
+ type Ring struct {
+-	mu           sync.RWMutex
+-	replicas     int              // virtual nodes per physical node
+-	ring         []uint32         // sorted hash positions
+-	nodeMap      map[uint32]string // hash position → physical node ID
+-	members      map[string]bool  // physical node IDs
+-	memberCount  int
++	mu          sync.RWMutex
++	replicas    int               // virtual nodes per physical node
++	ring        []uint32          // sorted hash positions
++	nodes       []string          // physical node IDs; indexes match ring
++	nodeMap     map[uint32]string // hash position → physical node ID
++	members     map[string]bool   // physical node IDs
++	memberCount int
+ }
+ 
+ // NewRing creates a consistent hash ring with the given number of virtual nodes
+@@ -41,12 +42,11 @@ func (r *Ring) Add(nodeID string) {
+ 	}
+ 	r.members[nodeID] = true
+ 	r.memberCount++
++	r.ensureOwnerIndexLocked()
+ 	for i := 0; i < r.replicas; i++ {
+ 		h := virtualNodeHash(nodeID, i)
+-		r.ring = append(r.ring, h)
+-		r.nodeMap[h] = nodeID
++		r.insertVirtualNodeLocked(h, nodeID)
+ 	}
+-	sort.Slice(r.ring, func(i, j int) bool { return r.ring[i] < r.ring[j] })
+ }
+ 
+ // Remove deregisters a physical node from the ring.
+@@ -58,17 +58,20 @@ func (r *Ring) Remove(nodeID string) {
+ 	}
+ 	delete(r.members, nodeID)
+ 	r.memberCount--
++	r.ensureOwnerIndexLocked()
+ 
+ 	// Remove all virtual nodes for this physical node
+-	newRing := make([]uint32, 0, len(r.ring)-r.replicas)
+-	for _, h := range r.ring {
+-		if r.nodeMap[h] != nodeID {
++	newRing := make([]uint32, 0, len(r.ring))
++	newNodes := make([]string, 0, len(r.nodes))
++	for i, h := range r.ring {
++		if r.nodes[i] != nodeID {
+ 			newRing = append(newRing, h)
+-		} else {
+-			delete(r.nodeMap, h)
++			newNodes = append(newNodes, r.nodes[i])
+ 		}
+ 	}
+ 	r.ring = newRing
++	r.nodes = newNodes
++	r.rebuildNodeMapLocked()
+ }
+ 
+ // Lookup returns the physical node responsible for the given key.
+@@ -84,7 +87,7 @@ func (r *Ring) Lookup(key string) string {
+ 	if idx >= len(r.ring) {
+ 		idx = 0 // wrap around
+ 	}
+-	return r.nodeMap[r.ring[idx]]
++	return r.ownerAtLocked(idx)
+ }
+ 
+ // LookupN returns the N distinct physical nodes closest (clockwise) to the key.
+@@ -106,7 +109,7 @@ func (r *Ring) LookupN(key string, n int) []string {
+ 	result := make([]string, 0, n)
+ 	for i := 0; i < len(r.ring) && len(result) < n; i++ {
+ 		pos := (idx + i) % len(r.ring)
+-		node := r.nodeMap[r.ring[pos]]
++		node := r.ownerAtLocked(pos)
+ 		if !seen[node] {
+ 			seen[node] = true
+ 			result = append(result, node)
+@@ -194,11 +197,13 @@ func (r *Ring) clone() *Ring {
+ 	cp := &Ring{
+ 		replicas:    r.replicas,
+ 		ring:        make([]uint32, len(r.ring)),
++		nodes:       make([]string, len(r.nodes)),
+ 		nodeMap:     make(map[uint32]string, len(r.nodeMap)),
+ 		members:     make(map[string]bool, len(r.members)),
+ 		memberCount: r.memberCount,
+ 	}
+ 	copy(cp.ring, r.ring)
++	copy(cp.nodes, r.nodes)
+ 	for k, v := range r.nodeMap {
+ 		cp.nodeMap[k] = v
+ 	}
+@@ -208,6 +213,48 @@ func (r *Ring) clone() *Ring {
+ 	return cp
+ }
+ 
++func (r *Ring) insertVirtualNodeLocked(h uint32, nodeID string) {
++	idx := sort.Search(len(r.ring), func(i int) bool { return r.ring[i] > h })
++
++	r.ring = append(r.ring, 0)
++	copy(r.ring[idx+1:], r.ring[idx:])
++	r.ring[idx] = h
++
++	r.nodes = append(r.nodes, "")
++	copy(r.nodes[idx+1:], r.nodes[idx:])
++	r.nodes[idx] = nodeID
++
++	if _, ok := r.nodeMap[h]; !ok {
++		r.nodeMap[h] = nodeID
++	}
++}
++
++func (r *Ring) ownerAtLocked(idx int) string {
++	if len(r.nodes) == len(r.ring) {
++		return r.nodes[idx]
++	}
++	return r.nodeMap[r.ring[idx]]
++}
++
++func (r *Ring) ensureOwnerIndexLocked() {
++	if len(r.nodes) == len(r.ring) {
++		return
++	}
++	r.nodes = make([]string, len(r.ring))
++	for i, h := range r.ring {
++		r.nodes[i] = r.nodeMap[h]
++	}
++}
++
++func (r *Ring) rebuildNodeMapLocked() {
++	r.nodeMap = make(map[uint32]string, len(r.ring))
++	for i, h := range r.ring {
++		if _, ok := r.nodeMap[h]; !ok {
++			r.nodeMap[h] = r.ownerAtLocked(i)
++		}
++	}
++}
++
+ // virtualNodeHash creates a hash for virtual node i of a physical node.
+ func virtualNodeHash(nodeID string, index int) uint32 {
+ 	key := fmt.Sprintf("%s#%d", nodeID, index)
+@@ -228,4 +275,4 @@ func keyHash(key string) uint32 {
+ 	h := fnv.New32a()
+ 	h.Write([]byte(key))
+ 	return h.Sum32()
+-}
+\ No newline at end of file
++}

@@ -1,0 +1,235 @@
+diff --git a/pkg/bloom/bloom_test.go b/pkg/bloom/bloom_test.go
+index bc8a666..2a10d1d 100644
+--- a/pkg/bloom/bloom_test.go
++++ b/pkg/bloom/bloom_test.go
+@@ -307,4 +307,145 @@ func TestCountingFilter_FNV_AddRemove(t *testing.T) {
+ 			t.Fatalf("should still contain cfnv-%d", i)
+ 		}
+ 	}
+-}
+\ No newline at end of file
++}
++
++// --- Counting filter saturation (no false negatives) ---
++
++func TestCountingFilter_NoFalseNegativeAfterSaturation(t *testing.T) {
++	// Adding one element far more than the 4-bit counter ceiling saturates its
++	// positions. Removing fewer times than it was added must leave it present:
++	// a counting Bloom filter must never produce a false negative.
++	cf := NewCountingFilter(100, 0.01)
++	data := []byte("hot-key")
++	for i := 0; i < 20; i++ {
++		cf.Add(data)
++	}
++	for i := 0; i < 15; i++ {
++		cf.Remove(data)
++	}
++	if !cf.Contains(data) {
++		t.Fatal("saturated counters must not be driven to a false negative by Remove")
++	}
++}
++
++func TestCountingFilter_SaturationDoesNotLeakToOthers(t *testing.T) {
++	// A normal add/remove of a different element must still behave normally
++	// even when another element has saturated some shared counters.
++	cf := NewCountingFilter(100, 0.01)
++	hot := []byte("hot-key")
++	for i := 0; i < 20; i++ {
++		cf.Add(hot)
++	}
++	cold := []byte("cold-key")
++	cf.Add(cold)
++	if !cf.Contains(cold) {
++		t.Fatal("freshly added element should be present")
++	}
++	cf.Remove(cold)
++	if !cf.Contains(hot) {
++		t.Fatal("removing another element must not drop the saturated element")
++	}
++}
++
++// --- FillRatio fast path ---
++
++func TestFilter_FillRatioReflectsState(t *testing.T) {
++	f := NewFilterRaw(1024, 3)
++	if f.FillRatio() != 0 {
++		t.Fatalf("empty filter should have fill ratio 0, got %v", f.FillRatio())
++	}
++	for i := 0; i < 10; i++ {
++		f.Add([]byte(fmt.Sprintf("fr-%d", i)))
++	}
++	fr := f.FillRatio()
++	if fr <= 0 || fr > 1 {
++		t.Fatalf("fill ratio should be in (0,1], got %v", fr)
++	}
++	f.Reset()
++	if f.FillRatio() != 0 {
++		t.Fatalf("fill ratio should be 0 after reset, got %v", f.FillRatio())
++	}
++}
++
++func TestFilter_FillRatioAfterUnion(t *testing.T) {
++	a := NewFilterRaw(1024, 3)
++	b := NewFilterRaw(1024, 3)
++	a.Add([]byte("alpha"))
++	b.Add([]byte("beta"))
++	if !a.Union(b) {
++		t.Fatal("union of matching filters should succeed")
++	}
++	if !a.Contains([]byte("alpha")) || !a.Contains([]byte("beta")) {
++		t.Fatal("union should contain both elements")
++	}
++	fr := a.FillRatio()
++	if fr <= 0 || fr > 1 {
++		t.Fatalf("fill ratio should be in (0,1] after union, got %v", fr)
++	}
++}
++
++func TestFilter_FillRatioUnionNoDoubleCount(t *testing.T) {
++	// Unioning a filter with an identical one leaves the bit array unchanged,
++	// so the reported fill ratio must not change. A fill-ratio fast path that
++	// simply adds the two counts together would wrongly double it.
++	a := NewFilterRaw(2048, 4)
++	b := NewFilterRaw(2048, 4)
++	for i := 0; i < 25; i++ {
++		key := []byte(fmt.Sprintf("dup-%d", i))
++		a.Add(key)
++		b.Add(key)
++	}
++	before := a.FillRatio()
++	if !a.Union(b) {
++		t.Fatal("union of matching filters should succeed")
++	}
++	if got := a.FillRatio(); got != before {
++		t.Fatalf("union with an identical filter must not change fill ratio: before=%v after=%v", before, got)
++	}
++}
++
++func TestFilter_FillRatioConsistentAfterResetAndRefill(t *testing.T) {
++	// Whatever fast path FillRatio uses must stay consistent across the full
++	// lifecycle: fill, reset to zero, then refill to the same population.
++	f := NewFilterRaw(2048, 4)
++	for i := 0; i < 30; i++ {
++		f.Add([]byte(fmt.Sprintf("k-%d", i)))
++	}
++	full := f.FillRatio()
++	f.Reset()
++	if f.FillRatio() != 0 {
++		t.Fatalf("fill ratio must be 0 after reset, got %v", f.FillRatio())
++	}
++	for i := 0; i < 30; i++ {
++		f.Add([]byte(fmt.Sprintf("k-%d", i)))
++	}
++	if got := f.FillRatio(); got != full {
++		t.Fatalf("refilling the same keys should reproduce the fill ratio: first=%v second=%v", full, got)
++	}
++}
++
++func TestCountingFilter_NoFalseNegativeWithInterleavedTraffic(t *testing.T) {
++	// One element is added far past the counter ceiling; meanwhile other
++	// elements churn through add/remove. The saturated element must remain
++	// present throughout, and afterwards.
++	cf := NewCountingFilter(64, 0.01)
++	hot := []byte("hot")
++	for i := 0; i < 40; i++ {
++		cf.Add(hot)
++	}
++	for round := 0; round < 30; round++ {
++		k := []byte(fmt.Sprintf("churn-%d", round))
++		cf.Add(k)
++		cf.Remove(k)
++		if !cf.Contains(hot) {
++			t.Fatalf("saturated element dropped during interleaved traffic at round %d", round)
++		}
++	}
++	// And it survives its own (partial) removals.
++	for i := 0; i < 20; i++ {
++		cf.Remove(hot)
++	}
++	if !cf.Contains(hot) {
++		t.Fatal("saturated element must survive partial removal")
++	}
++}
+diff --git a/pkg/bloom/filter.go b/pkg/bloom/filter.go
+index f6f0a62..3818338 100644
+--- a/pkg/bloom/filter.go
++++ b/pkg/bloom/filter.go
+@@ -15,6 +15,7 @@ type Filter struct {
+ 	size    uint     // total number of bits
+ 	hashNum uint     // number of hash functions
+ 	count   uint     // number of elements inserted
++	setBits uint     // number of bits currently set (kept in sync with bits)
+ }
+ 
+ // NewFilter creates a Bloom filter optimized for the given expected number
+@@ -72,7 +73,10 @@ func (f *Filter) Add(data []byte) {
+ 		pos := (h1 + uint64(i)*h2) % uint64(f.size)
+ 		word := pos / 64
+ 		bit := pos % 64
+-		f.bits[word] |= 1 << bit
++		if f.bits[word]&(1<<bit) == 0 {
++			f.bits[word] |= 1 << bit
++			f.setBits++
++		}
+ 	}
+ 	f.count++
+ }
+@@ -123,14 +127,7 @@ func (f *Filter) HashNum() uint {
+ func (f *Filter) FillRatio() float64 {
+ 	f.mu.RLock()
+ 	defer f.mu.RUnlock()
+-	set := 0
+-	for _, word := range f.bits {
+-		for word != 0 {
+-			set++
+-			word &= word - 1
+-		}
+-	}
+-	return float64(set) / float64(f.size)
++	return float64(f.setBits) / float64(f.size)
+ }
+ 
+ // Reset clears all bits and resets the count.
+@@ -141,6 +138,7 @@ func (f *Filter) Reset() {
+ 		f.bits[i] = 0
+ 	}
+ 	f.count = 0
++	f.setBits = 0
+ }
+ 
+ // Union merges another Bloom filter into this one (bitwise OR).
+@@ -153,9 +151,16 @@ func (f *Filter) Union(other *Filter) bool {
+ 	defer f.mu.Unlock()
+ 	other.mu.RLock()
+ 	defer other.mu.RUnlock()
++	var set uint
+ 	for i := range f.bits {
+ 		f.bits[i] |= other.bits[i]
++		w := f.bits[i]
++		for w != 0 {
++			set++
++			w &= w - 1
++		}
+ 	}
++	f.setBits = set
+ 	f.count += other.count
+ 	return true
+ }
+@@ -295,12 +300,15 @@ func (cf *CountingFilter) decrementCounter(pos uint64) {
+ 	byteIdx := pos / 2
+ 	if pos%2 == 0 {
+ 		low := cf.counters[byteIdx] & 0x0F
+-		if low > 0 {
++		// A counter that reached its 4-bit ceiling has lost its true count, so
++		// it must stick at the maximum; decrementing it would risk dropping a
++		// position to zero while elements still depend on it (a false negative).
++		if low > 0 && low < 0x0F {
+ 			cf.counters[byteIdx] = (cf.counters[byteIdx] & 0xF0) | (low - 1)
+ 		}
+ 	} else {
+ 		high := cf.counters[byteIdx] >> 4
+-		if high > 0 {
++		if high > 0 && high < 0x0F {
+ 			cf.counters[byteIdx] = (cf.counters[byteIdx] & 0x0F) | ((high - 1) << 4)
+ 		}
+ 	}

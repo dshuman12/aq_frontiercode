@@ -1,0 +1,29 @@
+diff --git a/pkg/skiplist/skiplist.go b/pkg/skiplist/skiplist.go
+--- a/pkg/skiplist/skiplist.go
++++ b/pkg/skiplist/skiplist.go
+@@
+ func (s *SkipList) Range(from, to string) []Entry {
+-	var result []Entry
+-	x := s.header
+-	for i := s.level - 1; i >= 0; i-- {
+-		for x.forward[i] != nil && x.forward[i].key <= from {
+-			x = x.forward[i]
+-		}
+-	}
+-	x = x.forward[0]
+-	for x != nil && x.key < to {
+-		result = append(result, Entry{Key: x.key, Value: x.value})
+-		x = x.forward[0]
+-	}
+-	return result
++	var result []Entry
++	// Linear scan of the bottom level, filtering inclusively.
++	x := s.header.forward[0]
++	for x != nil {
++		if x.key >= from && x.key <= to {
++			result = append(result, Entry{Key: x.key, Value: x.value})
++		}
++		x = x.forward[0]
++	}
++	return result
+ }

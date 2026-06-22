@@ -1,0 +1,206 @@
+diff --git a/pkg/gossip/gossip_test.go b/pkg/gossip/gossip_test.go
+index 8028fe2..83a7a8c 100644
+--- a/pkg/gossip/gossip_test.go
++++ b/pkg/gossip/gossip_test.go
+@@ -443,4 +443,176 @@ func TestStateStore_HashCaching_AfterDelete(t *testing.T) {
+ 	if h1 == h2 {
+ 		t.Fatal("hash should change after Delete")
+ 	}
++}
++
++// --- Delete propagation (adversarial) ---
++
++// TestStateStore_TombstoneIncludedInDiff verifies that Diff includes tombstoned
++// entries so that deletions propagate to peers that still hold the live value.
++func TestStateStore_TombstoneIncludedInDiff(t *testing.T) {
++	s := NewStateStore("n1")
++	s.Put("gone", []byte("was here"))
++	s.Delete("gone")
++
++	// A completely empty remote digest — knows nothing
++	entries := s.Diff(NewDigest())
++	found := false
++	for _, e := range entries {
++		if e.Key == "gone" && e.Tombstone {
++			found = true
++		}
++	}
++	if !found {
++		t.Fatal("Diff must include tombstones so peers can learn about deletions")
++	}
++}
++
++// TestStateStore_TombstoneIncludedInDiffVsStaleDigest verifies that Diff sends
++// the tombstone even when the remote digest already has the live version of the key.
++func TestStateStore_TombstoneIncludedInDiffVsStaleDigest(t *testing.T) {
++	s := NewStateStore("n1")
++	s.Put("gone", []byte("was here")) // version 1
++	s.Delete("gone")                  // version 2 (tombstone)
++
++	// Remote knows the live version (v1) but not the tombstone
++	stale := NewDigest()
++	stale.Entries["gone"] = DigestEntry{Version: 1, NodeID: "n1"}
++
++	entries := s.Diff(stale)
++	found := false
++	for _, e := range entries {
++		if e.Key == "gone" && e.Tombstone {
++			found = true
++		}
++	}
++	if !found {
++		t.Fatal("Diff must include tombstone when remote has an older live version of the key")
++	}
++}
++
++// TestStateStore_ApplyTombstoneOverLiveEntry verifies that Apply accepts a
++// tombstone entry even when the local store already holds a live value for
++// the same key, provided the tombstone carries a higher version.
++func TestStateStore_ApplyTombstoneOverLiveEntry(t *testing.T) {
++	s := NewStateStore("n1")
++	s.Put("x", []byte("live")) // version 1
++
++	tombstone := &StateEntry{
++		Key:       "x",
++		Version:   2, // newer than the live entry
++		NodeID:    "n2",
++		Tombstone: true,
++	}
++	applied := s.Apply([]*StateEntry{tombstone})
++	if applied != 1 {
++		t.Fatalf("expected tombstone to be applied (count=1), got %d", applied)
++	}
++	_, ok := s.Get("x")
++	if ok {
++		t.Fatal("key must be absent after applying tombstone over live entry")
++	}
++}
++
++// TestStateStore_DeletePropagatesViaPush verifies the full Push path: the
++// deleting node pushes its state to a peer that holds the live value; after
++// the push the peer must see the key as deleted.
++func TestStateStore_DeletePropagatesViaPush(t *testing.T) {
++	// Setup: both nodes know about "shared"
++	deleter := NewStateStore("n1")
++	peer := NewStateStore("n2")
++	deleter.Put("shared", []byte("data"))
++	peer.Put("shared", []byte("data"))
++
++	// Deleter removes it
++	deleter.Delete("shared")
++
++	// Push deleter's state to peer
++	proto := NewProtocol("n1", deleter, NewRandomPeerSelector(1), 1)
++	proto.Push(peer)
++
++	_, ok := peer.Get("shared")
++	if ok {
++		t.Fatal("after push, peer must not see a key that was deleted on the sender")
++	}
++}
++
++// TestStateStore_DeleteThenReaddConverges verifies that after a deletion
++// propagates, a subsequent re-add also propagates and wins (it carries a
++// higher version than the tombstone).
++func TestStateStore_DeleteThenReaddConverges(t *testing.T) {
++	a := NewStateStore("n1")
++	b := NewStateStore("n2")
++	a.Put("k", []byte("v1"))
++	b.Put("k", []byte("v1"))
++	a.Delete("k")
++
++	proto := NewProtocol("n1", a, NewRandomPeerSelector(1), 1)
++	proto.Push(b)
++
++	_, ok := b.Get("k")
++	if ok {
++		t.Fatal("deletion must propagate: b should not see k after push")
++	}
++
++	// Re-add on a
++	a.Put("k", []byte("v2"))
++	proto.Push(b)
++
++	val, ok := b.Get("k")
++	if !ok {
++		t.Fatal("re-add after delete must propagate to b")
++	}
++	if string(val) != "v2" {
++		t.Fatalf("expected v2 after re-add, got %s", val)
++	}
++}
++
++// TestCluster_DeleteOnOneNodeConvergesToAllPeers verifies that a deletion on
++// one node propagates to all other nodes through gossip, even when the other
++// nodes have a live copy of the key and never directly gossip with the deleter.
++func TestCluster_DeleteOnOneNodeConvergesToAllPeers(t *testing.T) {
++	const keyToDelete = "target"
++
++	n1 := NewStateStore("n1")
++	n2 := NewStateStore("n2")
++	n3 := NewStateStore("n3")
++
++	// All three nodes start with the key
++	n1.Put(keyToDelete, []byte("value"))
++	n2.Put(keyToDelete, []byte("value"))
++	n3.Put(keyToDelete, []byte("value"))
++
++	// Full initial sync so all have the same base state
++	p1 := NewProtocol("n1", n1, NewRandomPeerSelector(1), 2)
++	p2 := NewProtocol("n2", n2, NewRandomPeerSelector(2), 2)
++	p3 := NewProtocol("n3", n3, NewRandomPeerSelector(3), 2)
++	c := NewCluster()
++	c.AddNode("n1", p1)
++	c.AddNode("n2", p2)
++	c.AddNode("n3", p3)
++	for i := 0; i < 5; i++ {
++		c.RunRound()
++	}
++
++	// n1 deletes the key
++	n1.Delete(keyToDelete)
++
++	// Run gossip until converged
++	converged := false
++	for i := 0; i < 20; i++ {
++		c.RunRound()
++		if c.Converged() {
++			converged = true
++			break
++		}
++	}
++	if !converged {
++		t.Fatal("cluster did not converge after deletion")
++	}
++
++	for name, store := range map[string]*StateStore{"n1": n1, "n2": n2, "n3": n3} {
++		if _, ok := store.Get(keyToDelete); ok {
++			t.Fatalf("node %s still sees %q after deletion converged", name, keyToDelete)
++		}
++	}
+ }
+\ No newline at end of file
+diff --git a/pkg/gossip/state.go b/pkg/gossip/state.go
+index 13c0d4f..e243b57 100644
+--- a/pkg/gossip/state.go
++++ b/pkg/gossip/state.go
+@@ -126,9 +126,6 @@ func (s *StateStore) Diff(remote *Digest) []*StateEntry {
+ 	defer s.mu.RUnlock()
+ 	var result []*StateEntry
+ 	for key, entry := range s.entries {
+-		if entry.Tombstone {
+-			continue
+-		}
+ 		rd, ok := remote.Entries[key]
+ 		if !ok || entry.Version > rd.Version {
+ 			cp := *entry
+@@ -148,9 +145,6 @@ func (s *StateStore) Apply(entries []*StateEntry) int {
+ 	applied := 0
+ 	for _, remote := range entries {
+ 		local, ok := s.entries[remote.Key]
+-		if remote.Tombstone && ok && !local.Tombstone {
+-			continue
+-		}
+ 		if !ok || remote.Version > local.Version {
+ 			cp := *remote
+ 			cp.Value = copyBytes(remote.Value)

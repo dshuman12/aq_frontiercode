@@ -1,0 +1,475 @@
+diff --git a/frontend/src/components/ProfileQuickMenu.tsx b/frontend/src/components/ProfileQuickMenu.tsx
+index 25b38a0..d2ef525 100644
+--- a/frontend/src/components/ProfileQuickMenu.tsx
++++ b/frontend/src/components/ProfileQuickMenu.tsx
+@@ -16,10 +16,6 @@ type ProfileQuickMenuProps = {
+   variant?: 'dock' | 'inline'
+ }
+ 
+-function hasAccessCsrfCookie(): boolean {
+-  return /(?:^|;\s*)csrf_access_token=/.test(document.cookie)
+-}
+-
+ export default function ProfileQuickMenu({ variant = 'dock' }: ProfileQuickMenuProps) {
+   const location = useLocation()
+   const navigate = useNavigate()
+@@ -37,7 +33,7 @@ export default function ProfileQuickMenu({ variant = 'dock' }: ProfileQuickMenuP
+   useEffect(() => {
+     setMenuOpen(false)
+     setErrorMessage('')
+-    if (isHiddenRoute || !hasAccessCsrfCookie()) {
++    if (isHiddenRoute) {
+       setUser(null)
+       return
+     }
+diff --git a/frontend/src/lib/authApi.ts b/frontend/src/lib/authApi.ts
+index df2a1f2..5600e9b 100644
+--- a/frontend/src/lib/authApi.ts
++++ b/frontend/src/lib/authApi.ts
+@@ -43,6 +43,12 @@ type CsrfResponse = {
+   csrf_token: string
+ }
+ 
++type AuthCsrfSnapshotResponse = {
++  csrf_access_token?: string
++  csrf_refresh_token?: string
++  anon_csrf?: string
++}
++
+ type ApiValidationError = {
+   loc?: Array<string | number>
+   msg?: string
+@@ -174,24 +180,36 @@ export function beginGoogleSignIn(): void {
+   window.location.assign(`${AUTH_BASE_URL}/google/login`)
+ }
+ 
+-function getAccessCsrfTokenFromCookie(): string {
++async function getAuthCsrfSnapshot(): Promise<AuthCsrfSnapshotResponse> {
++  return authRequest<AuthCsrfSnapshotResponse>('/csrf', { method: 'GET' })
++}
++
++async function getAccessCsrfToken(): Promise<string> {
+   const token = readCookie('csrf_access_token')
+-  if (!token) {
++  if (token) return token
++
++  const snapshot = await getAuthCsrfSnapshot()
++  const fallbackToken = snapshot.csrf_access_token?.trim() ?? ''
++  if (!fallbackToken) {
+     throw new AuthApiError('Your session has expired. Please sign in again.', 401, null)
+   }
+-  return token
++  return fallbackToken
+ }
+ 
+-function getRefreshCsrfTokenFromCookie(): string {
++async function getRefreshCsrfToken(): Promise<string> {
+   const token = readCookie('csrf_refresh_token')
+-  if (!token) {
++  if (token) return token
++
++  const snapshot = await getAuthCsrfSnapshot()
++  const fallbackToken = snapshot.csrf_refresh_token?.trim() ?? ''
++  if (!fallbackToken) {
+     throw new AuthApiError('Your session has expired. Please sign in again.', 401, null)
+   }
+-  return token
++  return fallbackToken
+ }
+ 
+ async function refreshAccessToken(): Promise<void> {
+-  const refreshCsrfToken = getRefreshCsrfTokenFromCookie()
++  const refreshCsrfToken = await getRefreshCsrfToken()
+   await authRequest<{ message: string }>('/refresh', {
+     method: 'POST',
+     headers: {
+@@ -211,18 +229,18 @@ async function requestCurrentUserWithAccessCsrf(csrfToken: string): Promise<User
+ 
+ export async function getCurrentUser(): Promise<UserResponse> {
+   try {
+-    return await requestCurrentUserWithAccessCsrf(getAccessCsrfTokenFromCookie())
++    return await requestCurrentUserWithAccessCsrf(await getAccessCsrfToken())
+   } catch (error) {
+     if (!(error instanceof AuthApiError) || error.status !== 401) {
+       throw error
+     }
+     await refreshAccessToken()
+-    return requestCurrentUserWithAccessCsrf(getAccessCsrfTokenFromCookie())
++    return requestCurrentUserWithAccessCsrf(await getAccessCsrfToken())
+   }
+ }
+ 
+ export async function updateCurrentUsername(username: string): Promise<UserResponse> {
+-  const csrfToken = getAccessCsrfTokenFromCookie()
++  const csrfToken = await getAccessCsrfToken()
+   return authRequest<UserResponse>('/me/username', {
+     method: 'PATCH',
+     headers: {
+@@ -234,7 +252,7 @@ export async function updateCurrentUsername(username: string): Promise<UserRespo
+ 
+ export async function beginGoogleAccountLink(): Promise<void> {
+   assertSecureAuthTransport()
+-  const csrfToken = getAccessCsrfTokenFromCookie()
++  const csrfToken = await getAccessCsrfToken()
+   const result = await authRequest<GoogleLinkStartResponse>('/google/link/start', {
+     method: 'POST',
+     headers: {
+@@ -245,7 +263,7 @@ export async function beginGoogleAccountLink(): Promise<void> {
+ }
+ 
+ export async function unlinkGoogleAccount(): Promise<UserResponse> {
+-  const csrfToken = getAccessCsrfTokenFromCookie()
++  const csrfToken = await getAccessCsrfToken()
+   return authRequest<UserResponse>('/google/unlink', {
+     method: 'POST',
+     headers: {
+@@ -255,7 +273,7 @@ export async function unlinkGoogleAccount(): Promise<UserResponse> {
+ }
+ 
+ export async function logout(): Promise<void> {
+-  const csrfToken = getAccessCsrfTokenFromCookie()
++  const csrfToken = await getAccessCsrfToken()
+   await authRequest<{ message: string }>('/logout', {
+     method: 'POST',
+     headers: {
+@@ -272,6 +290,10 @@ const CLIENT_AUTH_COOKIE_NAMES = [
+   'oauth_google_link_user_id',
+ ]
+ 
++export async function getAccessCsrfHeaderToken(): Promise<string> {
++  return getAccessCsrfToken()
++}
++
+ export function resetToLoggedOutHome(): void {
+   const expired = 'Thu, 01 Jan 1970 00:00:00 GMT'
+   for (const cookieName of CLIENT_AUTH_COOKIE_NAMES) {
+diff --git a/frontend/src/pages/game/GameScreen.tsx b/frontend/src/pages/game/GameScreen.tsx
+index 255d98f..1641fe4 100644
+--- a/frontend/src/pages/game/GameScreen.tsx
++++ b/frontend/src/pages/game/GameScreen.tsx
+@@ -46,7 +46,7 @@ import { TimingStoreProvider, useStableTimingStore } from './state/timingStore'
+ import { ORE_VISUALS } from './oreCatalog'
+ import { canPlace, type PlacementIntent } from './placement'
+ import { API_BASE_URL } from '../../lib/apiBase'
+-import { getCurrentUser } from '../../lib/authApi'
++import { getAccessCsrfHeaderToken, getCurrentUser } from '../../lib/authApi'
+ import { measureBackendPingMs } from '../../lib/healthApi'
+ 
+ const DIRECTION_ORDER: Direction[] = ['up', 'right', 'down', 'left']
+@@ -346,23 +346,10 @@ export default function GameScreen() {
+   })
+   const joinRequestVersionRef = useRef(0)
+ 
+-  const readCookie = useCallback((name: string): string | null => {
+-    const key = `${name}=`
+-    const parts = document.cookie.split(';')
+-    for (const part of parts) {
+-      const trimmed = part.trim()
+-      if (!trimmed.startsWith(key)) continue
+-      return decodeURIComponent(trimmed.slice(key.length))
+-    }
+-    return null
+-  }, [])
+-
+   const ensureAccessCsrfToken = useCallback(async (): Promise<string> => {
+     await getCurrentUser()
+-    const accessCsrfToken = readCookie('csrf_access_token')
+-    if (!accessCsrfToken) throw new Error('Missing csrf_access_token. Please sign in again.')
+-    return accessCsrfToken
+-  }, [readCookie])
++    return getAccessCsrfHeaderToken()
++  }, [])
+ 
+   const clearActiveLobby = useCallback(() => {
+     hasLeftLobbyRef.current = true
+diff --git a/frontend/src/pages/game/theme/buildingSprites.ts b/frontend/src/pages/game/theme/buildingSprites.ts
+index 0c95ebb..bdf1be9 100644
+--- a/frontend/src/pages/game/theme/buildingSprites.ts
++++ b/frontend/src/pages/game/theme/buildingSprites.ts
+@@ -1,4 +1,12 @@
+ import { closeBitmapList, loadBitmapList } from './spriteUtils'
++import conveyortileAsset from '../../../assets/conveyortile.png'
++import drilltileAsset from '../../../assets/drilltile.png'
++import generatortileAsset from '../../../assets/generatortile.png'
++import logisticshubtileAsset from '../../../assets/logisticshubtile.png'
++import minertileAsset from '../../../assets/minertile.png'
++import smeltertileAsset from '../../../assets/smeltertile.png'
++import splittertileAsset from '../../../assets/splittertile.png'
++import storagetileAsset from '../../../assets/storagetile.png'
+ 
+ export type BuildingSpriteDefinition = {
+   byBuildId: Record<string, string[]>
+@@ -18,16 +26,16 @@ export type BuildingSpriteBitmaps = {
+ 
+ export const BUILDING_SPRITE_DEFINITION: BuildingSpriteDefinition = {
+   byBuildId: {
+-    splitter: ['/src/assets/splittertile.png'],
+-    storage: ['/src/assets/storagetile.png'],
+-    smelter: ['/src/assets/smeltertile.png'],
+-    generator: ['/src/assets/generatortile.png'],
+-    logistics_hub: ['/src/assets/logisticshubtile.png'],
++    splitter: [splittertileAsset],
++    storage: [storagetileAsset],
++    smelter: [smeltertileAsset],
++    generator: [generatortileAsset],
++    logistics_hub: [logisticshubtileAsset],
+   },
+-  conveyor: ['/src/assets/conveyortile.png'],
+-  miner: ['/src/assets/minertile.png'],
+-  drill: ['/src/assets/drilltile.png'],
+-  hub: ['/src/assets/logisticshubtile.png'],
++  conveyor: [conveyortileAsset],
++  miner: [minertileAsset],
++  drill: [drilltileAsset],
++  hub: [logisticshubtileAsset],
+ }
+ 
+ export async function loadBuildingSpriteBitmaps(
+diff --git a/frontend/src/pages/game/theme/oreSprites.ts b/frontend/src/pages/game/theme/oreSprites.ts
+index f7b0842..53a82e0 100644
+--- a/frontend/src/pages/game/theme/oreSprites.ts
++++ b/frontend/src/pages/game/theme/oreSprites.ts
+@@ -1,4 +1,13 @@
+ import { ORE_TYPES, type OreType } from '../../../game/engine'
++import aluminumoreAsset from '../../../assets/aluminumore.png'
++import coaloreAsset from '../../../assets/coalore.png'
++import copperoreAsset from '../../../assets/copperore.png'
++import lithiumoreAsset from '../../../assets/lithiumore.png'
++import silicaoreAsset from '../../../assets/silicaore.png'
++import silveroreAsset from '../../../assets/silverore.png'
++import thoriumoreAsset from '../../../assets/thoriumore.png'
++import titaniumoreAsset from '../../../assets/titaniumore.png'
++import tungstenoreAsset from '../../../assets/tungstenore.png'
+ import {
+   closeBitmapList,
+   loadBitmapList,
+@@ -10,15 +19,15 @@ export type OreSpriteDefinition = Record<OreType, string[]>
+ export type OreSpriteBitmaps = Record<OreType, ImageBitmap[]>
+ 
+ export const ORE_SPRITE_DEFINITION: OreSpriteDefinition = {
+-  iron: ['/src/assets/silverore.png'],
+-  copper: ['/src/assets/copperore.png'],
+-  coal: ['/src/assets/coalore.png'],
+-  silica: ['/src/assets/silicaore.png'],
+-  aluminum: ['/src/assets/aluminumore.png'],
+-  titanium: ['/src/assets/titaniumore.png'],
+-  lithium: ['/src/assets/lithiumore.png'],
+-  tungsten: ['/src/assets/tungstenore.png'],
+-  thorium: ['/src/assets/thoriumore.png'],
++  iron: [silveroreAsset],
++  copper: [copperoreAsset],
++  coal: [coaloreAsset],
++  silica: [silicaoreAsset],
++  aluminum: [aluminumoreAsset],
++  titanium: [titaniumoreAsset],
++  lithium: [lithiumoreAsset],
++  tungsten: [tungstenoreAsset],
++  thorium: [thoriumoreAsset],
+ }
+ 
+ export async function loadOreSpriteBitmaps(
+diff --git a/frontend/src/pages/game/theme/terrainTileset.ts b/frontend/src/pages/game/theme/terrainTileset.ts
+index 7c80fe2..42bdbfe 100644
+--- a/frontend/src/pages/game/theme/terrainTileset.ts
++++ b/frontend/src/pages/game/theme/terrainTileset.ts
+@@ -2,6 +2,7 @@ import {
+   closeBitmapList,
+   loadBitmapList,
+ } from './spriteUtils'
++import valley1Asset from '../../../assets/valley1.png'
+ 
+ export type TerrainTilesetDefinition = {
+   sourcePx: number
+@@ -18,12 +19,12 @@ export type TerrainTilesetBitmaps = {
+ export const TERRAIN_TILESET_DEFINITION: TerrainTilesetDefinition = {
+   sourcePx: 24,
+   accessible: {
+-    1: ['/src/assets/valley1.png'],
+-    2: ['/src/assets/valley1.png'],
+-    3: ['/src/assets/valley1.png'],
+-    4: ['/src/assets/valley1.png'],
++    1: [valley1Asset],
++    2: [valley1Asset],
++    3: [valley1Asset],
++    4: [valley1Asset],
+   },
+-  blocked: ['/src/assets/blocked.png'],
++  blocked: [valley1Asset],
+ }
+ 
+ export async function loadTerrainTilesetBitmaps(
+diff --git a/frontend/src/pages/game/theme/valleyDecorations.ts b/frontend/src/pages/game/theme/valleyDecorations.ts
+index f93d347..d63ee41 100644
+--- a/frontend/src/pages/game/theme/valleyDecorations.ts
++++ b/frontend/src/pages/game/theme/valleyDecorations.ts
+@@ -1,4 +1,9 @@
+ import { closeBitmapList, loadBitmapList } from './spriteUtils'
++import flowers1Asset from '../../../assets/flowers1.png'
++import flowers2Asset from '../../../assets/flowers2.png'
++import rock1Asset from '../../../assets/rock1.png'
++import rock2Asset from '../../../assets/rock2.png'
++import treeAsset from '../../../assets/tree.png'
+ 
+ export type ValleyDecorationType = 'tree' | 'rock' | 'flower'
+ 
+@@ -12,9 +17,9 @@ export type ValleyDecorationPick = {
+ }
+ 
+ export const VALLEY_DECORATION_DEFINITION: ValleyDecorationDefinition = {
+-  tree: ['/src/assets/tree.png'],
+-  rock: ['/src/assets/rock1.png', '/src/assets/rock2.png'],
+-  flower: ['/src/assets/flowers1.png', '/src/assets/flowers2.png'],
++  tree: [treeAsset],
++  rock: [rock1Asset, rock2Asset],
++  flower: [flowers1Asset, flowers2Asset],
+ }
+ 
+ export type BlockingValleyDecorationType = 'tree' | 'rock'
+diff --git a/frontend/src/pages/lobby/LobbyScreen.tsx b/frontend/src/pages/lobby/LobbyScreen.tsx
+index c287e67..3104abd 100644
+--- a/frontend/src/pages/lobby/LobbyScreen.tsx
++++ b/frontend/src/pages/lobby/LobbyScreen.tsx
+@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+ import { useNavigate, useSearchParams } from 'react-router-dom'
+ import GodhandButtonBase from '../../components/GodhandButtonBase'
+ import { API_BASE_URL } from '../../lib/apiBase'
+-import { getAuthErrorMessage, getCurrentUser } from '../../lib/authApi'
++import { getAccessCsrfHeaderToken, getAuthErrorMessage, getCurrentUser } from '../../lib/authApi'
+ import { measureBackendPingMs } from '../../lib/healthApi'
+ import ShaderBackdrop from '../game/components/ShaderBackdrop'
+ 
+@@ -126,17 +126,6 @@ function parseWsUrl(value: unknown): string | null {
+   }
+ }
+ 
+-function readCookie(name: string): string | null {
+-  const key = `${name}=`
+-  const parts = document.cookie.split(';')
+-  for (const part of parts) {
+-    const trimmed = part.trim()
+-    if (!trimmed.startsWith(key)) continue
+-    return decodeURIComponent(trimmed.slice(key.length))
+-  }
+-  return null
+-}
+-
+ export default function LobbyScreen() {
+   const navigate = useNavigate()
+   const [searchParams, setSearchParams] = useSearchParams()
+@@ -249,8 +238,7 @@ export default function LobbyScreen() {
+       setError(null)
+ 
+       await getCurrentUser()
+-      const accessCsrfToken = readCookie('csrf_access_token')
+-      if (!accessCsrfToken) throw new Error('Missing csrf_access_token. Please sign in again.')
++      const accessCsrfToken = await getAccessCsrfHeaderToken()
+ 
+       const response = await fetch(`${API_BASE_URL}/api/v1/lobbies/${selectedLobby.id}/join`, {
+         method: 'POST',
+diff --git a/server/api/routers/auth.py b/server/api/routers/auth.py
+index 78495a3..0a22a12 100644
+--- a/server/api/routers/auth.py
++++ b/server/api/routers/auth.py
+@@ -129,6 +129,20 @@ def issue_anon_csrf_token():
+     return response
+ 
+ 
++@auth_routes.get("/csrf", status_code=HttpStatus.OK)
++def get_available_csrf_tokens(request: Request):
++    """
++    Return the CSRF tokens currently available in cookies.
++    Useful for deployments where auth cookies are scoped to an API subdomain
++    and therefore are not readable via `document.cookie` on the frontend host.
++    """
++    return {
++        "csrf_access_token": request.cookies.get("csrf_access_token") or "",
++        "csrf_refresh_token": request.cookies.get("csrf_refresh_token") or "",
++        "anon_csrf": request.cookies.get("anon_csrf") or "",
++    }
++
++
+ @auth_routes.post(
+     "/register",
+     status_code=HttpStatus.CREATED,
+diff --git a/server/docs/auth.md b/server/docs/auth.md
+index 96080c6..787aafa 100644
+--- a/server/docs/auth.md
++++ b/server/docs/auth.md
+@@ -19,7 +19,11 @@ Email verification code remains in the repository for future re-enable, but it i
+ ### 1) `GET /csrf-token`
+ Returns an anonymous CSRF token and sets `anon_csrf` cookie.
+ 
+-### 2) `POST /register`
++### 2) `GET /csrf`
++Returns the currently available CSRF cookie values (`csrf_access_token`, `csrf_refresh_token`, `anon_csrf`).
++Useful when auth cookies are scoped to an API subdomain and not readable via `document.cookie` on the frontend host.
++
++### 3) `POST /register`
+ Creates a user account (does not auto-login).
+ 
+ Request body:
+@@ -49,32 +53,32 @@ Response:
+ }
+ ```
+ 
+-### 3) `POST /login`
++### 4) `POST /login`
+ Logs in with `identifier` (username or email) + password.
+ Sets access/refresh JWT cookies and CSRF cookies.
+ 
+-### 4) `GET /google/login`
++### 5) `GET /google/login`
+ Starts Google OAuth login redirect flow.
+ 
+-### 5) `GET /google/callback`
++### 6) `GET /google/callback`
+ Handles OAuth callback, creates or links account, issues JWT cookies, redirects to frontend.
+ 
+-### 6) `POST /google/link/start`
++### 7) `POST /google/link/start`
+ Authenticated endpoint to begin linking a Google account to the current user.
+ 
+-### 7) `POST /google/unlink`
++### 8) `POST /google/unlink`
+ Authenticated endpoint to unlink the currently linked Google account.
+ 
+-### 8) `GET /me`
++### 9) `GET /me`
+ Returns current authenticated user profile.
+ 
+-### 9) `PATCH /me/username`
++### 10) `PATCH /me/username`
+ Updates the in-game username for the authenticated user.
+ 
+-### 10) `POST /refresh`
++### 11) `POST /refresh`
+ Refreshes access token using refresh token cookie + refresh CSRF token.
+ 
+-### 11) `POST /logout`
++### 12) `POST /logout`
+ Clears auth and CSRF cookies.
+ 
+ ## Environment Variables (Auth)
+diff --git a/server/tests/test_auth_user_flow.py b/server/tests/test_auth_user_flow.py
+index 72aa67c..72ed878 100644
+--- a/server/tests/test_auth_user_flow.py
++++ b/server/tests/test_auth_user_flow.py
+@@ -254,6 +254,18 @@ def test_refresh_uses_refresh_csrf(client):
+     assert response.status_code == 200
+ 
+ 
++def test_csrf_endpoint_returns_cookie_tokens(client):
++    register_user(client, email="csrfsnapshot@example.com", password="StrongPass123")
++    login_user(client, email="csrfsnapshot@example.com", password="StrongPass123")
++
++    response = client.get("/api/v1/auth/csrf")
++    assert response.status_code == 200
++    payload = response.json()
++    assert payload["csrf_access_token"] == client.cookies.get("csrf_access_token")
++    assert payload["csrf_refresh_token"] == client.cookies.get("csrf_refresh_token")
++    assert payload["anon_csrf"] == ""
++
++
+ def test_logout_uses_access_csrf(client):
+     register_user(client, email="logout@example.com", password="StrongPass123")
+     login_user(client, email="logout@example.com", password="StrongPass123")

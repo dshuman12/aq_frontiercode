@@ -1,0 +1,441 @@
+diff --git a/pkg/clock/hlc.go b/pkg/clock/hlc.go
+index 36b036b..ddd34d5 100644
+--- a/pkg/clock/hlc.go
++++ b/pkg/clock/hlc.go
+@@ -131,13 +131,10 @@ func (hlc *HybridLogicalClock) Tick(nodeID string) Timestamp {
+ 
+ 	pt := hlc.physical()
+ 	if pt > hlc.last.WallTime {
+-		hlc.last = &HLCTimestamp{WallTime: pt, Logical: 0, NodeID: hlc.nodeID}
++		hlc.last.WallTime = pt
++		hlc.last.Logical = 0
+ 	} else {
+-		hlc.last = &HLCTimestamp{
+-			WallTime: hlc.last.WallTime,
+-			Logical:  hlc.last.Logical + 1,
+-			NodeID:   hlc.nodeID,
+-		}
++		hlc.last.Logical++
+ 	}
+ 	return hlc.last.Clone()
+ }
+@@ -186,7 +183,8 @@ func (hlc *HybridLogicalClock) Witness(nodeID string, other Timestamp) Timestamp
+ 		logical = 0
+ 	}
+ 
+-	hlc.last = &HLCTimestamp{WallTime: maxWall, Logical: logical, NodeID: hlc.nodeID}
++	hlc.last.WallTime = maxWall
++	hlc.last.Logical = logical
+ 	return hlc.last.Clone()
+ }
+ 
+diff --git a/pkg/crdt/counter.go b/pkg/crdt/counter.go
+index d876b36..b9bdcb0 100644
+--- a/pkg/crdt/counter.go
++++ b/pkg/crdt/counter.go
+@@ -8,6 +8,7 @@ type GCounter struct {
+ 	mu      sync.RWMutex
+ 	nodeID  string
+ 	counts  map[string]uint64
++	cached  uint64 // running total of counts, kept in sync with the map
+ }
+ 
+ // NewGCounter creates a G-Counter owned by nodeID.
+@@ -23,17 +24,14 @@ func (g *GCounter) Increment(nodeID string, delta uint64) {
+ 	g.mu.Lock()
+ 	defer g.mu.Unlock()
+ 	g.counts[nodeID] += delta
++	g.cached += delta
+ }
+ 
+ // Value returns the total count across all nodes.
+ func (g *GCounter) Value() uint64 {
+ 	g.mu.RLock()
+ 	defer g.mu.RUnlock()
+-	var total uint64
+-	for _, v := range g.counts {
+-		total += v
+-	}
+-	return total
++	return g.cached
+ }
+ 
+ // Merge incorporates another G-Counter's state (element-wise max).
+@@ -47,6 +45,11 @@ func (g *GCounter) Merge(other *GCounter) {
+ 			g.counts[k] = v
+ 		}
+ 	}
++	var total uint64
++	for _, v := range g.counts {
++		total += v
++	}
++	g.cached = total
+ }
+ 
+ // NodeID returns the owner of this counter.
+@@ -69,10 +72,11 @@ func (g *GCounter) State() map[string]uint64 {
+ // two G-Counters: one for positive increments and one for negative decrements.
+ // Value = sum(P) - sum(N).
+ type PNCounter struct {
+-	mu   sync.RWMutex
++	mu     sync.RWMutex
+ 	nodeID string
+-	pos  map[string]uint64
+-	neg  map[string]uint64
++	pos    map[string]uint64
++	neg    map[string]uint64
++	cached int64 // running net value (sum(pos) - sum(neg))
+ }
+ 
+ // NewPNCounter creates a PN-Counter owned by nodeID.
+@@ -89,6 +93,7 @@ func (p *PNCounter) Increment(nodeID string, delta uint64) {
+ 	p.mu.Lock()
+ 	defer p.mu.Unlock()
+ 	p.pos[nodeID] += delta
++	p.cached += int64(delta)
+ }
+ 
+ // Decrement adds delta to the negative counter for nodeID.
+@@ -96,20 +101,14 @@ func (p *PNCounter) Decrement(nodeID string, delta uint64) {
+ 	p.mu.Lock()
+ 	defer p.mu.Unlock()
+ 	p.neg[nodeID] += delta
++	p.cached -= int64(delta)
+ }
+ 
+ // Value returns the net count (positive - negative).
+ func (p *PNCounter) Value() int64 {
+ 	p.mu.RLock()
+ 	defer p.mu.RUnlock()
+-	var posSum, negSum uint64
+-	for _, v := range p.pos {
+-		posSum += v
+-	}
+-	for _, v := range p.neg {
+-		negSum += v
+-	}
+-	return int64(posSum) - int64(negSum)
++	return p.cached
+ }
+ 
+ // Merge incorporates another PN-Counter (element-wise max on both halves).
+@@ -128,6 +127,14 @@ func (p *PNCounter) Merge(other *PNCounter) {
+ 			p.neg[k] = v
+ 		}
+ 	}
++	var posSum, negSum uint64
++	for _, v := range p.pos {
++		posSum += v
++	}
++	for _, v := range p.neg {
++		negSum += v
++	}
++	p.cached = int64(posSum) - int64(negSum)
+ }
+ 
+ // PosState returns a copy of the positive counts.
+diff --git a/pkg/crdt/crdt_test.go b/pkg/crdt/crdt_test.go
+index 2d540d7..c6806f3 100644
+--- a/pkg/crdt/crdt_test.go
++++ b/pkg/crdt/crdt_test.go
+@@ -599,4 +599,88 @@ func TestORMap_Len(t *testing.T) {
+ 	if m.Len() != 1 {
+ 		t.Fatalf("expected 1 after delete, got %d", m.Len())
+ 	}
+-}
+\ No newline at end of file
++}
++
++// --- Observed-remove convergence ---
++
++func TestORSet_RemoveConvergesAfterMerge(t *testing.T) {
++	// n1 adds "x"; n2 observes the add via merge and removes "x".
++	// When n1 merges n2's state, the remove must converge: "x" is gone.
++	a := NewORSet()
++	a.Add("x", "n1")
++
++	b := NewORSet()
++	b.Merge(a) // b observes n1's add
++	b.Remove("x")
++
++	a.Merge(b) // a learns of b's remove
++	if a.Contains("x") {
++		t.Fatal("remove must converge after merge: x should be absent")
++	}
++	if a.Len() != 0 {
++		t.Fatalf("expected empty set after converged remove, got len %d", a.Len())
++	}
++}
++
++func TestORSet_ConcurrentAddSurvivesRemove(t *testing.T) {
++	// n1 adds "x" (tag1). n2 observes it and removes "x". n1 concurrently
++	// re-adds "x" (tag2, which n2 never saw). After both replicas exchange
++	// state, the concurrent add must win on both sides.
++	a := NewORSet()
++	a.Add("x", "n1")
++
++	b := NewORSet()
++	b.Merge(a)
++	b.Remove("x")
++
++	a.Add("x", "n1") // concurrent re-add with a fresh, unseen tag
++
++	a.Merge(b)
++	b.Merge(a)
++	if !a.Contains("x") {
++		t.Fatal("concurrent add must survive a remove (replica a)")
++	}
++	if !b.Contains("x") {
++		t.Fatal("concurrent add must survive a remove (replica b)")
++	}
++}
++
++func TestORMap_DeleteConvergesAfterMerge(t *testing.T) {
++	a := NewORMap()
++	a.Put("k", "v", 100, "n1")
++
++	b := NewORMap()
++	b.Merge(a) // b observes the key
++	b.Delete("k")
++
++	a.Merge(b) // a learns of the delete
++	if _, ok := a.Get("k"); ok {
++		t.Fatal("delete must converge after merge: key should be absent")
++	}
++}
++
++func TestGCounter_CachedValueMatchesSum(t *testing.T) {
++	g := NewGCounter("n1")
++	g.Increment("n1", 10)
++	g.Increment("n2", 5)
++	g.Increment("n1", 3)
++	if g.Value() != 18 {
++		t.Fatalf("expected 18, got %d", g.Value())
++	}
++	other := NewGCounter("n3")
++	other.Increment("n3", 7)
++	g.Merge(other)
++	if g.Value() != 25 {
++		t.Fatalf("expected 25 after merge, got %d", g.Value())
++	}
++}
++
++func TestPNCounter_CachedValueMatchesSum(t *testing.T) {
++	p := NewPNCounter("n1")
++	p.Increment("n1", 100)
++	p.Decrement("n1", 30)
++	p.Increment("n2", 5)
++	if p.Value() != 75 {
++		t.Fatalf("expected 75, got %d", p.Value())
++	}
++}
+diff --git a/pkg/crdt/ormap.go b/pkg/crdt/ormap.go
+index 07df0d1..067ad69 100644
+--- a/pkg/crdt/ormap.go
++++ b/pkg/crdt/ormap.go
+@@ -43,8 +43,7 @@ func (m *ORMap) Get(key string) (interface{}, bool) {
+ 	m.mu.RLock()
+ 	defer m.mu.RUnlock()
+ 	m.keys.mu.RLock()
+-	tags, ok := m.keys.entries[key]
+-	hasKey := ok && len(tags) > 0
++	hasKey := m.keys.activeCount(key) > 0
+ 	m.keys.mu.RUnlock()
+ 	if !hasKey {
+ 		return nil, false
+@@ -57,12 +56,22 @@ func (m *ORMap) Get(key string) (interface{}, bool) {
+ 	return v, true
+ }
+ 
+-// Delete removes a key.
++// Delete removes a key by tombstoning the key tags this replica has observed,
++// so the deletion converges across merges instead of being undone by them.
+ func (m *ORMap) Delete(key string) {
+ 	m.mu.Lock()
+ 	defer m.mu.Unlock()
+ 	m.keys.mu.Lock()
+-	delete(m.keys.entries, key)
++	if tags := m.keys.entries[key]; len(tags) > 0 {
++		rem := m.keys.removed[key]
++		if rem == nil {
++			rem = make(map[ORTag]struct{})
++			m.keys.removed[key] = rem
++		}
++		for tag := range tags {
++			rem[tag] = struct{}{}
++		}
++	}
+ 	m.keys.mu.Unlock()
+ }
+ 
+@@ -73,8 +82,8 @@ func (m *ORMap) Keys() []string {
+ 	m.keys.mu.RLock()
+ 	defer m.keys.mu.RUnlock()
+ 	result := make([]string, 0)
+-	for k, tags := range m.keys.entries {
+-		if len(tags) > 0 {
++	for k := range m.keys.entries {
++		if m.keys.activeCount(k) > 0 {
+ 			result = append(result, k)
+ 		}
+ 	}
+diff --git a/pkg/crdt/set.go b/pkg/crdt/set.go
+index 3b912b8..83b5492 100644
+--- a/pkg/crdt/set.go
++++ b/pkg/crdt/set.go
+@@ -60,10 +60,13 @@ func (s *GSet) Merge(other *GSet) {
+ 
+ // ORSet is an Observed-Remove Set. Elements can be added and removed;
+ // add wins over concurrent remove. Each add is tagged with a unique
+-// (nodeID, counter) pair so that removes only affect observed adds.
++// (nodeID, counter) pair. A remove tombstones exactly the tags it has
++// observed, so concurrent (unobserved) adds survive and a remove still
++// converges once it is merged into a replica that observed the add.
+ type ORSet struct {
+ 	mu       sync.RWMutex
+-	entries  map[string]map[ORTag]struct{} // element -> set of tags
++	entries  map[string]map[ORTag]struct{} // element -> set of added tags
++	removed  map[string]map[ORTag]struct{} // element -> set of tombstoned tags
+ 	counters map[string]uint64             // nodeID -> next counter
+ }
+ 
+@@ -77,6 +80,7 @@ type ORTag struct {
+ func NewORSet() *ORSet {
+ 	return &ORSet{
+ 		entries:  make(map[string]map[ORTag]struct{}),
++		removed:  make(map[string]map[ORTag]struct{}),
+ 		counters: make(map[string]uint64),
+ 	}
+ }
+@@ -93,29 +97,60 @@ func (s *ORSet) Add(elem string, nodeID string) {
+ 	s.entries[elem][tag] = struct{}{}
+ }
+ 
+-// Remove removes an element by clearing all its observed tags.
+-// Concurrent adds (unseen tags) will survive.
++// Remove removes an element by tombstoning every tag it has currently
++// observed for that element. Tags added concurrently elsewhere (which this
++// replica has not seen) are left untouched and therefore survive the remove.
+ func (s *ORSet) Remove(elem string) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+-	delete(s.entries, elem)
++	tags := s.entries[elem]
++	if len(tags) == 0 {
++		return
++	}
++	rem := s.removed[elem]
++	if rem == nil {
++		rem = make(map[ORTag]struct{})
++		s.removed[elem] = rem
++	}
++	for tag := range tags {
++		rem[tag] = struct{}{}
++	}
++}
++
++// activeCount returns the number of live (non-tombstoned) tags for elem.
++// Callers must hold s.mu.
++func (s *ORSet) activeCount(elem string) int {
++	tags := s.entries[elem]
++	if len(tags) == 0 {
++		return 0
++	}
++	rem := s.removed[elem]
++	if len(rem) == 0 {
++		return len(tags)
++	}
++	n := 0
++	for tag := range tags {
++		if _, gone := rem[tag]; !gone {
++			n++
++		}
++	}
++	return n
+ }
+ 
+-// Contains checks if an element has any active tags.
++// Contains checks if an element has any live tags.
+ func (s *ORSet) Contains(elem string) bool {
+ 	s.mu.RLock()
+ 	defer s.mu.RUnlock()
+-	tags, ok := s.entries[elem]
+-	return ok && len(tags) > 0
++	return s.activeCount(elem) > 0
+ }
+ 
+-// Elements returns all elements that have at least one active tag.
++// Elements returns all elements that have at least one live tag.
+ func (s *ORSet) Elements() []string {
+ 	s.mu.RLock()
+ 	defer s.mu.RUnlock()
+ 	result := make([]string, 0, len(s.entries))
+-	for k, tags := range s.entries {
+-		if len(tags) > 0 {
++	for k := range s.entries {
++		if s.activeCount(k) > 0 {
+ 			result = append(result, k)
+ 		}
+ 	}
+@@ -127,16 +162,17 @@ func (s *ORSet) Len() int {
+ 	s.mu.RLock()
+ 	defer s.mu.RUnlock()
+ 	count := 0
+-	for _, tags := range s.entries {
+-		if len(tags) > 0 {
++	for k := range s.entries {
++		if s.activeCount(k) > 0 {
+ 			count++
+ 		}
+ 	}
+ 	return count
+ }
+ 
+-// Merge combines two OR-Sets. For each element, the resulting tag set
+-// is the union of both replicas' tag sets.
++// Merge combines two OR-Sets. Added tags, tombstoned tags, and per-node
++// counters are each unioned, so adds and removes both converge regardless of
++// the order in which replicas exchange state.
+ func (s *ORSet) Merge(other *ORSet) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+@@ -151,6 +187,14 @@ func (s *ORSet) Merge(other *ORSet) {
+ 			s.entries[elem][tag] = struct{}{}
+ 		}
+ 	}
++	for elem, tags := range other.removed {
++		if s.removed[elem] == nil {
++			s.removed[elem] = make(map[ORTag]struct{})
++		}
++		for tag := range tags {
++			s.removed[elem][tag] = struct{}{}
++		}
++	}
+ 	for nodeID, c := range other.counters {
+ 		if c > s.counters[nodeID] {
+ 			s.counters[nodeID] = c
+@@ -158,7 +202,7 @@ func (s *ORSet) Merge(other *ORSet) {
+ 	}
+ }
+ 
+-// Tags returns the tag set for an element (for testing/debugging).
++// Tags returns the live tag set for an element (for testing/debugging).
+ func (s *ORSet) Tags(elem string) []ORTag {
+ 	s.mu.RLock()
+ 	defer s.mu.RUnlock()
+@@ -166,9 +210,13 @@ func (s *ORSet) Tags(elem string) []ORTag {
+ 	if !ok {
+ 		return nil
+ 	}
++	rem := s.removed[elem]
+ 	result := make([]ORTag, 0, len(tags))
+ 	for t := range tags {
++		if _, gone := rem[t]; gone {
++			continue
++		}
+ 		result = append(result, t)
+ 	}
+ 	return result
+-}
+\ No newline at end of file
++}

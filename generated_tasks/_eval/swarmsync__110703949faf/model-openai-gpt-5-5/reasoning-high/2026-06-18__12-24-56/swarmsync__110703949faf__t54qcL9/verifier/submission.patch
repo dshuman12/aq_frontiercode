@@ -1,0 +1,1083 @@
+diff --git a/base/cmd/swarmsync/main.go b/repo/cmd/swarmsync/main.go
+index a3bddfb..9344488 100644
+--- a/base/cmd/swarmsync/main.go
++++ b/repo/cmd/swarmsync/main.go
+@@ -125,4 +125,4 @@ func runDemo() {
+ 	fmt.Printf("Simulator converged: %v\n", ns.Converged())
+ 
+ 	fmt.Println("\nAll demos completed successfully!")
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/bloom/bloom_test.go b/repo/pkg/bloom/bloom_test.go
+index bc8a666..8cd63b0 100644
+--- a/base/pkg/bloom/bloom_test.go
++++ b/repo/pkg/bloom/bloom_test.go
+@@ -307,4 +307,4 @@ func TestCountingFilter_FNV_AddRemove(t *testing.T) {
+ 			t.Fatalf("should still contain cfnv-%d", i)
+ 		}
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/bloom/filter.go b/repo/pkg/bloom/filter.go
+index f6f0a62..0beb0c3 100644
+--- a/base/pkg/bloom/filter.go
++++ b/repo/pkg/bloom/filter.go
+@@ -313,8 +313,8 @@ type ScalableFilter struct {
+ 	mu       sync.RWMutex
+ 	filters  []*Filter
+ 	fpRate   float64
+-	growth   uint    // multiplier for each new slice's size
+-	maxSlice uint    // capacity per slice
++	growth   uint // multiplier for each new slice's size
++	maxSlice uint // capacity per slice
+ 	count    uint
+ }
+ 
+@@ -375,4 +375,4 @@ func (sf *ScalableFilter) SliceCount() int {
+ 	sf.mu.RLock()
+ 	defer sf.mu.RUnlock()
+ 	return len(sf.filters)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/clock/clock_test.go b/repo/pkg/clock/clock_test.go
+index 30551f2..0b83111 100644
+--- a/base/pkg/clock/clock_test.go
++++ b/repo/pkg/clock/clock_test.go
+@@ -571,4 +571,4 @@ func TestVectorTimestamp_MergeAssociative(t *testing.T) {
+ 	if ab.Compare(abc) != Equal {
+ 		t.Fatal("merge should be associative")
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/clock/errors.go b/repo/pkg/clock/errors.go
+index 33400c2..f4b43ef 100644
+--- a/base/pkg/clock/errors.go
++++ b/repo/pkg/clock/errors.go
+@@ -2,4 +2,4 @@ package clock
+ 
+ import "errors"
+ 
+-var errShortData = errors.New("clock: data too short for deserialization")
+\ No newline at end of file
++var errShortData = errors.New("clock: data too short for deserialization")
+diff --git a/base/pkg/clock/hlc.go b/repo/pkg/clock/hlc.go
+index 36b036b..75c439b 100644
+--- a/base/pkg/clock/hlc.go
++++ b/repo/pkg/clock/hlc.go
+@@ -207,4 +207,4 @@ func maxUint32(a, b uint32) uint32 {
+ 		return a
+ 	}
+ 	return b
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/clock/types.go b/repo/pkg/clock/types.go
+index a24c64f..04bd785 100644
+--- a/base/pkg/clock/types.go
++++ b/repo/pkg/clock/types.go
+@@ -29,4 +29,4 @@ type Timestamp interface {
+ }
+ 
+ // NodeID is a type alias for clarity.
+-type NodeID = string
+\ No newline at end of file
++type NodeID = string
+diff --git a/base/pkg/clock/vector.go b/repo/pkg/clock/vector.go
+index 0341d0d..7bc54da 100644
+--- a/base/pkg/clock/vector.go
++++ b/repo/pkg/clock/vector.go
+@@ -198,4 +198,4 @@ func (vc *VectorClock) Snapshot() *VectorTimestamp {
+ 	vc.mu.RLock()
+ 	defer vc.mu.RUnlock()
+ 	return vc.current.Clone()
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/counter.go b/repo/pkg/crdt/counter.go
+index d876b36..7d9f19e 100644
+--- a/base/pkg/crdt/counter.go
++++ b/repo/pkg/crdt/counter.go
+@@ -5,9 +5,9 @@ import "sync"
+ // GCounter is a grow-only counter. Each node maintains its own count;
+ // the value is the sum of all nodes. Merge takes element-wise max.
+ type GCounter struct {
+-	mu      sync.RWMutex
+-	nodeID  string
+-	counts  map[string]uint64
++	mu     sync.RWMutex
++	nodeID string
++	counts map[string]uint64
+ }
+ 
+ // NewGCounter creates a G-Counter owned by nodeID.
+@@ -69,10 +69,10 @@ func (g *GCounter) State() map[string]uint64 {
+ // two G-Counters: one for positive increments and one for negative decrements.
+ // Value = sum(P) - sum(N).
+ type PNCounter struct {
+-	mu   sync.RWMutex
++	mu     sync.RWMutex
+ 	nodeID string
+-	pos  map[string]uint64
+-	neg  map[string]uint64
++	pos    map[string]uint64
++	neg    map[string]uint64
+ }
+ 
+ // NewPNCounter creates a PN-Counter owned by nodeID.
+@@ -150,4 +150,4 @@ func (p *PNCounter) NegState() map[string]uint64 {
+ 		m[k] = v
+ 	}
+ 	return m
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/crdt_test.go b/repo/pkg/crdt/crdt_test.go
+index 2d540d7..1413d30 100644
+--- a/base/pkg/crdt/crdt_test.go
++++ b/repo/pkg/crdt/crdt_test.go
+@@ -599,4 +599,4 @@ func TestORMap_Len(t *testing.T) {
+ 	if m.Len() != 1 {
+ 		t.Fatalf("expected 1 after delete, got %d", m.Len())
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/ormap.go b/repo/pkg/crdt/ormap.go
+index 07df0d1..b3860d7 100644
+--- a/base/pkg/crdt/ormap.go
++++ b/repo/pkg/crdt/ormap.go
+@@ -6,9 +6,9 @@ import "sync"
+ // Keys can be added and removed; add-wins semantics apply.
+ // Each key's value is resolved by last-writer-wins.
+ type ORMap struct {
+-	mu       sync.RWMutex
+-	keys     *ORSet
+-	values   map[string]*LWWRegister
++	mu     sync.RWMutex
++	keys   *ORSet
++	values map[string]*LWWRegister
+ }
+ 
+ // NewORMap creates an empty OR-Map.
+@@ -104,4 +104,4 @@ func (m *ORMap) Merge(other *ORMap) {
+ 		}
+ 		m.values[key].Merge(otherReg)
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/register.go b/repo/pkg/crdt/register.go
+index 115d4c8..790f47e 100644
+--- a/base/pkg/crdt/register.go
++++ b/repo/pkg/crdt/register.go
+@@ -145,4 +145,4 @@ func (mv *MVRegister) Len() int {
+ 	mv.mu.RLock()
+ 	defer mv.mu.RUnlock()
+ 	return len(mv.entries)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/set.go b/repo/pkg/crdt/set.go
+index 3b912b8..25bde89 100644
+--- a/base/pkg/crdt/set.go
++++ b/repo/pkg/crdt/set.go
+@@ -171,4 +171,4 @@ func (s *ORSet) Tags(elem string) []ORTag {
+ 		result = append(result, t)
+ 	}
+ 	return result
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/gossip/gossip_test.go b/repo/pkg/gossip/gossip_test.go
+index 9fceb27..5cc9277 100644
+--- a/base/pkg/gossip/gossip_test.go
++++ b/repo/pkg/gossip/gossip_test.go
+@@ -399,4 +399,4 @@ func TestCluster_DeleteConvergence(t *testing.T) {
+ 		}
+ 	}
+ 	t.Fatal("cluster did not converge after delete")
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/gossip/protocol.go b/repo/pkg/gossip/protocol.go
+index eed601e..51f3519 100644
+--- a/base/pkg/gossip/protocol.go
++++ b/repo/pkg/gossip/protocol.go
+@@ -208,4 +208,4 @@ func (c *Cluster) Size() int {
+ 	c.mu.RLock()
+ 	defer c.mu.RUnlock()
+ 	return len(c.nodes)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/gossip/state.go b/repo/pkg/gossip/state.go
+index 7b7da57..a8a3b60 100644
+--- a/base/pkg/gossip/state.go
++++ b/repo/pkg/gossip/state.go
+@@ -230,4 +230,4 @@ func copyBytes(b []byte) []byte {
+ 	cp := make([]byte, len(b))
+ 	copy(cp, b)
+ 	return cp
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/hash/hash_test.go b/repo/pkg/hash/hash_test.go
+index ecd757b..bc1fc43 100644
+--- a/base/pkg/hash/hash_test.go
++++ b/repo/pkg/hash/hash_test.go
+@@ -318,4 +318,4 @@ func TestRing_FNV_MinimalDisruption(t *testing.T) {
+ 	if moveRate > 0.60 {
+ 		t.Fatalf("too many keys moved (%.2f) — minimal disruption violated", moveRate)
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/hash/ring.go b/repo/pkg/hash/ring.go
+index 950d933..4fd4935 100644
+--- a/base/pkg/hash/ring.go
++++ b/repo/pkg/hash/ring.go
+@@ -11,12 +11,12 @@ import (
+ // Keys are mapped to a position on a hash ring [0, 2^32), and assigned
+ // to the first node encountered clockwise from that position.
+ type Ring struct {
+-	mu           sync.RWMutex
+-	replicas     int              // virtual nodes per physical node
+-	ring         []uint32         // sorted hash positions
+-	nodeMap      map[uint32]string // hash position → physical node ID
+-	members      map[string]bool  // physical node IDs
+-	memberCount  int
++	mu          sync.RWMutex
++	replicas    int               // virtual nodes per physical node
++	ring        []uint32          // sorted hash positions
++	nodeMap     map[uint32]string // hash position → physical node ID
++	members     map[string]bool   // physical node IDs
++	memberCount int
+ }
+ 
+ // NewRing creates a consistent hash ring with the given number of virtual nodes
+@@ -207,4 +207,4 @@ func keyHash(key string) uint32 {
+ 	h := fnv.New32a()
+ 	h.Write([]byte(key))
+ 	return h.Sum32()
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/membership/member.go b/repo/pkg/membership/member.go
+index b40a97d..48217f1 100644
+--- a/base/pkg/membership/member.go
++++ b/repo/pkg/membership/member.go
+@@ -9,7 +9,7 @@ import (
+ type MemberState int
+ 
+ const (
+-	StateAlive    MemberState = iota
++	StateAlive MemberState = iota
+ 	StateSuspect
+ 	StateDead
+ 	StateLeft
+@@ -263,4 +263,4 @@ func copyMeta(m map[string]string) map[string]string {
+ 		cp[k] = v
+ 	}
+ 	return cp
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/membership/membership_test.go b/repo/pkg/membership/membership_test.go
+index cc2a8bc..74f1823 100644
+--- a/base/pkg/membership/membership_test.go
++++ b/repo/pkg/membership/membership_test.go
+@@ -216,9 +216,9 @@ func TestMemberList_SuspectThenAlive(t *testing.T) {
+ 
+ // --- SWIM Detector tests ---
+ 
+-func alwaysAck(target string) ProbeResult   { return ProbeAck }
+-func alwaysNack(target string) ProbeResult  { return ProbeNack }
+-func alwaysAckIndirect(_, _ string) ProbeResult { return ProbeAck }
++func alwaysAck(target string) ProbeResult        { return ProbeAck }
++func alwaysNack(target string) ProbeResult       { return ProbeNack }
++func alwaysAckIndirect(_, _ string) ProbeResult  { return ProbeAck }
+ func alwaysNackIndirect(_, _ string) ProbeResult { return ProbeNack }
+ 
+ func TestSWIM_ProbeRound_Ack(t *testing.T) {
+@@ -308,4 +308,49 @@ func TestSWIM_History(t *testing.T) {
+ 	if len(h) < 1 {
+ 		t.Fatal("expected at least 1 history entry")
+ 	}
+-}
+\ No newline at end of file
++}
++
++func TestSWIM_HistoryBoundAtCap(t *testing.T) {
++	ml := NewMemberList("n1")
++	ml.Alive("n2", 0, nil)
++	cfg := DefaultSWIMConfig()
++	sd := NewSWIMDetector(ml, cfg, alwaysAck, alwaysNackIndirect, 42)
++
++	for i := 0; i < defaultProbeHistoryLimit; i++ {
++		sd.RunProbeRound()
++	}
++
++	h := sd.History()
++	if len(h) != defaultProbeHistoryLimit {
++		t.Fatalf("expected history length at cap %d, got %d", defaultProbeHistoryLimit, len(h))
++	}
++	if h[0].Round != 1 {
++		t.Fatalf("expected first retained round 1 at cap boundary, got %d", h[0].Round)
++	}
++	if h[len(h)-1].Round != defaultProbeHistoryLimit {
++		t.Fatalf("expected last retained round %d, got %d", defaultProbeHistoryLimit, h[len(h)-1].Round)
++	}
++}
++
++func TestSWIM_HistoryEvictsOldestPastCap(t *testing.T) {
++	ml := NewMemberList("n1")
++	ml.Alive("n2", 0, nil)
++	cfg := DefaultSWIMConfig()
++	sd := NewSWIMDetector(ml, cfg, alwaysAck, alwaysNackIndirect, 42)
++
++	const extra = 3
++	for i := 0; i < defaultProbeHistoryLimit+extra; i++ {
++		sd.RunProbeRound()
++	}
++
++	h := sd.History()
++	if len(h) != defaultProbeHistoryLimit {
++		t.Fatalf("expected bounded history length %d, got %d", defaultProbeHistoryLimit, len(h))
++	}
++	if h[0].Round != extra+1 {
++		t.Fatalf("expected oldest retained round %d, got %d", extra+1, h[0].Round)
++	}
++	if h[len(h)-1].Round != defaultProbeHistoryLimit+extra {
++		t.Fatalf("expected newest retained round %d, got %d", defaultProbeHistoryLimit+extra, h[len(h)-1].Round)
++	}
++}
+diff --git a/base/pkg/membership/swim.go b/repo/pkg/membership/swim.go
+index 354bdbb..04c28bd 100644
+--- a/base/pkg/membership/swim.go
++++ b/repo/pkg/membership/swim.go
+@@ -6,6 +6,8 @@ import (
+ 	"time"
+ )
+ 
++const defaultProbeHistoryLimit = 1024
++
+ // SWIMConfig holds parameters for the SWIM failure detector.
+ type SWIMConfig struct {
+ 	// ProbeInterval is how often to probe a random member.
+@@ -47,15 +49,15 @@ type IndirectProbeFunc func(mediator, target string) ProbeResult
+ // SWIMDetector implements the SWIM protocol for failure detection.
+ // It runs probe rounds, manages suspicion timers, and updates the member list.
+ type SWIMDetector struct {
+-	mu            sync.Mutex
+-	config        SWIMConfig
+-	memberList    *MemberList
+-	suspicionMap  map[string]time.Time // nodeID → when suspicion started
+-	probeFunc     ProbeFunc
+-	indirectFunc  IndirectProbeFunc
+-	rng           *rand.Rand
+-	roundCount    uint64
+-	probeHistory  []ProbeEvent
++	mu           sync.Mutex
++	config       SWIMConfig
++	memberList   *MemberList
++	suspicionMap map[string]time.Time // nodeID → when suspicion started
++	probeFunc    ProbeFunc
++	indirectFunc IndirectProbeFunc
++	rng          *rand.Rand
++	roundCount   uint64
++	probeHistory []ProbeEvent
+ }
+ 
+ // ProbeEvent records the outcome of a single probe.
+@@ -76,6 +78,7 @@ func NewSWIMDetector(ml *MemberList, config SWIMConfig, probeFn ProbeFunc, indir
+ 		probeFunc:    probeFn,
+ 		indirectFunc: indirectFn,
+ 		rng:          rand.New(rand.NewSource(seed)),
++		probeHistory: make([]ProbeEvent, 0, defaultProbeHistoryLimit),
+ 	}
+ }
+ 
+@@ -107,7 +110,7 @@ func (sd *SWIMDetector) RunProbeRound() *ProbeEvent {
+ 		Indirect:  false,
+ 		Timestamp: time.Now(),
+ 	}
+-	sd.probeHistory = append(sd.probeHistory, *event)
++	sd.recordProbeEvent(*event)
+ 
+ 	if result == ProbeAck {
+ 		delete(sd.suspicionMap, target)
+@@ -119,7 +122,7 @@ func (sd *SWIMDetector) RunProbeRound() *ProbeEvent {
+ 	indirectAck := false
+ 	for _, med := range mediators {
+ 		ir := sd.indirectFunc(med, target)
+-		sd.probeHistory = append(sd.probeHistory, ProbeEvent{
++		sd.recordProbeEvent(ProbeEvent{
+ 			Round:     sd.roundCount,
+ 			Target:    target,
+ 			Result:    ir,
+@@ -185,6 +188,15 @@ func (sd *SWIMDetector) selectMediators(alive []string, target string, n int) []
+ 	return candidates[:n]
+ }
+ 
++func (sd *SWIMDetector) recordProbeEvent(event ProbeEvent) {
++	if len(sd.probeHistory) < defaultProbeHistoryLimit {
++		sd.probeHistory = append(sd.probeHistory, event)
++		return
++	}
++	copy(sd.probeHistory, sd.probeHistory[1:])
++	sd.probeHistory[len(sd.probeHistory)-1] = event
++}
++
+ // History returns the probe history.
+ func (sd *SWIMDetector) History() []ProbeEvent {
+ 	sd.mu.Lock()
+@@ -206,4 +218,4 @@ func (sd *SWIMDetector) SuspectCount() int {
+ 	sd.mu.Lock()
+ 	defer sd.mu.Unlock()
+ 	return len(sd.suspicionMap)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/merkle/errors.go b/repo/pkg/merkle/errors.go
+index c175a81..56f7b29 100644
+--- a/base/pkg/merkle/errors.go
++++ b/repo/pkg/merkle/errors.go
+@@ -2,4 +2,4 @@ package merkle
+ 
+ import "errors"
+ 
+-var errShortData = errors.New("merkle: data too short for deserialization")
+\ No newline at end of file
++var errShortData = errors.New("merkle: data too short for deserialization")
+diff --git a/base/pkg/merkle/merkle_test.go b/repo/pkg/merkle/merkle_test.go
+index 24b73e2..802b672 100644
+--- a/base/pkg/merkle/merkle_test.go
++++ b/repo/pkg/merkle/merkle_test.go
+@@ -426,4 +426,4 @@ func TestFastDiff_AfterLazyRebuild(t *testing.T) {
+ 	if len(d.Different) != 1 || d.Different[0] != "key-10" {
+ 		t.Fatalf("expected different=[key-10], got %v", d.Different)
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/merkle/tree.go b/repo/pkg/merkle/tree.go
+index f0d3e97..b1008b8 100644
+--- a/base/pkg/merkle/tree.go
++++ b/repo/pkg/merkle/tree.go
+@@ -9,12 +9,12 @@ import (
+ 
+ // Node represents a single node in the Merkle tree.
+ type Node struct {
+-	Hash     [32]byte
+-	Key      string // non-empty for leaf nodes
+-	Value    []byte // non-empty for leaf nodes
+-	Left     *Node
+-	Right    *Node
+-	IsLeaf   bool
++	Hash   [32]byte
++	Key    string // non-empty for leaf nodes
++	Value  []byte // non-empty for leaf nodes
++	Left   *Node
++	Right  *Node
++	IsLeaf bool
+ }
+ 
+ // Tree is a binary Merkle tree built over a set of key-value pairs.
+@@ -440,4 +440,4 @@ func SerializeDiffResult(d DiffResult) []byte {
+ 	}
+ 
+ 	return buf[:offset]
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/queue/bounded.go b/repo/pkg/queue/bounded.go
+index c2aa109..97153e9 100644
+--- a/base/pkg/queue/bounded.go
++++ b/repo/pkg/queue/bounded.go
+@@ -127,4 +127,4 @@ func (q *BoundedQueue) Clear() {
+ 	q.head = 0
+ 	q.tail = 0
+ 	q.count = 0
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/queue/deque.go b/repo/pkg/queue/deque.go
+index 7b10f7e..a8ebe4c 100644
+--- a/base/pkg/queue/deque.go
++++ b/repo/pkg/queue/deque.go
+@@ -1,6 +1,9 @@
+ package queue
+ 
+-import "sync"
++import (
++	"sync"
++	"sync/atomic"
++)
+ 
+ // Deque is a double-ended queue that supports work-stealing.
+ // The owner pushes and pops from the bottom; stealers steal from the top.
+@@ -69,7 +72,7 @@ func (d *Deque) IsEmpty() bool {
+ type WorkStealingPool struct {
+ 	mu     sync.RWMutex
+ 	deques map[string]*Deque
+-	stolen uint64
++	stolen atomic.Uint64
+ }
+ 
+ // NewWorkStealingPool creates a pool.
+@@ -120,7 +123,7 @@ func (p *WorkStealingPool) Steal(thiefID string) (interface{}, string, bool) {
+ 		}
+ 		item, ok := d.StealTop()
+ 		if ok {
+-			p.stolen++
++			p.stolen.Add(1)
+ 			return item, workerID, true
+ 		}
+ 	}
+@@ -140,9 +143,7 @@ func (p *WorkStealingPool) TotalPending() int {
+ 
+ // StolenCount returns the total number of successful steals.
+ func (p *WorkStealingPool) StolenCount() uint64 {
+-	p.mu.RLock()
+-	defer p.mu.RUnlock()
+-	return p.stolen
++	return p.stolen.Load()
+ }
+ 
+ // WorkerCount returns the number of registered workers.
+@@ -150,4 +151,4 @@ func (p *WorkStealingPool) WorkerCount() int {
+ 	p.mu.RLock()
+ 	defer p.mu.RUnlock()
+ 	return len(p.deques)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/queue/priority.go b/repo/pkg/queue/priority.go
+index 8113285..a12b7f0 100644
+--- a/base/pkg/queue/priority.go
++++ b/repo/pkg/queue/priority.go
+@@ -115,4 +115,4 @@ func (pq *PriorityQueue) Drain() []*Item {
+ 		result = append(result, item)
+ 	}
+ 	return result
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/queue/queue_test.go b/repo/pkg/queue/queue_test.go
+index 1e71cd3..f11c1ab 100644
+--- a/base/pkg/queue/queue_test.go
++++ b/repo/pkg/queue/queue_test.go
+@@ -1,8 +1,12 @@
+ package queue
+ 
+ import (
++	"fmt"
++	"runtime"
+ 	"sync"
++	"sync/atomic"
+ 	"testing"
++	"time"
+ )
+ 
+ // --- PriorityQueue ---
+@@ -232,6 +236,54 @@ func TestDeque_Empty(t *testing.T) {
+ 	}
+ }
+ 
++func TestDeque_StealTopEmpty(t *testing.T) {
++	d := NewDeque()
++	_, ok := d.StealTop()
++	if ok {
++		t.Fatal("stealTop empty should fail")
++	}
++}
++
++func TestDeque_ConcurrentSingleElementPopAndSteal(t *testing.T) {
++	d := NewDeque()
++	d.PushBottom("only")
++
++	var wg sync.WaitGroup
++	results := make(chan interface{}, 2)
++	start := make(chan struct{})
++
++	wg.Add(2)
++	go func() {
++		defer wg.Done()
++		<-start
++		if item, ok := d.PopBottom(); ok {
++			results <- item
++		}
++	}()
++	go func() {
++		defer wg.Done()
++		<-start
++		if item, ok := d.StealTop(); ok {
++			results <- item
++		}
++	}()
++
++	close(start)
++	wg.Wait()
++	close(results)
++
++	var got []interface{}
++	for item := range results {
++		got = append(got, item)
++	}
++	if len(got) != 1 || got[0] != "only" {
++		t.Fatalf("expected exactly one consumer to get the single item, got %v", got)
++	}
++	if !d.IsEmpty() {
++		t.Fatal("deque should be empty after single item is consumed")
++	}
++}
++
+ func TestDeque_PushPopBottom(t *testing.T) {
+ 	d := NewDeque()
+ 	d.PushBottom("a")
+@@ -266,6 +318,107 @@ func TestDeque_MixedOps(t *testing.T) {
+ 	}
+ }
+ 
++func TestDeque_ConcurrentPushPopSteal(t *testing.T) {
++	const total = 2000
++	const stealers = 4
++
++	d := NewDeque()
++	results := make(chan int, total*2)
++	errs := make(chan error, stealers+2)
++	start := make(chan struct{})
++	var producerDone atomic.Bool
++	var stop atomic.Bool
++	var wg sync.WaitGroup
++
++	wg.Add(1)
++	go func() {
++		defer wg.Done()
++		<-start
++		for i := 0; i < total; i++ {
++			if stop.Load() {
++				return
++			}
++			d.PushBottom(i)
++			if i%17 == 0 {
++				runtime.Gosched()
++			}
++		}
++		producerDone.Store(true)
++	}()
++
++	consume := func(name string, fn func() (interface{}, bool)) {
++		defer wg.Done()
++		<-start
++		for {
++			if stop.Load() {
++				return
++			}
++			item, ok := fn()
++			if ok {
++				v, ok := item.(int)
++				if !ok {
++					errs <- fmt.Errorf("%s received non-int item %T", name, item)
++					stop.Store(true)
++					return
++				}
++				results <- v
++				continue
++			}
++			if producerDone.Load() && d.IsEmpty() {
++				return
++			}
++			runtime.Gosched()
++		}
++	}
++
++	wg.Add(1)
++	go consume("owner", d.PopBottom)
++	for i := 0; i < stealers; i++ {
++		wg.Add(1)
++		go consume(fmt.Sprintf("thief-%d", i), d.StealTop)
++	}
++
++	close(start)
++	done := make(chan struct{})
++	go func() {
++		wg.Wait()
++		close(done)
++	}()
++
++	select {
++	case <-done:
++	case <-time.After(5 * time.Second):
++		stop.Store(true)
++		t.Fatal("concurrent push/pop/steal did not finish")
++	}
++
++	close(results)
++	close(errs)
++
++	for err := range errs {
++		if err != nil {
++			t.Fatal(err)
++		}
++	}
++
++	seen := make(map[int]bool, total)
++	for item := range results {
++		if item < 0 || item >= total {
++			t.Fatalf("consumed item out of range: %d", item)
++		}
++		if seen[item] {
++			t.Fatalf("consumed duplicate item: %d", item)
++		}
++		seen[item] = true
++	}
++	if len(seen) != total {
++		t.Fatalf("expected to consume %d unique items, got %d", total, len(seen))
++	}
++	if !d.IsEmpty() {
++		t.Fatal("deque should be empty after all items are consumed")
++	}
++}
++
+ // --- WorkStealingPool ---
+ 
+ func TestWSP_SubmitTake(t *testing.T) {
+@@ -327,6 +480,59 @@ func TestWSP_StolenCount(t *testing.T) {
+ 	}
+ }
+ 
++func TestWSP_ConcurrentStealCount(t *testing.T) {
++	const total = 500
++	const thieves = 8
++
++	p := NewWorkStealingPool()
++	p.Register("owner")
++	for i := 0; i < thieves; i++ {
++		p.Register(fmt.Sprintf("thief-%d", i))
++	}
++	for i := 0; i < total; i++ {
++		if !p.Submit("owner", i) {
++			t.Fatal("submit to registered worker failed")
++		}
++	}
++
++	results := make(chan int, total)
++	var wg sync.WaitGroup
++	start := make(chan struct{})
++	for i := 0; i < thieves; i++ {
++		thiefID := fmt.Sprintf("thief-%d", i)
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			<-start
++			for {
++				item, _, ok := p.Steal(thiefID)
++				if !ok {
++					return
++				}
++				results <- item.(int)
++			}
++		}()
++	}
++
++	close(start)
++	wg.Wait()
++	close(results)
++
++	seen := make(map[int]bool, total)
++	for item := range results {
++		if seen[item] {
++			t.Fatalf("stole duplicate item: %d", item)
++		}
++		seen[item] = true
++	}
++	if len(seen) != total {
++		t.Fatalf("expected %d stolen items, got %d", total, len(seen))
++	}
++	if got := p.StolenCount(); got != total {
++		t.Fatalf("expected stolen count %d, got %d", total, got)
++	}
++}
++
+ func TestWSP_WorkerCount(t *testing.T) {
+ 	p := NewWorkStealingPool()
+ 	p.Register("w1")
+@@ -342,4 +548,4 @@ func TestWSP_SubmitUnregistered(t *testing.T) {
+ 	if p.Submit("ghost", "task") {
+ 		t.Fatal("submit to unregistered should fail")
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/sim/network.go b/repo/pkg/sim/network.go
+index e7b205d..20d2f45 100644
+--- a/base/pkg/sim/network.go
++++ b/repo/pkg/sim/network.go
+@@ -9,20 +9,22 @@ import (
+ 	"github.com/Mustafa4ngin/SwarmSync/pkg/merkle"
+ )
+ 
++const defaultEventLogLimit = 4096
++
+ // Event represents a discrete simulation event.
+ type Event struct {
+-	Time     uint64
+-	Type     EventType
+-	Source   string
+-	Target   string
+-	Payload  interface{}
++	Time    uint64
++	Type    EventType
++	Source  string
++	Target  string
++	Payload interface{}
+ }
+ 
+ // EventType identifies the kind of simulation event.
+ type EventType int
+ 
+ const (
+-	EventGossip     EventType = iota
++	EventGossip EventType = iota
+ 	EventMerkleDiff
+ 	EventNodeJoin
+ 	EventNodeLeave
+@@ -49,6 +51,7 @@ func NewNetworkSim(seed int64) *NetworkSim {
+ 		nodes:      make(map[string]*gossip.Protocol),
+ 		stores:     make(map[string]*gossip.StateStore),
+ 		partitions: make(map[string]map[string]bool),
++		events:     make([]Event, 0, defaultEventLogLimit),
+ 		rng:        rand.New(rand.NewSource(seed)),
+ 	}
+ }
+@@ -62,7 +65,7 @@ func (ns *NetworkSim) AddNode(nodeID string, fanout int) {
+ 	proto := gossip.NewProtocol(nodeID, store, sel, fanout)
+ 	ns.nodes[nodeID] = proto
+ 	ns.stores[nodeID] = store
+-	ns.events = append(ns.events, Event{
++	ns.recordEvent(Event{
+ 		Time:   ns.clock,
+ 		Type:   EventNodeJoin,
+ 		Source: nodeID,
+@@ -79,7 +82,7 @@ func (ns *NetworkSim) RemoveNode(nodeID string) {
+ 	for _, blocked := range ns.partitions {
+ 		delete(blocked, nodeID)
+ 	}
+-	ns.events = append(ns.events, Event{
++	ns.recordEvent(Event{
+ 		Time:   ns.clock,
+ 		Type:   EventNodeLeave,
+ 		Source: nodeID,
+@@ -105,7 +108,7 @@ func (ns *NetworkSim) Partition(a, b string) {
+ 	}
+ 	ns.partitions[a][b] = true
+ 	ns.partitions[b][a] = true
+-	ns.events = append(ns.events, Event{
++	ns.recordEvent(Event{
+ 		Time:   ns.clock,
+ 		Type:   EventPartition,
+ 		Source: a,
+@@ -123,7 +126,7 @@ func (ns *NetworkSim) Heal(a, b string) {
+ 	if ns.partitions[b] != nil {
+ 		delete(ns.partitions[b], a)
+ 	}
+-	ns.events = append(ns.events, Event{
++	ns.recordEvent(Event{
+ 		Time:   ns.clock,
+ 		Type:   EventHeal,
+ 		Source: a,
+@@ -172,7 +175,7 @@ func (ns *NetworkSim) RunGossipRound() SimRoundResult {
+ 			result.PushedTotal += exchange.PushedTo
+ 			result.PulledTotal += exchange.PulledFrom
+ 
+-			ns.events = append(ns.events, Event{
++			ns.recordEvent(Event{
+ 				Time:    ns.clock,
+ 				Type:    EventGossip,
+ 				Source:  nodeID,
+@@ -246,7 +249,7 @@ func (ns *NetworkSim) RunMerkleSyncRound() int {
+ 			}
+ 		}
+ 
+-		ns.events = append(ns.events, Event{
++		ns.recordEvent(Event{
+ 			Time:    ns.clock,
+ 			Type:    EventMerkleDiff,
+ 			Source:  nodeID,
+@@ -279,6 +282,15 @@ func (ns *NetworkSim) peerList() []string {
+ 	return list
+ }
+ 
++func (ns *NetworkSim) recordEvent(event Event) {
++	if len(ns.events) < defaultEventLogLimit {
++		ns.events = append(ns.events, event)
++		return
++	}
++	copy(ns.events, ns.events[1:])
++	ns.events[len(ns.events)-1] = event
++}
++
+ // Converged checks if all nodes have the same state hash.
+ func (ns *NetworkSim) Converged() bool {
+ 	ns.mu.Lock()
+@@ -334,4 +346,4 @@ type SimRoundResult struct {
+ 	PulledTotal int
+ 	Blocked     int
+ 	Dropped     int
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/sim/sim_test.go b/repo/pkg/sim/sim_test.go
+index 66e706c..82e2764 100644
+--- a/base/pkg/sim/sim_test.go
++++ b/repo/pkg/sim/sim_test.go
+@@ -131,6 +131,29 @@ func TestNetworkSim_EventLog(t *testing.T) {
+ 	}
+ }
+ 
++func TestNetworkSim_EventLogEvictsOldestPastCap(t *testing.T) {
++	ns := NewNetworkSim(42)
++
++	const extra = 3
++	for i := 0; i < defaultEventLogLimit+extra; i++ {
++		ns.recordEvent(Event{
++			Time: uint64(i),
++			Type: EventGossip,
++		})
++	}
++
++	log := ns.EventLog()
++	if len(log) != defaultEventLogLimit {
++		t.Fatalf("expected bounded event log length %d, got %d", defaultEventLogLimit, len(log))
++	}
++	if log[0].Time != extra {
++		t.Fatalf("expected oldest retained event time %d, got %d", extra, log[0].Time)
++	}
++	if log[len(log)-1].Time != defaultEventLogLimit+extra-1 {
++		t.Fatalf("expected newest retained event time %d, got %d", defaultEventLogLimit+extra-1, log[len(log)-1].Time)
++	}
++}
++
+ func TestNetworkSim_Clock(t *testing.T) {
+ 	ns := NewNetworkSim(42)
+ 	ns.AddNode("n1", 1)
+@@ -205,4 +228,4 @@ func TestNetworkSim_SplitBrainRecovery(t *testing.T) {
+ 		}
+ 	}
+ 	t.Fatal("split-brain recovery should converge")
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/transport/channel.go b/repo/pkg/transport/channel.go
+index 1c7a418..09c044b 100644
+--- a/base/pkg/transport/channel.go
++++ b/repo/pkg/transport/channel.go
+@@ -118,4 +118,4 @@ func MakeEnvelope(msgType MsgType, sender string, seqNum uint64, body []byte) *E
+ 		},
+ 		Body: body,
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/transport/codec.go b/repo/pkg/transport/codec.go
+index 61f2814..548b85b 100644
+--- a/base/pkg/transport/codec.go
++++ b/repo/pkg/transport/codec.go
+@@ -15,7 +15,7 @@ var (
+ 
+ const (
+ 	protocolVersion = 1
+-	maxPayloadSize  = 16 * 1024 * 1024 // 16 MB
++	maxPayloadSize  = 16 * 1024 * 1024      // 16 MB
+ 	headerSize      = 1 + 1 + 2 + 8 + 4 + 4 // version + type + senderLen + seqNum + bodyLen + checksum
+ )
+ 
+@@ -31,7 +31,8 @@ func NewCodec() *Codec {
+ 
+ // Encode serializes an Envelope into bytes.
+ // Wire format:
+-//   [version:1][type:1][senderLen:2][sender:N][seqNum:8][bodyLen:4][body:M][checksum:4]
++//
++//	[version:1][type:1][senderLen:2][sender:N][seqNum:8][bodyLen:4][body:M][checksum:4]
+ func (c *Codec) Encode(env *Envelope) ([]byte, error) {
+ 	senderLen := len(env.Header.Sender)
+ 	bodyLen := len(env.Body)
+@@ -205,4 +206,4 @@ func DecodeBytes(data []byte) ([]byte, int, error) {
+ 	result := make([]byte, bLen)
+ 	copy(result, data[n:n+int(bLen)])
+ 	return result, n + int(bLen), nil
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/transport/message.go b/repo/pkg/transport/message.go
+index 9c66c45..b3a3094 100644
+--- a/base/pkg/transport/message.go
++++ b/repo/pkg/transport/message.go
+@@ -4,21 +4,21 @@ package transport
+ type MsgType uint8
+ 
+ const (
+-	MsgPing         MsgType = 0x01
+-	MsgPingReq      MsgType = 0x02
+-	MsgAck          MsgType = 0x03
+-	MsgNack         MsgType = 0x04
+-	MsgGossipPush   MsgType = 0x10
+-	MsgGossipPull   MsgType = 0x11
++	MsgPing           MsgType = 0x01
++	MsgPingReq        MsgType = 0x02
++	MsgAck            MsgType = 0x03
++	MsgNack           MsgType = 0x04
++	MsgGossipPush     MsgType = 0x10
++	MsgGossipPull     MsgType = 0x11
+ 	MsgGossipPushPull MsgType = 0x12
+-	MsgGossipDigest MsgType = 0x13
+-	MsgMemberJoin   MsgType = 0x20
+-	MsgMemberLeave  MsgType = 0x21
+-	MsgMemberState  MsgType = 0x22
+-	MsgMerkleDiff   MsgType = 0x30
+-	MsgMerkleSync   MsgType = 0x31
+-	MsgCRDTState    MsgType = 0x40
+-	MsgCRDTDelta    MsgType = 0x41
++	MsgGossipDigest   MsgType = 0x13
++	MsgMemberJoin     MsgType = 0x20
++	MsgMemberLeave    MsgType = 0x21
++	MsgMemberState    MsgType = 0x22
++	MsgMerkleDiff     MsgType = 0x30
++	MsgMerkleSync     MsgType = 0x31
++	MsgCRDTState      MsgType = 0x40
++	MsgCRDTDelta      MsgType = 0x41
+ )
+ 
+ // Header is the fixed-size prefix of every message.
+@@ -61,4 +61,4 @@ func portStr(p uint16) string {
+ 		buf[i], buf[j] = buf[j], buf[i]
+ 	}
+ 	return string(buf)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/transport/transport_test.go b/repo/pkg/transport/transport_test.go
+index 9cd94e7..df62eb2 100644
+--- a/base/pkg/transport/transport_test.go
++++ b/repo/pkg/transport/transport_test.go
+@@ -280,7 +280,7 @@ func TestChannel_InboxFull(t *testing.T) {
+ 	ch := NewChannel(1)
+ 	ch.Register("n1")
+ 	env := MakeEnvelope(MsgPing, "n2", 1, nil)
+-	ch.Send("n1", env)  // fills buffer
++	ch.Send("n1", env)      // fills buffer
+ 	if ch.Send("n1", env) { // should drop
+ 		t.Fatal("send to full inbox should fail")
+ 	}
+@@ -323,4 +323,4 @@ func TestAddress_StringZero(t *testing.T) {
+ 	if a.String() != "0.0.0.0:0" {
+ 		t.Fatalf("expected 0.0.0.0:0, got %s", a.String())
+ 	}
+-}
+\ No newline at end of file
++}

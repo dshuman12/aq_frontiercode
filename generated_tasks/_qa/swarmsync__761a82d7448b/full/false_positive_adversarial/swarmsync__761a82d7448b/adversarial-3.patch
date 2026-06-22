@@ -1,0 +1,130 @@
+diff --git a/pkg/crdt/set.go b/pkg/crdt/set.go
+--- a/pkg/crdt/set.go
++++ b/pkg/crdt/set.go
+@@ -65,15 +65,18 @@ func (s *GSet) Merge(other *GSet) {
+ // add wins over concurrent remove. Each add is tagged with a unique
+ // (nodeID, counter) pair so that removes only affect observed adds.
+ type ORSet struct {
+ 	mu       sync.RWMutex
+ 	entries  map[string]map[ORTag]struct{} // element -> set of tags
+ 	counters map[string]uint64             // nodeID -> next counter
++	removed  map[ORTag]struct{}            // tombstoned tags (observed removes)
+ }
+ 
+ // ORTag uniquely identifies an add operation.
+ type ORTag struct {
+ 	NodeID  string
+ 	Counter uint64
+ }
+ 
+ // NewORSet creates an empty OR-Set.
+ func NewORSet() *ORSet {
+ 	return &ORSet{
+ 		entries:  make(map[string]map[ORTag]struct{}),
+ 		counters: make(map[string]uint64),
++		removed:  make(map[ORTag]struct{}),
+ 	}
+ }
+@@ -103,11 +106,17 @@ func (s *ORSet) Add(elem string, nodeID string) {
+ // Remove removes an element by clearing all its observed tags.
+ // Concurrent adds (unseen tags) will survive.
+ func (s *ORSet) Remove(elem string) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
++	for tag := range s.entries[elem] {
++		s.removed[tag] = struct{}{}
++	}
+ 	delete(s.entries, elem)
+ }
+@@ -159,18 +168,33 @@ func (s *ORSet) Merge(other *ORSet) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+ 	other.mu.RLock()
+ 	defer other.mu.RUnlock()
+ 
++	// Union tombstones first so observed removes are never undone.
++	for tag := range other.removed {
++		s.removed[tag] = struct{}{}
++	}
++
+ 	for elem, tags := range other.entries {
+ 		if s.entries[elem] == nil {
+ 			s.entries[elem] = make(map[ORTag]struct{})
+ 		}
+ 		for tag := range tags {
+ 			s.entries[elem][tag] = struct{}{}
+ 		}
+ 	}
++
++	// Drop any tags that have been tombstoned on either replica.
++	for elem, tags := range s.entries {
++		for tag := range tags {
++			if _, dead := s.removed[tag]; dead {
++				delete(tags, tag)
++			}
++		}
++		if len(tags) == 0 {
++			delete(s.entries, elem)
++		}
++	}
++
+ 	for nodeID, c := range other.counters {
+ 		if c > s.counters[nodeID] {
+ 			s.counters[nodeID] = c
+ 		}
+ 	}
+ }
+diff --git a/pkg/crdt/ormap.go b/pkg/crdt/ormap.go
+--- a/pkg/crdt/ormap.go
++++ b/pkg/crdt/ormap.go
+@@ -57,11 +57,14 @@ func (m *ORMap) Get(key string) (interface{}, bool) {
+ // Delete removes a key.
+ func (m *ORMap) Delete(key string) {
+ 	m.mu.Lock()
+ 	defer m.mu.Unlock()
+ 	m.keys.mu.Lock()
++	for tag := range m.keys.entries[key] {
++		m.keys.removed[tag] = struct{}{}
++	}
+ 	delete(m.keys.entries, key)
+ 	m.keys.mu.Unlock()
+ }
+diff --git a/pkg/crdt/convergence_test.go b/pkg/crdt/convergence_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/crdt/convergence_test.go
+@@ -0,0 +1,29 @@
++package crdt
++
++import "testing"
++
++// Removal observed on one replica must survive a later merge from a replica
++// that still holds the element.
++func TestORSet_RemovePersistsAfterMerge(t *testing.T) {
++	a := NewORSet()
++	a.Add("x", "n1")
++
++	b := NewORSet()
++	b.Merge(a) // b observes the add
++	b.Remove("x")
++
++	a.Merge(b) // a merges b's removal
++	if a.Contains("x") {
++		t.Fatal("removal must persist after merge")
++	}
++}
++
++// ORMap deletes must not be resurrected by a later merge.
++func TestORMap_DeletePersistsAfterMerge(t *testing.T) {
++	a := NewORMap()
++	a.Put("k", "v", 100, "n1")
++
++	b := NewORMap()
++	b.Merge(a)
++	b.Delete("k")
++
++	a.Merge(b)
++	if _, ok := a.Get("k"); ok {
++		t.Fatal("delete must persist after merge")
++	}
++}

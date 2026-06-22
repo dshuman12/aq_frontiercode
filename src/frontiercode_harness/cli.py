@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import json
 import sys
 import threading
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -170,18 +171,16 @@ def _run_eval(args: argparse.Namespace) -> int:
     for model in models:
         for effort in efforts:
             cell_jobs_dir = _cell_jobs_dir(args.jobs_dir, model, effort)
-            prior_job_dirs = _job_result_dirs(cell_jobs_dir)
-            result, attempts = _run_harbor_with_retries(
+            result, attempts, job_dir = _run_harbor_with_retries(
                 args=args,
                 model=model,
                 effort=effort,
                 jobs_dir=cell_jobs_dir,
-                known_job_dirs=prior_job_dirs,
             )
             cell = {
                 "model": model or "harbor-default",
                 "reasoning_effort": effort,
-                "jobs_dir": str(cell_jobs_dir),
+                "jobs_dir": str(job_dir),
                 "attempts": attempts,
                 "returncode": result.returncode,
             }
@@ -191,13 +190,9 @@ def _run_eval(args: argparse.Namespace) -> int:
                 run_manifest["status"] = "failed"
                 _write_eval_manifest(output, run_manifest)
                 return result.returncode
-            cell_results = []
-            new_job_dirs = sorted(_job_result_dirs(cell_jobs_dir) - prior_job_dirs)
-            if new_job_dirs:
-                for job_dir in new_job_dirs:
-                    cell_results.extend(load_frontiercode_results(job_dir))
-            else:
-                cell_results.extend(load_frontiercode_results(cell_jobs_dir))
+            # Score only this invocation's own Harbor job dir so concurrent eval
+            # runs sharing the cell directory can never bleed into each other.
+            cell_results = load_frontiercode_results(job_dir)
             cell["result_count"] = len(cell_results)
             results.extend(cell_results)
     if not results:
@@ -279,30 +274,44 @@ def _cell_jobs_dir(jobs_dir: Path, model: str, effort: str) -> Path:
     return jobs_dir / f"model-{model_slug}" / f"reasoning-{_slug(effort)}"
 
 
+def _unique_job_name() -> str:
+    """Collision-free Harbor job name unique to a single eval invocation.
+
+    Keeps the human-readable timestamp Harbor uses by default, then appends a
+    random suffix so two runs launched in the same second (or sharing a cell
+    directory) never land in the same job dir.
+    """
+    return datetime.now().strftime("%Y-%m-%d__%H-%M-%S") + "__" + uuid.uuid4().hex[:8]
+
+
 def _run_harbor_with_retries(
     *,
     args: argparse.Namespace,
     model: str,
     effort: str,
     jobs_dir: Path,
-    known_job_dirs: set[Path] | None = None,
 ):
     attempts = 0
     total_attempts = args.retries + 1
-    seen_job_dirs = set(known_job_dirs or ())
     completed_trials = 0
+    job_dir = jobs_dir
     while True:
         attempts += 1
+        # Each attempt gets a unique Harbor job name so its trials land in a
+        # directory we own exclusively. This is what prevents the live counter
+        # and final scoring from picking up trials produced by a concurrent run.
+        job_name = _unique_job_name()
+        job_dir = jobs_dir / job_name
         result, completed_trials = _run_harbor_attempt_with_progress(
             args=args,
             model=model,
             effort=effort,
-            jobs_dir=jobs_dir,
-            seen_job_dirs=seen_job_dirs,
+            job_name=job_name,
+            job_dir=job_dir,
             completed_trials=completed_trials,
         )
         if result.returncode == 0 or attempts >= total_attempts:
-            return result, attempts
+            return result, attempts, job_dir
         sys.stderr.write(result.stderr)
         sys.stderr.write(
             "retrying Harbor launch "
@@ -317,11 +326,12 @@ def _run_harbor_attempt_with_progress(
     args: argparse.Namespace,
     model: str,
     effort: str,
-    jobs_dir: Path,
-    seen_job_dirs: set[Path],
+    job_name: str,
+    job_dir: Path,
     completed_trials: int,
 ):
     holder: dict[str, Any] = {}
+    seen_job_dirs: set[Path] = set()
 
     def run() -> None:
         try:
@@ -331,7 +341,7 @@ def _run_harbor_attempt_with_progress(
                 models=[model] if model else [],
                 trials=args.trials,
                 reasoning_effort=effort,
-                jobs_dir=jobs_dir,
+                jobs_dir=job_dir.parent,
                 harbor_bin=args.harbor_bin,
                 include_task_names=args.include_task_name,
                 force_build=args.force_build,
@@ -339,6 +349,7 @@ def _run_harbor_attempt_with_progress(
                 artifact_paths=args.artifact,
                 timeout_seconds=args.timeout_seconds,
                 n_concurrent=args.n_concurrent,
+                job_name=job_name,
             )
         except BaseException as exc:
             holder["exception"] = exc
@@ -348,14 +359,14 @@ def _run_harbor_attempt_with_progress(
     while thread.is_alive():
         thread.join(_TRIAL_PROGRESS_POLL_SECONDS)
         completed_trials = _report_new_trial_completions(
-            jobs_dir=jobs_dir,
+            job_dir=job_dir,
             seen_job_dirs=seen_job_dirs,
             completed_trials=completed_trials,
             model=model,
             effort=effort,
         )
     completed_trials = _report_new_trial_completions(
-        jobs_dir=jobs_dir,
+        job_dir=job_dir,
         seen_job_dirs=seen_job_dirs,
         completed_trials=completed_trials,
         model=model,
@@ -368,13 +379,13 @@ def _run_harbor_attempt_with_progress(
 
 def _report_new_trial_completions(
     *,
-    jobs_dir: Path,
+    job_dir: Path,
     seen_job_dirs: set[Path],
     completed_trials: int,
     model: str,
     effort: str,
 ) -> int:
-    for trial_dir in sorted(_job_result_dirs(jobs_dir) - seen_job_dirs):
+    for trial_dir in sorted(_job_result_dirs(job_dir) - seen_job_dirs):
         snapshot = _trial_progress_snapshot(trial_dir)
         if snapshot is None:
             continue

@@ -1,0 +1,191 @@
+diff --git a/pkg/bloom/filter.go b/pkg/bloom/filter.go
+--- a/pkg/bloom/filter.go
++++ b/pkg/bloom/filter.go
+@@ -2,6 +2,7 @@ package bloom
+ 
+ import (
+ 	"encoding/binary"
+ 	"hash/fnv"
++	"math/bits"
+ 	"math"
+ 	"sync"
+ )
+@@ -9,11 +10,13 @@ import (
+ // Filter is a standard Bloom filter for probabilistic set membership testing.
+ // False positives are possible; false negatives are not.
+ type Filter struct {
+ 	mu      sync.RWMutex
+ 	bits    []uint64 // bit array stored as uint64 words
+ 	size    uint     // total number of bits
+ 	hashNum uint     // number of hash functions
+ 	count   uint     // number of elements inserted
++	fillCache float64 // cached fill ratio
++	fillDirty bool    // whether fillCache needs recomputation
+ }
+ 
+ // NewFilter creates a Bloom filter optimized for the given expected number
+@@ -70,6 +73,7 @@ func (f *Filter) Add(data []byte) {
+ 		f.bits[word] |= 1 << bit
+ 	}
+ 	f.count++
++	f.fillDirty = true
+ }
+ 
+ // Contains tests if an element might be in the set.
+@@ -119,14 +123,17 @@ func (f *Filter) HashNum() uint {
+ 	return f.hashNum
+ }
+ 
+ // FillRatio returns the fraction of bits that are set.
+ func (f *Filter) FillRatio() float64 {
+-	f.mu.RLock()
+-	defer f.mu.RUnlock()
+-	set := 0
+-	for _, word := range f.bits {
+-		for word != 0 {
+-			set++
+-			word &= word - 1
+-		}
+-	}
+-	return float64(set) / float64(f.size)
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	if f.fillDirty {
++		set := 0
++		for _, word := range f.bits {
++			set += bits.OnesCount64(word)
++		}
++		f.fillCache = float64(set) / float64(f.size)
++		f.fillDirty = false
++	}
++	return f.fillCache
+ }
+ 
+ // Reset clears all bits and resets the count.
+@@ -135,6 +142,8 @@ func (f *Filter) Reset() {
+ 	for i := range f.bits {
+ 		f.bits[i] = 0
+ 	}
+ 	f.count = 0
++	f.fillCache = 0
++	f.fillDirty = false
+ }
+ 
+ // Union merges another Bloom filter into this one (bitwise OR).
+@@ -150,6 +159,7 @@ func (f *Filter) Union(other *Filter) bool {
+ 	for i := range f.bits {
+ 		f.bits[i] |= other.bits[i]
+ 	}
+ 	f.count += other.count
++	f.fillDirty = true
+ 	return true
+ }
+@@ -255,9 +265,10 @@ func (cf *CountingFilter) decrementCounter(pos uint64) {
+ 	byteIdx := pos / 2
+ 	if pos%2 == 0 {
+ 		low := cf.counters[byteIdx] & 0x0F
+-		if low > 0 {
++		if low > 0 && low < 15 {
+ 			cf.counters[byteIdx] = (cf.counters[byteIdx] & 0xF0) | (low - 1)
+ 		}
+ 	} else {
+ 		high := cf.counters[byteIdx] >> 4
+-		if high > 0 {
++		if high > 0 && high < 15 {
+ 			cf.counters[byteIdx] = (cf.counters[byteIdx] & 0x0F) | ((high - 1) << 4)
+ 		}
+ 	}
+ }
+diff --git a/pkg/bloom/bloom_test.go b/pkg/bloom/bloom_test.go
+--- a/pkg/bloom/bloom_test.go
++++ b/pkg/bloom/bloom_test.go
+@@ -1,8 +1,9 @@
+ package bloom
+ 
+ import (
+ 	"fmt"
++	"math/bits"
+ 	"testing"
+ )
+ 
+ // --- Standard Filter ---
+@@ -291,3 +292,77 @@ func TestCountingFilter_FNV_AddRemove(t *testing.T) {
+ 		}
+ 	}
+ }
++
++// Regression: an element added more times than counters can hold must never
++// test as absent after removals. On the buggy base, saturated counters were
++// decremented to zero producing a false negative.
++func TestCountingFilter_SaturationNoFalseNegative(t *testing.T) {
++	cf := NewCountingFilter(1000, 0.01)
++	x := []byte("x")
++	for i := 0; i < 20; i++ {
++		cf.Add(x)
++	}
++	for i := 0; i < 16; i++ {
++		cf.Remove(x)
++	}
++	if !cf.Contains(x) {
++		t.Fatal("false negative after saturation: added 20 times, removed 16")
++	}
++}
++
++// Repeated adds with a single removal must still test present.
++func TestCountingFilter_RepeatedAddPartialRemove(t *testing.T) {
++	cf := NewCountingFilter(1000, 0.01)
++	x := []byte("keep")
++	for i := 0; i < 30; i++ {
++		cf.Add(x)
++	}
++	cf.Remove(x)
++	if !cf.Contains(x) {
++		t.Fatal("element added 30 times, removed once must remain present")
++	}
++}
++
++// Heavy interleaved add/remove churn from unrelated elements must not evict
++// a target element that has been added more times than removed.
++func TestCountingFilter_ChurnNoFalseNegative(t *testing.T) {
++	cf := NewCountingFilter(128, 0.01)
++	target := []byte("target")
++	cf.Add(target)
++	cf.Add(target)
++	for i := 0; i < 2000; i++ {
++		e := []byte(fmt.Sprintf("churn-%d", i))
++		cf.Add(e)
++		cf.Remove(e)
++	}
++	if !cf.Contains(target) {
++		t.Fatal("target evicted by unrelated churn")
++	}
++}
++
++func scanFillRatio(f *Filter) float64 {
++	set := 0
++	for _, w := range f.bits {
++		set += bits.OnesCount64(w)
++	}
++	return float64(set) / float64(f.size)
++}
++
++// FillRatio must match a full bit scan across additions, unions, and resets.
++func TestFilter_FillRatioMatchesScan(t *testing.T) {
++	f := NewFilter(1000, 0.01)
++	check := func() {
++		if got, want := f.FillRatio(), scanFillRatio(f); got != want {
++			t.Fatalf("FillRatio mismatch: got %v want %v", got, want)
++		}
++	}
++	check()
++	for i := 0; i < 100; i++ {
++		f.Add([]byte(fmt.Sprintf("e-%d", i)))
++		check()
++	}
++	g := NewFilter(1000, 0.01)
++	g.Add([]byte("union-elem"))
++	f.Union(g)
++	check()
++	f.Reset()
++	check()
++}

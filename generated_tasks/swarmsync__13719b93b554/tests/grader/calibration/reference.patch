@@ -1,0 +1,142 @@
+diff --git a/pkg/clock/clock_test.go b/pkg/clock/clock_test.go
+index 30551f2..41c6628 100644
+--- a/pkg/clock/clock_test.go
++++ b/pkg/clock/clock_test.go
+@@ -571,4 +571,41 @@ func TestVectorTimestamp_MergeAssociative(t *testing.T) {
+ 	if ab.Compare(abc) != Equal {
+ 		t.Fatal("merge should be associative")
+ 	}
+-}
+\ No newline at end of file
++}
++// --- Lamport clock tests ---
++
++func TestLamport_Tick(t *testing.T) {
++	lc := NewLamportClock("n1")
++	ts := lc.Tick("n1").(*LamportTimestamp)
++	if ts.Counter != 1 { t.Fatalf("expected 1, got %d", ts.Counter) }
++	ts2 := lc.Tick("n1").(*LamportTimestamp)
++	if ts2.Counter != 2 { t.Fatalf("expected 2, got %d", ts2.Counter) }
++}
++
++func TestLamport_Witness(t *testing.T) {
++	a := NewLamportClock("a")
++	b := NewLamportClock("b")
++	a.Tick("a"); a.Tick("a"); a.Tick("a")
++	tsA := a.Now()
++	tsB := b.Witness("b", tsA).(*LamportTimestamp)
++	if tsB.Counter != 4 { t.Fatalf("expected 4 (max(0,3)+1), got %d", tsB.Counter) }
++}
++
++func TestLamport_Compare(t *testing.T) {
++	a := &LamportTimestamp{Counter: 1, NodeID: "a"}
++	b := &LamportTimestamp{Counter: 2, NodeID: "b"}
++	if a.Compare(b) != Before { t.Fatal("a should be before b") }
++	if b.Compare(a) != After { t.Fatal("b should be after a") }
++}
++
++func TestLamport_Value(t *testing.T) {
++	lc := NewLamportClock("n")
++	lc.Tick("n"); lc.Tick("n")
++	if lc.Value() != 2 { t.Fatal("expected 2") }
++}
++
++func TestLamport_Bytes(t *testing.T) {
++	lt := &LamportTimestamp{Counter: 42, NodeID: "node"}
++	b := lt.Bytes()
++	if len(b) != 12 { t.Fatalf("expected 12 bytes, got %d", len(b)) }
++}
+diff --git a/pkg/clock/lamport.go b/pkg/clock/lamport.go
+new file mode 100644
+index 0000000..360e00b
+--- /dev/null
++++ b/pkg/clock/lamport.go
+@@ -0,0 +1,88 @@
++package clock
++
++import "sync"
++
++// LamportClock implements a simple Lamport logical clock.
++// Each event increments the counter; receiving a message
++// takes the max of local and remote then increments.
++type LamportClock struct {
++	mu      sync.Mutex
++	nodeID  string
++	counter uint64
++}
++
++// NewLamportClock creates a Lamport clock for the given node.
++func NewLamportClock(nodeID string) *LamportClock {
++	return &LamportClock{nodeID: nodeID}
++}
++
++// Tick increments the clock for a local event.
++func (lc *LamportClock) Tick(nodeID string) Timestamp {
++	lc.mu.Lock()
++	defer lc.mu.Unlock()
++	lc.counter++
++	return &LamportTimestamp{Counter: lc.counter, NodeID: lc.nodeID}
++}
++
++// Witness merges a remote timestamp and increments.
++func (lc *LamportClock) Witness(nodeID string, other Timestamp) Timestamp {
++	lc.mu.Lock()
++	defer lc.mu.Unlock()
++	if lt, ok := other.(*LamportTimestamp); ok {
++		if lt.Counter > lc.counter {
++			lc.counter = lt.Counter
++		}
++	}
++	lc.counter++
++	return &LamportTimestamp{Counter: lc.counter, NodeID: lc.nodeID}
++}
++
++// Now returns the current timestamp without advancing.
++func (lc *LamportClock) Now() Timestamp {
++	lc.mu.Lock()
++	defer lc.mu.Unlock()
++	return &LamportTimestamp{Counter: lc.counter, NodeID: lc.nodeID}
++}
++
++// NodeID returns the clock owner.
++func (lc *LamportClock) NodeID() string { return lc.nodeID }
++
++// Value returns the raw counter value.
++func (lc *LamportClock) Value() uint64 {
++	lc.mu.Lock()
++	defer lc.mu.Unlock()
++	return lc.counter
++}
++
++// LamportTimestamp is a simple (counter, nodeID) pair.
++type LamportTimestamp struct {
++	Counter uint64
++	NodeID  string
++}
++
++// Compare returns ordering: lower counter = Before, higher = After.
++// Ties broken by node ID.
++func (lt *LamportTimestamp) Compare(other Timestamp) Ordering {
++	o, ok := other.(*LamportTimestamp)
++	if !ok { return Concurrent }
++	if lt.Counter < o.Counter { return Before }
++	if lt.Counter > o.Counter { return After }
++	if lt.NodeID == o.NodeID { return Equal }
++	if lt.NodeID < o.NodeID { return Before }
++	return After
++}
++
++// Bytes serializes the timestamp.
++func (lt *LamportTimestamp) Bytes() []byte {
++	buf := make([]byte, 8+len(lt.NodeID))
++	buf[0] = byte(lt.Counter >> 56)
++	buf[1] = byte(lt.Counter >> 48)
++	buf[2] = byte(lt.Counter >> 40)
++	buf[3] = byte(lt.Counter >> 32)
++	buf[4] = byte(lt.Counter >> 24)
++	buf[5] = byte(lt.Counter >> 16)
++	buf[6] = byte(lt.Counter >> 8)
++	buf[7] = byte(lt.Counter)
++	copy(buf[8:], lt.NodeID)
++	return buf
++}

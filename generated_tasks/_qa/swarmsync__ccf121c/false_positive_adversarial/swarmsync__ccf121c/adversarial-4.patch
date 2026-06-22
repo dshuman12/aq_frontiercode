@@ -1,0 +1,73 @@
+diff --git a/pkg/lru/lru.go b/pkg/lru/lru.go
+--- a/pkg/lru/lru.go
++++ b/pkg/lru/lru.go
+@@
+ func (c *Cache) evictOldest() {
+-	el := c.order.Front()
++	el := c.order.Back()
+ 	if el == nil {
+ 		return
+ 	}
+@@
+ 	if el, ok := c.items[key]; ok {
++		c.order.MoveToFront(el)
+ 		el.Value.(*entry).value = value
+ 		return
+ 	}
+diff --git a/pkg/lru/lru_eviction_test.go b/pkg/lru/lru_eviction_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/lru/lru_eviction_test.go
+@@
++package lru
++
++import "testing"
++
++// TestEvictsLeastRecentlyUsed checks that exceeding capacity drops the oldest key.
++func TestEvictsLeastRecentlyUsed(t *testing.T) {
++	c := NewCache(2)
++	c.Put("a", 1)
++	c.Put("b", 2)
++	c.Put("c", 3) // should evict the least-recently-used key "a"
++	if _, ok := c.Get("a"); ok {
++		t.Fatal("expected least-recently-used key 'a' to be evicted")
++	}
++	if _, ok := c.Get("b"); !ok {
++		t.Fatal("expected 'b' to survive")
++	}
++	if _, ok := c.Get("c"); !ok {
++		t.Fatal("expected newly inserted 'c' to survive")
++	}
++}
++
++// TestGetRefreshesRecency checks that a read protects a key from eviction.
++func TestGetRefreshesRecency(t *testing.T) {
++	c := NewCache(2)
++	c.Put("a", 1)
++	c.Put("b", 2)
++	if _, ok := c.Get("a"); !ok {
++		t.Fatal("expected 'a' present")
++	}
++	c.Put("c", 3) // now "b" is oldest and should be evicted
++	if _, ok := c.Get("b"); ok {
++		t.Fatal("expected 'b' to be evicted after 'a' was refreshed")
++	}
++	if _, ok := c.Get("a"); !ok {
++		t.Fatal("expected refreshed 'a' to survive")
++	}
++}
++
++// TestPutRefreshesRecency checks re-Put of an existing key refreshes recency.
++func TestPutRefreshesRecency(t *testing.T) {
++	c := NewCache(2)
++	c.Put("a", 1)
++	c.Put("b", 2)
++	c.Put("a", 10) // refresh "a"
++	c.Put("c", 3)  // should evict "b"
++	if _, ok := c.Get("b"); ok {
++		t.Fatal("expected 'b' to be evicted")
++	}
++	if _, ok := c.Get("a"); !ok {
++		t.Fatal("expected re-put 'a' to survive")
++	}
++}

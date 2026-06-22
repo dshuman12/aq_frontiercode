@@ -2,60 +2,38 @@ diff --git a/pkg/crdt/set.go b/pkg/crdt/set.go
 --- a/pkg/crdt/set.go
 +++ b/pkg/crdt/set.go
 @@
- func (o *ORSet) Merge(other *ORSet) {
- 	o.mu.Lock()
- 	defer o.mu.Unlock()
- 	other.mu.RLock()
- 	defer other.mu.RUnlock()
- 
--	for elem, tags := range other.entries {
--		o.entries[elem] = tags
--	}
-+	for elem, tags := range other.entries {
-+		local, ok := o.entries[elem]
-+		if !ok {
-+			local = make(map[ORTag]bool)
-+			o.entries[elem] = local
-+		}
-+		for tag := range tags {
-+			local[tag] = true
-+		}
-+	}
- 
- 	for node, c := range other.counters {
- 		if c > o.counters[node] {
- 			o.counters[node] = c
+ 		if s.entries[elem] == nil {
+ 			s.entries[elem] = make(map[ORTag]struct{})
  		}
- 	}
- }
-diff --git a/pkg/crdt/orset_merge_union_test.go b/pkg/crdt/orset_merge_union_test.go
+-		s.entries[elem] = make(map[ORTag]struct{})
+ 		for tag := range tags {
+ 			s.entries[elem][tag] = struct{}{}
+ 		}
+@@
+-	return len(tags) == 0
++	return len(tags) > 0
+ diff --git a/pkg/crdt/orset_shortcut_test.go b/pkg/crdt/orset_shortcut_test.go
 new file mode 100644
 --- /dev/null
-+++ b/pkg/crdt/orset_merge_union_test.go
-@@
++++ b/pkg/crdt/orset_shortcut_test.go
+@@ -0,0 +1,21 @@
 +package crdt
 +
 +import "testing"
 +
-+// TestORSet_MergeUnionsSharedTags ensures a shared element retains the union
-+// of both replicas' tags after a bidirectional merge.
-+func TestORSet_MergeUnionsSharedTags(t *testing.T) {
++// TestORSet_ShortcutMergeUnion is a minimal smoke test covering the inverted
++// Contains bug and the Merge tag-loss bug for a single shared element.
++func TestORSet_ShortcutMergeUnion(t *testing.T) {
 +	a := NewORSet("a")
 +	b := NewORSet("b")
-+
 +	a.Add("x")
 +	b.Add("x")
-+
 +	a.Merge(b)
 +	b.Merge(a)
-+
-+	if !a.Contains("x") || !b.Contains("x") {
-+		t.Fatal("both replicas must contain x after merge")
++	if !a.Contains("x") {
++		t.Fatal("replica a should still contain x after merge")
 +	}
-+	if got := len(a.entries["x"]); got != 2 {
-+		t.Fatalf("replica a: expected union of 2 tags, got %d", got)
-+	}
-+	if got := len(b.entries["x"]); got != 2 {
-+		t.Fatalf("replica b: expected union of 2 tags, got %d", got)
++	if !b.Contains("x") {
++		t.Fatal("replica b should still contain x after merge")
 +	}
 +}

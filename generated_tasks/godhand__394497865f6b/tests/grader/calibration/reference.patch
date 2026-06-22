@@ -1,0 +1,215 @@
+diff --git a/server/api/routers/health.py b/server/api/routers/health.py
+index 66479f2..266a6b9 100644
+--- a/server/api/routers/health.py
++++ b/server/api/routers/health.py
+@@ -1,14 +1,49 @@
+-from fastapi import APIRouter, Request
++from __future__ import annotations
+ 
++import time
++
++from fastapi import APIRouter, Request, Response, status
++
++from server.config import get_app_config
++from server.external.db.mongo import MongoDBClient
+ from server.utils.logging import get_app_logger
+ 
+ app_logger = get_app_logger()
+ 
+ health_routes = APIRouter(tags=["health"])
++_START_TIME_MONOTONIC = time.monotonic()
+ 
+ 
+ @health_routes.get("/health")
+ def health_check(request: Request):
+     client_host = request.client.host if request.client else "unknown"
+     app_logger.info(f"Health check received from {client_host}")
+-    return {"status": "ok"}
++    return {
++        "status": "ok",
++        "uptimeSeconds": int(max(0, time.monotonic() - _START_TIME_MONOTONIC)),
++    }
++
++
++@health_routes.get("/ready")
++def readiness_check(response: Response):
++    checks: dict[str, dict[str, str]] = {}
++    ready = True
++
++    try:
++        MongoDBClient.get_client().admin.command("ping")
++        checks["mongo"] = {"status": "ok"}
++    except Exception as exc:
++        ready = False
++        checks["mongo"] = {"status": "error", "detail": str(exc)}
++
++    cfg = get_app_config()
++    checks["env"] = {"status": "ok", "value": "development" if cfg.IS_DEV else "production"}
++
++    if not ready:
++        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
++
++    return {
++        "status": "ready" if ready else "not_ready",
++        "checks": checks,
++        "uptimeSeconds": int(max(0, time.monotonic() - _START_TIME_MONOTONIC)),
++    }
+diff --git a/server/app.py b/server/app.py
+index 10152a9..785ab57 100755
+--- a/server/app.py
++++ b/server/app.py
+@@ -19,21 +19,23 @@ from server.external import initialize_services
+ # Import MiddleWare
+ from server.api.middleware.middleware import register_middleware
+ from server.api.security.rate_limit import initialize_auth_rate_limiter
+-from server.config import get_app_config
+-
+-# Import Routers
+-from server.api.routers import register_routers
++from server.config import get_app_config
++from server.utils.startup_alerts import emit_startup_alerts
++
++# Import Routers
++from server.api.routers import register_routers
+ 
+ # Import Error Handler
+ from server.utils.error_handlers import register_error_handlers
+ 
+-def create_app() -> FastAPI:
+-    """Create FastAPI application."""
+-    # Create FastAPI and Register HTTP Endpoints
+-    init_time = time.time()
+-    fastapi_app = FastAPI()
+-
+-    # Register Error Handlers
++def create_app() -> FastAPI:
++    """Create FastAPI application."""
++    # Create FastAPI and Register HTTP Endpoints
++    init_time = time.time()
++    fastapi_app = FastAPI()
++    cfg = get_app_config()
++
++    # Register Error Handlers
+     start_time = time.time()
+     register_error_handlers(fastapi_app)
+     app_logger.info(f"Registered error handlers [{time.time() - start_time:.5f}s]")
+@@ -50,12 +52,14 @@ def create_app() -> FastAPI:
+ 
+     # Routers
+     start_time = time.time()
+-    register_routers(
+-        fastapi_app,
+-        include_chat_ws=True,
+-        include_game_ws=get_app_config().MAIN_APP_INCLUDE_GAME_WS,
+-    )
+-    app_logger.info(f"Registered routers [{time.time() - start_time:.2f}s]")
++    register_routers(
++        fastapi_app,
++        include_chat_ws=True,
++        include_game_ws=cfg.MAIN_APP_INCLUDE_GAME_WS,
++    )
++    app_logger.info(f"Registered routers [{time.time() - start_time:.2f}s]")
++
++    emit_startup_alerts(cfg=cfg, logger=app_logger, service_name="api")
+ 
+     # Service Initialization
+     start_time = time.time()
+diff --git a/server/game_server.py b/server/game_server.py
+index 1c21f8b..ade3855 100644
+--- a/server/game_server.py
++++ b/server/game_server.py
+@@ -21,6 +21,7 @@ from server.config import get_app_config
+ from server.external import initialize_services
+ from server.utils.error_handlers import register_error_handlers
+ from server.utils.logging import get_app_logger
++from server.utils.startup_alerts import emit_startup_alerts
+ 
+ app_logger = get_app_logger()
+ 
+@@ -124,6 +125,7 @@ async def _register_and_heartbeat_loop() -> None:
+ def create_game_server_app() -> FastAPI:
+     init_time = time.time()
+     fastapi_app = FastAPI()
++    cfg = get_app_config()
+ 
+     start_time = time.time()
+     register_error_handlers(fastapi_app)
+@@ -136,6 +138,7 @@ def create_game_server_app() -> FastAPI:
+     start_time = time.time()
+     initialize_services()
+     app_logger.info(f"[GameServer] Initialized services [{time.time() - start_time:.5f}s]")
++    emit_startup_alerts(cfg=cfg, logger=app_logger, service_name="game-server")
+ 
+     fastapi_app.include_router(health_routes)
+     register_game_ws_router(fastapi_app)
+diff --git a/server/tests/test_health_api.py b/server/tests/test_health_api.py
+new file mode 100644
+index 0000000..8e3972d
+--- /dev/null
++++ b/server/tests/test_health_api.py
+@@ -0,0 +1,21 @@
++from __future__ import annotations
++
++
++def test_health_endpoint(client):
++    response = client.get("/health")
++    assert response.status_code == 200
++    payload = response.json()
++    assert payload["status"] == "ok"
++    assert isinstance(payload.get("uptimeSeconds"), int)
++    assert payload["uptimeSeconds"] >= 0
++
++
++def test_ready_endpoint(client):
++    response = client.get("/ready")
++    assert response.status_code == 200
++    payload = response.json()
++    assert payload["status"] == "ready"
++    assert payload["checks"]["mongo"]["status"] == "ok"
++    assert isinstance(payload.get("uptimeSeconds"), int)
++    assert payload["uptimeSeconds"] >= 0
++
+diff --git a/server/utils/startup_alerts.py b/server/utils/startup_alerts.py
+new file mode 100644
+index 0000000..74f64fd
+--- /dev/null
++++ b/server/utils/startup_alerts.py
+@@ -0,0 +1,38 @@
++from __future__ import annotations
++
++from server.config import BaseConfig
++
++
++def emit_startup_alerts(*, cfg: BaseConfig, logger, service_name: str) -> None:
++    """
++    Lightweight production startup warnings to reduce obvious misconfiguration risk.
++    Intentionally log-only (no hard fail) to keep student project ops simple.
++    """
++    if cfg.IS_DEV:
++        return
++
++    if not cfg.JWT_COOKIE_SECURE:
++        logger.warning("[%s ALERT] JWT_COOKIE_SECURE=false in production.", service_name)
++
++    samesite = (cfg.JWT_COOKIE_SAMESITE or "").strip().lower()
++    if samesite == "none" and not cfg.JWT_COOKIE_SECURE:
++        logger.warning(
++            "[%s ALERT] JWT_COOKIE_SAMESITE=None requires JWT_COOKIE_SECURE=true in browsers.",
++            service_name,
++        )
++
++    if cfg.SECRET_KEY == cfg.JWT_SECRET_KEY:
++        logger.warning("[%s ALERT] SECRET_KEY and JWT_SECRET_KEY should not be identical.", service_name)
++
++    local_origins = [
++        origin
++        for origin in cfg.CORS_ALLOWED_ORIGINS
++        if "localhost" in origin.lower() or "127.0.0.1" in origin.lower()
++    ]
++    if local_origins:
++        logger.warning(
++            "[%s ALERT] Localhost origins present in production CORS_ALLOWED_ORIGINS: %s",
++            service_name,
++            ",".join(local_origins),
++        )
++

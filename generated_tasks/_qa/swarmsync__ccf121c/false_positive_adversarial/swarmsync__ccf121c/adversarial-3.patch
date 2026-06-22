@@ -1,0 +1,61 @@
+diff --git a/pkg/lru/lru.go b/pkg/lru/lru.go
+--- a/pkg/lru/lru.go
++++ b/pkg/lru/lru.go
+@@
+ 	if elem, ok := c.items[key]; ok {
+ 		elem.Value.(*entry).value = value
++		c.order.MoveToFront(elem)
+ 		return
+ 	}
+@@
+ func (c *Cache) evictOldest() {
+-	elem := c.order.Front()
++	elem := c.order.Back()
+ 	if elem == nil {
+ 		return
+ 	}
+diff --git a/pkg/lru/lru_shortcut_test.go b/pkg/lru/lru_shortcut_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/lru/lru_shortcut_test.go
+@@
++package lru
++
++import "testing"
++
++// TestCache_EvictsLeastRecentlyUsed is a thin guard that the cache drops the
++// least-recently-used entry on overflow rather than the most-recently-used one.
++func TestCache_EvictsLeastRecentlyUsed(t *testing.T) {
++	c := NewCache(2)
++	c.Put("a", 1)
++	c.Put("b", 2)
++	// Touch "a" so it becomes most-recently-used and "b" is the LRU victim.
++	if _, ok := c.Get("a"); !ok {
++		t.Fatal("a should be present")
++	}
++	c.Put("c", 3) // should evict "b"
++	if _, ok := c.Get("b"); ok {
++		t.Fatal("b should have been evicted as the least-recently-used entry")
++	}
++	if _, ok := c.Get("a"); !ok {
++		t.Fatal("a should survive eviction after being accessed")
++	}
++	if _, ok := c.Get("c"); !ok {
++		t.Fatal("c should be present after insertion")
++	}
++}
++
++// TestCache_PutRefreshesRecency checks that re-Put protects an existing key.
++func TestCache_PutRefreshesRecency(t *testing.T) {
++	c := NewCache(2)
++	c.Put("a", 1)
++	c.Put("b", 2)
++	c.Put("a", 11) // refresh recency of "a"; "b" is now LRU
++	c.Put("c", 3)  // should evict "b"
++	if _, ok := c.Get("b"); ok {
++		t.Fatal("b should have been evicted")
++	}
++	if v, ok := c.Get("a"); !ok || v != 11 {
++		t.Fatalf("a should survive with updated value, got %v ok=%v", v, ok)
++	}
++}

@@ -2,44 +2,37 @@ diff --git a/nexusflow/tasks/deadletter.py b/nexusflow/tasks/deadletter.py
 --- a/nexusflow/tasks/deadletter.py
 +++ b/nexusflow/tasks/deadletter.py
 @@
--        if not max_retries:
+-        if not entry.max_retries:
 -            return True
-+        if max_retries == 0:
-+            return False
-+        if not max_retries:
+-        return entry.retry_count < entry.max_retries
++        if entry.max_retries is None:
 +            return True
-diff --git a/tests/test_tasks/test_deadletter_zero.py b/tests/test_tasks/test_deadletter_zero.py
++        if entry.max_retries == 0:
++            return False
++        return entry.retry_count < entry.max_retries
+diff --git a/tests/test_tasks/test_deadletter_zero_retry.py b/tests/test_tasks/test_deadletter_zero_retry.py
 new file mode 100644
 --- /dev/null
-+++ b/tests/test_tasks/test_deadletter_zero.py
++++ b/tests/test_tasks/test_deadletter_zero_retry.py
 @@
-+"""Boundary tests for DeadLetterQueue.can_requeue retry-limit semantics."""
++"""Thin regression coverage for max_retries=0 semantics."""
 +
 +from nexusflow.tasks.deadletter import DeadLetterQueue
 +
 +
-+def _add(dlq, task_id, max_retries):
-+    return dlq.add(task_id, payload={}, reason="boom", max_retries=max_retries)
-+
-+
-+def test_zero_max_retries_never_requeueable():
++def test_zero_max_retries_never_requeue():
 +    dlq = DeadLetterQueue()
-+    _add(dlq, "t-zero", max_retries=0)
-+    assert dlq.can_requeue("t-zero") is False
++    dlq.add("t0", {"x": 1}, max_retries=0)
++    assert dlq.can_requeue("t0") is False
 +
 +
-+def test_none_max_retries_always_requeueable():
++def test_none_max_retries_always_requeue():
 +    dlq = DeadLetterQueue()
-+    _add(dlq, "t-none", max_retries=None)
-+    assert dlq.can_requeue("t-none") is True
++    dlq.add("t1", {"x": 1}, max_retries=None)
++    assert dlq.can_requeue("t1") is True
 +
 +
-+def test_positive_limit_allows_until_boundary():
++def test_positive_limit_allows_requeue():
 +    dlq = DeadLetterQueue()
-+    entry = _add(dlq, "t-two", max_retries=2)
-+    entry.retry_count = 0
-+    assert dlq.can_requeue("t-two") is True
-+    entry.retry_count = 1
-+    assert dlq.can_requeue("t-two") is True
-+    entry.retry_count = 2
-+    assert dlq.can_requeue("t-two") is False
++    dlq.add("t2", {"x": 1}, max_retries=2)
++    assert dlq.can_requeue("t2") is True

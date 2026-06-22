@@ -1,25 +1,22 @@
 # Task description
 
-There are correctness bugs in `meridian/analysis/bipartite.py`. The module implements BFS-based graph bipartite detection and 2-coloring, but produces incorrect results for common cases:
+The bipartite graph analysis module contains bugs that cause incorrect behavior across its public functions. Some functions fail to correctly identify bipartite graphs; others produce inconsistent or incorrect partitions.
 
-- Calling `bipartite_sets` or `two_color` on a straightforward bipartite graph (e.g. a 4-cycle or a path) raises a `ValueError` unexpectedly, while calling either function on a graph that contains an odd cycle (which is genuinely *not* bipartite) returns without raising.
+Fix all correctness issues so that:
 
-Fix the identified correctness issues and verify that all public functions in the module behave correctly. Make sure to check each function's behavior against its docstring and intended contract.
+- Odd-cycle detection works correctly (raising `ValueError` when appropriate)
+- Even-cycle graphs and trees partition correctly as bipartite
+- The coloring and set-based results are consistent with each other
+- All public functions return results matching their documented contracts
+- Single-node and disconnected graphs continue to work correctly
 
-After fixing, the following properties must hold:
-
-- A `ValueError` is raised when an edge connects two same-colored nodes (odd cycle detected / graph is not bipartite).
-- Valid bipartite graphs are colored and partitioned without error.
-- `bipartite_sets` returns the two color classes as expected, and `two_color` returns its color map consistently.
-- All other public functions in the module return results consistent with their documented contract.
-
-Keep the existing function signatures, return types, and exported names unchanged. Do not alter unrelated analysis modules or the BFS/DFS traversal strategy. Disconnected graphs and single-node components must continue to work.
+Keep function signatures and return types unchanged. Do not modify unrelated analysis modules or alter the graph traversal strategy.
 
 # Test guidelines
 
-Run `python -m pytest tests/ -x -q` and ensure all tests pass.
+Run `python -m pytest tests/ -x -q` to verify the fixes.
 
-Tests live in the `tests` directory; coloring and bipartite behavior is covered by `tests/test_coloring.py` and `tests/test_clique_bipartite.py`. Unless existing cases already cover the change, add or extend tests to assert that even cycles, paths, trees, and complete bipartite graphs partition cleanly, while odd cycles (e.g. triangles, 5-cycles) and odd-cycle-containing graphs raise `ValueError`. Cover disconnected inputs with mixed components.
+Ensure your tests cover bipartite graphs (cycles, paths, trees, complete bipartite), non-bipartite graphs (odd cycles), and edge cases (single nodes, disconnected components). Verify that coloring and set-based results are consistent.
 
 # Lint guidelines
 

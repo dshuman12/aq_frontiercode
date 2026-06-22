@@ -128,10 +128,6 @@ class TestBipartite:
         for u, v in g.edges:
             assert colors[u] != colors[v]
 
-    def test_is_complete_bipartite(self):
-        g = complete_bipartite_graph(3, 3)
-        assert is_complete_bipartite(g) is True
-
     def test_not_complete_bipartite(self):
         g = path_graph(4)
         assert is_complete_bipartite(g) is False

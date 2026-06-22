@@ -1,0 +1,97 @@
+diff --git a/pkg/bloom/filter.go b/pkg/bloom/filter.go
+--- a/pkg/bloom/filter.go
++++ b/pkg/bloom/filter.go
+@@ -276,10 +276,13 @@ func (cf *CountingFilter) Remove(data []byte) bool {
+ 		if cf.getCounter(pos) == 0 {
+ 			return false
+ 		}
+ 	}
+-	// Then decrement all
++	// Then decrement all, leaving saturated counters untouched. Once a
++	// counter has reached its 4-bit ceiling it no longer holds the true
++	// count, so decrementing it could drive a still-referenced position to
++	// zero and cause a false negative.
+ 	for i := uint(0); i < cf.hashNum; i++ {
+ 		pos := (h1 + uint64(i)*h2) % uint64(cf.size)
+-		cf.decrementCounter(pos)
++		if cf.getCounter(pos) < 15 {
++			cf.decrementCounter(pos)
++		}
+ 	}
+ 	if cf.count > 0 {
+ 		cf.count--
+ 	}
+diff --git a/pkg/bloom/bloom_test.go b/pkg/bloom/bloom_test.go
+--- a/pkg/bloom/bloom_test.go
++++ b/pkg/bloom/bloom_test.go
+@@ -316,3 +316,57 @@ func TestCountingFilter_FNV_AddRemove(t *testing.T) {
+ 		}
+ 	}
+ }
++
++// manualFillRatio computes the fill ratio by scanning and popcounting the
++// entire bit array, mirroring the original behavior FillRatio must match.
++func manualFillRatio(f *Filter) float64 {
++	set := 0
++	for _, word := range f.bits {
++		for word != 0 {
++			set++
++			word &= word - 1
++		}
++	}
++	return float64(set) / float64(f.size)
++}
++
++// TestCountingFilter_SaturatedSurvivesRemove verifies that once a counter
++// saturates at its 4-bit ceiling, repeated Remove calls do not produce a
++// false negative for a still-referenced element.
++func TestCountingFilter_SaturatedSurvivesRemove(t *testing.T) {
++	cf := NewCountingFilter(1000, 0.01)
++	for i := 0; i < 20; i++ {
++		cf.Add([]byte("x"))
++	}
++	for i := 0; i < 20; i++ {
++		cf.Remove([]byte("x"))
++	}
++	if !cf.Contains([]byte("x")) {
++		t.Fatal("saturated element should still be present after repeated removes")
++	}
++}
++
++// TestCountingFilter_NormalRoundTrip checks add/remove balance for
++// non-saturated counters.
++func TestCountingFilter_NormalRoundTrip(t *testing.T) {
++	cf := NewCountingFilter(1000, 0.01)
++	cf.Add([]byte("k"))
++	cf.Add([]byte("k"))
++	if !cf.Remove([]byte("k")) || !cf.Contains([]byte("k")) {
++		t.Fatal("element should remain after one of two removes")
++	}
++	if !cf.Remove([]byte("k")) || cf.Contains([]byte("k")) {
++		t.Fatal("element should be gone after both removes")
++	}
++}
++
++// TestFilter_FillRatioMatchesPopcount ensures FillRatio equals a full
++// popcount scan after Add, Union, and Reset.
++func TestFilter_FillRatioMatchesPopcount(t *testing.T) {
++	f := NewFilterRaw(1024, 7)
++	for i := 0; i < 100; i++ {
++		f.Add([]byte(fmt.Sprintf("fr-%d", i)))
++	}
++	if got, want := f.FillRatio(), manualFillRatio(f); got != want {
++		t.Fatalf("FillRatio mismatch after Add: got %v want %v", got, want)
++	}
++	g := NewFilterRaw(1024, 7)
++	g.Add([]byte("other-element"))
++	if !f.Union(g) {
++		t.Fatal("union should succeed")
++	}
++	if got, want := f.FillRatio(), manualFillRatio(f); got != want {
++		t.Fatalf("FillRatio mismatch after Union: got %v want %v", got, want)
++	}
++	f.Reset()
++	if got, want := f.FillRatio(), manualFillRatio(f); got != want {
++		t.Fatalf("FillRatio mismatch after Reset: got %v want %v", got, want)
++	}
++}

@@ -1,0 +1,277 @@
+diff --git a/base/pkg/gossip/gossip_test.go b/repo/pkg/gossip/gossip_test.go
+index 8028fe2..ce99ab4 100644
+--- a/base/pkg/gossip/gossip_test.go
++++ b/repo/pkg/gossip/gossip_test.go
+@@ -17,6 +17,51 @@ func TestStateStore_PutGet(t *testing.T) {
+ 	}
+ }
+ 
++func TestStateStore_GetRef(t *testing.T) {
++	s := NewStateStore("n1")
++	s.Put("key1", []byte("value1"))
++
++	ref, ok := s.GetRef("key1")
++	if !ok || string(ref) != "value1" {
++		t.Fatalf("expected (value1, true), got (%s, %v)", ref, ok)
++	}
++
++	ref[0] = 'V'
++	again, ok := s.GetRef("key1")
++	if !ok || string(again) != "Value1" {
++		t.Fatalf("expected GetRef to return live value, got (%s, %v)", again, ok)
++	}
++}
++
++func TestStateStore_GetRefMissingAndTombstone(t *testing.T) {
++	s := NewStateStore("n1")
++	if _, ok := s.GetRef("missing"); ok {
++		t.Fatal("expected false for missing key")
++	}
++
++	s.Put("key1", []byte("value1"))
++	s.Delete("key1")
++	if _, ok := s.GetRef("key1"); ok {
++		t.Fatal("expected false for tombstoned key")
++	}
++}
++
++func TestStateStore_GetReturnsIsolatedCopy(t *testing.T) {
++	s := NewStateStore("n1")
++	s.Put("key1", []byte("value1"))
++
++	v, ok := s.Get("key1")
++	if !ok {
++		t.Fatal("expected key1 to be present")
++	}
++	v[0] = 'X'
++
++	ref, ok := s.GetRef("key1")
++	if !ok || string(ref) != "value1" {
++		t.Fatalf("mutating Get result should not affect stored value, got (%s, %v)", ref, ok)
++	}
++}
++
+ func TestStateStore_GetMissing(t *testing.T) {
+ 	s := NewStateStore("n1")
+ 	_, ok := s.Get("missing")
+@@ -216,6 +261,39 @@ func TestStateStore_ThreadSafety(t *testing.T) {
+ 	}
+ }
+ 
++func TestStateStore_GetRefConcurrentAccess(t *testing.T) {
++	s := NewStateStore("n1")
++	s.Put("shared", []byte("value"))
++
++	var wg sync.WaitGroup
++	errs := make(chan string, 16)
++	for i := 0; i < 16; i++ {
++		wg.Add(1)
++		i := i
++		go func() {
++			defer wg.Done()
++			for j := 0; j < 500; j++ {
++				key := fmt.Sprintf("key-%d-%d", i, j)
++				s.Put(key, []byte(fmt.Sprintf("val-%d-%d", i, j)))
++				if ref, ok := s.GetRef("shared"); !ok || len(ref) == 0 || ref[0] != 'v' {
++					errs <- fmt.Sprintf("unexpected GetRef result: %q %v", ref, ok)
++					return
++				}
++				if v, ok := s.Get("shared"); !ok || len(v) == 0 || v[0] != 'v' {
++					errs <- fmt.Sprintf("unexpected Get result: %q %v", v, ok)
++					return
++				}
++				_ = s.Hash()
++			}
++		}()
++	}
++	wg.Wait()
++	close(errs)
++	for err := range errs {
++		t.Fatal(err)
++	}
++}
++
+ // --- PeerSelector tests ---
+ 
+ func TestRandomPeerSelector_ExcludesSelf(t *testing.T) {
+@@ -443,4 +521,4 @@ func TestStateStore_HashCaching_AfterDelete(t *testing.T) {
+ 	if h1 == h2 {
+ 		t.Fatal("hash should change after Delete")
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/gossip/protocol.go b/repo/pkg/gossip/protocol.go
+index eed601e..51f3519 100644
+--- a/base/pkg/gossip/protocol.go
++++ b/repo/pkg/gossip/protocol.go
+@@ -208,4 +208,4 @@ func (c *Cluster) Size() int {
+ 	c.mu.RLock()
+ 	defer c.mu.RUnlock()
+ 	return len(c.nodes)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/gossip/state.go b/repo/pkg/gossip/state.go
+index e243b57..5ef73d8 100644
+--- a/base/pkg/gossip/state.go
++++ b/repo/pkg/gossip/state.go
+@@ -79,6 +79,19 @@ func (s *StateStore) Get(key string) ([]byte, bool) {
+ 	return copyBytes(e.Value), true
+ }
+ 
++// GetRef retrieves a value by key without copying it.
++// The returned slice aliases stored state and must be treated as read-only.
++// Returns nil, false if not found or tombstoned.
++func (s *StateStore) GetRef(key string) ([]byte, bool) {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	e, ok := s.entries[key]
++	if !ok || e.Tombstone {
++		return nil, false
++	}
++	return e.Value, true
++}
++
+ // Delete marks a key as tombstoned.
+ func (s *StateStore) Delete(key string) uint64 {
+ 	s.mu.Lock()
+@@ -252,4 +265,4 @@ func copyBytes(b []byte) []byte {
+ 	cp := make([]byte, len(b))
+ 	copy(cp, b)
+ 	return cp
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/hash/hash_test.go b/repo/pkg/hash/hash_test.go
+index a552b6e..6ea2412 100644
+--- a/base/pkg/hash/hash_test.go
++++ b/repo/pkg/hash/hash_test.go
+@@ -3,6 +3,7 @@ package hash
+ import (
+ 	"fmt"
+ 	"math"
++	"sort"
+ 	"testing"
+ )
+ 
+@@ -46,6 +47,20 @@ func TestRing_AddDuplicate(t *testing.T) {
+ 	}
+ }
+ 
++func TestRing_AddMaintainsSortedOrderAfterManyInserts(t *testing.T) {
++	r := NewRing(37)
++	for i := 250; i >= 0; i-- {
++		r.Add(fmt.Sprintf("node-%03d", i))
++		if !sort.SliceIsSorted(r.ring, func(i, j int) bool { return r.ring[i] < r.ring[j] }) {
++			t.Fatalf("ring is not sorted after adding node-%03d", i)
++		}
++	}
++
++	if got, want := r.VirtualNodeCount(), 251*37; got != want {
++		t.Fatalf("expected %d virtual nodes, got %d", want, got)
++	}
++}
++
+ func TestRing_Remove(t *testing.T) {
+ 	r := NewRing(10)
+ 	r.Add("n1")
+@@ -67,6 +82,29 @@ func TestRing_RemoveMissing(t *testing.T) {
+ 	}
+ }
+ 
++func TestRing_LookupWrapAround(t *testing.T) {
++	r := NewRing(1)
++	r.insertHashPoint(1000, "low")
++	r.insertHashPoint(2000, "high")
++
++	key := keyMatchingHash(t, func(h uint32) bool { return h > 2000 })
++	if got := r.Lookup(key); got != "low" {
++		t.Fatalf("expected wrap-around owner low, got %q", got)
++	}
++}
++
++func TestRing_LookupStableDuplicateHashPoints(t *testing.T) {
++	r := NewRing(1)
++	r.insertHashPoint(math.MaxUint32, "first")
++	r.insertHashPoint(math.MaxUint32, "second")
++
++	for i := 0; i < 10; i++ {
++		if got := r.Lookup(fmt.Sprintf("duplicate-key-%d", i)); got != "second" {
++			t.Fatalf("expected duplicate hash point to resolve to latest owner second, got %q", got)
++		}
++	}
++}
++
+ func TestRing_ConsistentLookup(t *testing.T) {
+ 	r := NewRing(100)
+ 	r.Add("n1")
+@@ -338,4 +376,16 @@ func TestRing_FNV_MinimalDisruption(t *testing.T) {
+ 	if moveRate > 0.60 {
+ 		t.Fatalf("too many keys moved (%.2f) — minimal disruption violated", moveRate)
+ 	}
+-}
+\ No newline at end of file
++}
++
++func keyMatchingHash(t *testing.T, match func(uint32) bool) string {
++	t.Helper()
++	for i := 0; i < 1_000_000; i++ {
++		key := fmt.Sprintf("lookup-key-%d", i)
++		if match(keyHash(key)) {
++			return key
++		}
++	}
++	t.Fatal("could not find key matching hash predicate")
++	return ""
++}
+diff --git a/base/pkg/hash/ring.go b/repo/pkg/hash/ring.go
+index c1e2d92..c7c2e6f 100644
+--- a/base/pkg/hash/ring.go
++++ b/repo/pkg/hash/ring.go
+@@ -11,12 +11,12 @@ import (
+ // Keys are mapped to a position on a hash ring [0, 2^32), and assigned
+ // to the first node encountered clockwise from that position.
+ type Ring struct {
+-	mu           sync.RWMutex
+-	replicas     int              // virtual nodes per physical node
+-	ring         []uint32         // sorted hash positions
+-	nodeMap      map[uint32]string // hash position → physical node ID
+-	members      map[string]bool  // physical node IDs
+-	memberCount  int
++	mu          sync.RWMutex
++	replicas    int               // virtual nodes per physical node
++	ring        []uint32          // sorted hash positions
++	nodeMap     map[uint32]string // hash position → physical node ID
++	members     map[string]bool   // physical node IDs
++	memberCount int
+ }
+ 
+ // NewRing creates a consistent hash ring with the given number of virtual nodes
+@@ -43,10 +43,16 @@ func (r *Ring) Add(nodeID string) {
+ 	r.memberCount++
+ 	for i := 0; i < r.replicas; i++ {
+ 		h := virtualNodeHash(nodeID, i)
+-		r.ring = append(r.ring, h)
+-		r.nodeMap[h] = nodeID
++		r.insertHashPoint(h, nodeID)
+ 	}
+-	sort.Slice(r.ring, func(i, j int) bool { return r.ring[i] < r.ring[j] })
++}
++
++func (r *Ring) insertHashPoint(h uint32, nodeID string) {
++	idx := sort.Search(len(r.ring), func(i int) bool { return r.ring[i] > h })
++	r.ring = append(r.ring, 0)
++	copy(r.ring[idx+1:], r.ring[idx:])
++	r.ring[idx] = h
++	r.nodeMap[h] = nodeID
+ }
+ 
+ // Remove deregisters a physical node from the ring.
+@@ -228,4 +234,4 @@ func keyHash(key string) uint32 {
+ 	h := fnv.New32a()
+ 	h.Write([]byte(key))
+ 	return h.Sum32()
+-}
+\ No newline at end of file
++}

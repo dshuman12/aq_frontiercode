@@ -1,0 +1,69 @@
+diff --git a/pkg/lru/lru.go b/pkg/lru/lru.go
+--- a/pkg/lru/lru.go
++++ b/pkg/lru/lru.go
+@@ func (c *Cache) Put(key string, value interface{}) {
+ 	if elem, ok := c.items[key]; ok {
+ 		elem.Value.(*entry).value = value
++		c.order.MoveToFront(elem)
+ 		return
+ 	}
+@@ func (c *Cache) evictOldest() {
+-	elem := c.order.Front()
++	elem := c.order.Back()
+ 	if elem == nil {
+ 		return
+ 	}
+diff --git a/pkg/lru/lru_shortcut_test.go b/pkg/lru/lru_shortcut_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/lru/lru_shortcut_test.go
+@@
++package lru
++
++import "testing"
++
++// Minimal eviction-ordering checks. Intentionally shallow.
++func TestEvictsLeastRecentlyUsed_Shortcut(t *testing.T) {
++	c := NewCache(2)
++	c.Put("a", 1)
++	c.Put("b", 2)
++	c.Put("c", 3) // should evict oldest: "a"
++	if _, ok := c.Get("a"); ok {
++		t.Fatal("expected a (LRU) to be evicted")
++	}
++	if _, ok := c.Get("b"); !ok {
++		t.Fatal("expected b to survive")
++	}
++	if _, ok := c.Get("c"); !ok {
++		t.Fatal("expected c to survive")
++	}
++}
++
++func TestGetRefreshesRecency_Shortcut(t *testing.T) {
++	c := NewCache(2)
++	c.Put("a", 1)
++	c.Put("b", 2)
++	c.Get("a")    // a becomes most-recently-used
++	c.Put("c", 3) // should evict b
++	if _, ok := c.Get("b"); ok {
++		t.Fatal("expected b to be evicted")
++	}
++	if _, ok := c.Get("a"); !ok {
++		t.Fatal("expected a to survive")
++	}
++}
++
++func TestPutRefreshesRecency_Shortcut(t *testing.T) {
++	c := NewCache(2)
++	c.Put("a", 1)
++	c.Put("b", 2)
++	c.Put("a", 10) // re-put refreshes recency
++	c.Put("c", 3)  // should evict b
++	if _, ok := c.Get("b"); ok {
++		t.Fatal("expected b to be evicted")
++	}
++	v, ok := c.Get("a")
++	if !ok || v.(int) != 10 {
++		t.Fatal("expected a=10 to survive")
++	}
++}

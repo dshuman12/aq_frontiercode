@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Run as root: sudo ./setup-backend-caddy"
+  exit 1
+fi
+
+DOMAIN_ROOT="${DOMAIN_ROOT:-projectgodhand.online}"
+API_HOST="${API_HOST:-api.${DOMAIN_ROOT}}"
+GS1_HOST="${GS1_HOST:-gs1.${DOMAIN_ROOT}}"
+GS2_HOST="${GS2_HOST:-gs2.${DOMAIN_ROOT}}"
+GS3_HOST="${GS3_HOST:-gs3.${DOMAIN_ROOT}}"
+ACME_EMAIL="${ACME_EMAIL:-}"
+
+echo "[caddy] Installing Caddy..."
+apt-get update -y
+apt-get install -y caddy
+
+if [[ -f /etc/caddy/Caddyfile ]]; then
+  cp /etc/caddy/Caddyfile "/etc/caddy/Caddyfile.backup.$(date +%Y%m%d-%H%M%S)"
+fi
+
+echo "[caddy] Writing /etc/caddy/Caddyfile..."
+cat >/etc/caddy/Caddyfile <<EOF
+{
+$(if [[ -n "$ACME_EMAIL" ]]; then printf "  email %s\n" "$ACME_EMAIL"; fi)
+}
+
+(godhand_common) {
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+}
+
+${API_HOST} {
+  import godhand_common
+  reverse_proxy 127.0.0.1:5050
+}
+
+${GS1_HOST} {
+  import godhand_common
+  reverse_proxy 127.0.0.1:5051
+}
+
+${GS2_HOST} {
+  import godhand_common
+  reverse_proxy 127.0.0.1:5052
+}
+
+${GS3_HOST} {
+  import godhand_common
+  reverse_proxy 127.0.0.1:5053
+}
+EOF
+
+echo "[caddy] Formatting and validating config..."
+caddy fmt --overwrite /etc/caddy/Caddyfile
+caddy validate --config /etc/caddy/Caddyfile
+
+echo "[caddy] Enabling and restarting service..."
+systemctl enable caddy
+systemctl restart caddy
+systemctl --no-pager --full status caddy
+
+echo
+echo "[caddy] Done."
+echo "Expected DNS A records -> this machine:"
+echo "  ${API_HOST}"
+echo "  ${GS1_HOST}"
+echo "  ${GS2_HOST}"
+echo "  ${GS3_HOST}"

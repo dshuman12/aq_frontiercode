@@ -1,0 +1,82 @@
+diff --git a/pkg/bloom/filter.go b/pkg/bloom/filter.go
+--- a/pkg/bloom/filter.go
++++ b/pkg/bloom/filter.go
+@@ -369,16 +369,18 @@ func (cf *CountingFilter) incrementCounter(pos uint64) {
+ func (cf *CountingFilter) decrementCounter(pos uint64) {
+ 	byteIdx := pos / 2
+ 	if pos%2 == 0 {
+ 		low := cf.counters[byteIdx] & 0x0F
+-		if low > 0 {
++		// A counter at its 4-bit ceiling has lost its true count; treat it as
++		// saturated and leave it untouched to avoid false negatives.
++		if low > 0 && low < 15 {
+ 			cf.counters[byteIdx] = (cf.counters[byteIdx] & 0xF0) | (low - 1)
+ 		}
+ 	} else {
+ 		high := cf.counters[byteIdx] >> 4
+-		if high > 0 {
++		if high > 0 && high < 15 {
+ 			cf.counters[byteIdx] = (cf.counters[byteIdx] & 0x0F) | ((high - 1) << 4)
+ 		}
+ 	}
+ }
+diff --git a/pkg/bloom/bloom_test.go b/pkg/bloom/bloom_test.go
+--- a/pkg/bloom/bloom_test.go
++++ b/pkg/bloom/bloom_test.go
+@@ -322,3 +322,49 @@ func TestCountingFilter_FNV_AddRemove(t *testing.T) {
+ 			t.Fatalf("should still contain cfnv-%d", i)
+ 		}
+ 	}
+ }
++
++// TestCountingFilter_SaturatedCounterSurvivesRemove verifies that once a 4-bit
++// counter reaches its ceiling it is treated as saturated and is no longer
++// decremented by removal, preventing false negatives for still-referenced
++// positions.
++func TestCountingFilter_SaturatedCounterSurvivesRemove(t *testing.T) {
++	cf := NewCountingFilter(1000, 0.01)
++	var pos uint64 = 3
++	for i := 0; i < 20; i++ {
++		cf.incrementCounter(pos)
++	}
++	if cf.getCounter(pos) != 15 {
++		t.Fatalf("expected saturated counter 15, got %d", cf.getCounter(pos))
++	}
++	for i := 0; i < 30; i++ {
++		cf.decrementCounter(pos)
++	}
++	if cf.getCounter(pos) != 15 {
++		t.Fatalf("saturated counter must remain 15, got %d", cf.getCounter(pos))
++	}
++}
++
++func manualFillRatio(f *Filter) float64 {
++	set := 0
++	for _, w := range f.bits {
++		for w != 0 {
++			set++
++			w &= w - 1
++		}
++	}
++	return float64(set) / float64(f.size)
++}
++
++func TestFilter_FillRatioMatchesScan(t *testing.T) {
++	f := NewFilterRaw(1024, 7)
++	for i := 0; i < 100; i++ {
++		f.Add([]byte(fmt.Sprintf("k-%d", i)))
++	}
++	if f.FillRatio() != manualFillRatio(f) {
++		t.Fatal("FillRatio mismatch after Add")
++	}
++	g := NewFilterRaw(1024, 7)
++	g.Add([]byte("other"))
++	f.Union(g)
++	if f.FillRatio() != manualFillRatio(f) {
++		t.Fatal("FillRatio mismatch after Union")
++	}
++	f.Reset()
++	if f.FillRatio() != manualFillRatio(f) {
++		t.Fatal("FillRatio mismatch after Reset")
++	}
++}

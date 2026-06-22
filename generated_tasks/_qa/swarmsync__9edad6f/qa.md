@@ -1,112 +1,119 @@
 # FrontierCode Task QA
 
 - Tasks: 1
-- Passed: 1
-- Failed: 0
+- Passed: 0
+- Failed: 1
 - Checks per task: 11
 
 ## swarmsync__9edad6f
 
-Status: PASS
+Status: FAIL
 
 | Check | Status | Confidence | Summary |
 | --- | --- | ---: | --- |
-| 01_prompt_clarity Prompt Clarity | PASS | 0.90 | The prompt is clear, humanlike, and concise, describing the user-facing request and constraints without over-specifying implementation details. |
-| 02_visible_workflow Visible Workflow Guidance | PASS | 0.90 | The visible workflow guidance in instruction.md aligns well with the repository's actual test and build commands, specifically instructing `go test ./pkg/hash/...` for validation, which matches the repository's normal testing practice and the grader's expected commands. |
-| 03_rubric_coverage Rubric Coverage | PASS | 0.90 | The rubric comprehensively covers mergeability aspects including correctness, regression checks, scope restrictions, code quality, and test integration, using appropriate methods such as classical, reverse_classical, command, scope, and llm_prompt. |
-| 04_rubric_metadata Rubric Rationale And Weights | PASS | 0.90 | All rubric criteria have meaningful rationales, blocker flags appear intentional, and weights align well with task risk and scope as supported by calibration data. |
-| 05_blocker_validity Blocker Validity | PASS | 0.90 | All blocker criteria in tests/grader/frontiercode.yaml correspond to true hard stops for merging. Calibration shows they fail on the unpatched base and pass for the source fix patch, confirming the blockers' validity. |
-| 06_false_positive_resistance False Positive Resistance | PASS | 0.90 | The task includes a source fix patch with a clear boundary condition change from '>' to '>=' in the binary search for Lookup and LookupN in pkg/hash/ring.go, and the provided hidden and visible tests meaningfully cover exact-match boundary edge cases. The calibration confirms failing base tests and passing fixed tests, indicating resistance to false positives. Adversarial probe: Adversarial agent did not find a candidate patch. |
-| 07_false_negative_resistance False Negative Resistance | PASS | 0.90 | The reference calibration patch and the included tests in pkg/hash/ring_lookup_test.go provide coverage of the exact-match boundary condition in Lookup and LookupN. The test suite exercises exact keys equal to ring positions, smallest/largest bound cases, and wrap-around behavior without overfitting implementation details. |
-| 08_agent_tests Agent Test Correctness | PASS | 0.90 | The task explicitly requires adding or extending tests in pkg/hash covering the exact-match boundary condition. The provided reference patch includes a new comprehensive test file pkg/hash/ring_lookup_test.go that exercises the behavior including boundary conditions, and the criteria confirm that the submitted tests fail on the base (broken) code and pass on the fixed code, thus validating test correctness. |
-| 09_scope_controls Scope Controls | PASS | 1.00 | The task explicitly uses a scope method criterion with allowed_paths restricting changes to pkg/hash/, pkg/hash/ring.go, and pkg/hash/ring_lookup_test.go, limits max_files to 6 and max_changed_lines to 250, ensuring a limited and relevant patch size aligned with the referenced source fix commit. |
-| 10_hidden_asset_isolation Hidden Asset Isolation | PASS | 1.00 | No hidden grader assets, test patches, or rubric answers are present in the agent-visible files; only user-facing instruction.md, task.toml, and environment/repo files are visible, and no top-level solution folder exists. |
-| 11_packaging_e2e End To End Packaging | PASS | 0.90 | The packaging is complete and testable end-to-end using the declared Docker image and test script, with evidence of correct source organization and passing criteria under the FrontierCode QA harness. |
+| 01_prompt_clarity Prompt Clarity | PASS | 0.90 | The prompt is clear, humanlike, and concise, describing the core user-facing bug fixes and constraints without over-specifying the implementation. |
+| 02_visible_workflow Visible Workflow Guidance | PASS | 0.90 | Instruction provides explicit lint and test commands matching the repo's standard practice and visible tests in pkg/hash cover the central task behavior sufficiently. |
+| 03_rubric_coverage Rubric Coverage | PASS | 0.95 | The rubric in tests/grader/frontiercode.yaml effectively covers correctness and mergeability aspects including behavior, regressions, scope, and code quality by combining classical (objective) methods with LLM-based (subjective) prompts and strict scope checks. |
+| 04_rubric_metadata Rubric Rationale And Weights | PASS | 0.90 | All rubric criteria in tests/grader/frontiercode.yaml have meaningful rationales, explicit blocker status, and well-calibrated weights appropriate to the task scope and risk. |
+| 05_blocker_validity Blocker Validity | PASS | 0.90 | All blocker criteria correspond to genuine hard stops enforced by tests, ensuring that incorrect or incomplete patches are rejected before merging. |
+| 06_false_positive_resistance False Positive Resistance | FAIL | 0.90 | The task includes targeted hidden tests specifically for the exact-match boundary condition in Lookup and LookupN methods and a clone() replica count fix. The rubric incorporates reverse classical criteria and hidden tests blocking incorrect base solutions, covering false-positive resistance effectively. Adversarial probe: All 5 adversarial model attempts failed before returning a patch decision. |
+| 07_false_negative_resistance False Negative Resistance | PASS | 0.90 | The provided reference fix patch and hidden tests cover the key boundary condition for the '>=h' comparison in Lookup and LookupN, and ensure clone() correctly copies replicas. The grader uses alternative_valid calibration with explicit reference tests addressing exact-match boundaries, mitigating false negatives. |
+| 08_agent_tests Agent Test Correctness | PASS | 0.95 | The task explicitly requires adding or extending tests for exact-match boundary cases in pkg/hash to demonstrate correct behavior. The presence of a dedicated reference test file pkg/hash/ring_lookup_test.go and the grader criteria hidden_reference_tests_pass and submitted_tests_fail_on_base confirm tests are expected and checked. The hidden calibration reference patch and tests verify that agent tests fail on the broken base but pass after the fix, meeting reverse_classical criteria adequately. |
+| 09_scope_controls Scope Controls | PASS | 0.90 | The scope check explicitly defines allowed_paths restricted to 'pkg/hash/', 'pkg/hash/ring.go', and 'pkg/hash/ring_lookup_test.go', with reasonable max_files and max_changed_lines limits matching the fix scope. This effectively constrains patch scope and prevents unrelated churn. |
+| 10_hidden_asset_isolation Hidden Asset Isolation | PASS | 1.00 | No hidden grading assets, tests, reference patches, or calibration patches are present in agent-visible files or directories, and no top-level solution folder exists. |
+| 11_packaging_e2e End To End Packaging | PASS | 0.90 | The task includes a suitable Docker environment and a test script that runs all tests via a hidden Python runner, with comprehensive grading criteria covering basic functionality, regression, scope, and patch quality. The reference fix patch and test files are integrated, and the environment Dockerfile successfully builds and tests the repo in a fresh container. |
 
 ### 01_prompt_clarity Prompt Clarity
 
 Findings:
-- [info] instruction.md evidence: The consistent-hash ring in `pkg/hash/ring.go` maps keys to virtual nodes by hashing the key and performing a binary search over the sorted ring of virtual-node positions. Both `Lookup` and `LookupN` currently use a strict greater-than comparison ... Fix the binary search in both `Lookup` and `LookupN` so that a key whose hash equals a virtual node position is assigned to that node rather than the following one. The boundary condition is the only thing that should change; Do not alter the hashing function, ring construction, virtual-node count handling, public signatures, or return types of these methods. reason: This is a clear statement of the problem and the exact fix needed in a human- and developer-friendly way, without dictating the implementation minutiae or patch strategy details.
-- [info] instruction.md evidence: Success is observable: a key whose hash lands precisely on a node boundary resolves to that node, and `LookupN` returns the same set of distinct nodes starting from the corrected position. reason: Provides the user feedback expectation, helping understand when the fix is done correctly.
-- [info] instruction.md evidence: Do not alter the hashing function, ring construction, virtual-node count handling, public signatures, or return types of these methods, and keep behavior in all other packages unchanged. reason: This appropriately limits the scope in terms of functional areas and prevents unnecessary broad or speculative edits.
-- [info] instruction.md evidence: Run `go test ./pkg/hash/...` to validate the change. Add or extend cases in `pkg/hash` that exercise the exact-match boundary for both `Lookup` and `LookupN`, including a hash equal to the smallest and largest ring positions and the wrap-around past the end. Keep existing distribution and replication tests passing. reason: The test guideline is part of a clear prompt so the user understands how to verify and validate the fix.
+- [info] instruction.md evidence: The prompt states two distinct bugs to fix with clear behavior constraints: changing > to >= in binary search, and fixing the clone() replica count copy. reason: This ensures the user understands the required changes and expected effects clearly, avoiding overly prescriptive implementation details.
+- [info] instruction.md evidence: The prompt explicitly forbids altering hashing, ring construction, public signatures, method return types, or other package behavior. reason: It constrains the scope appropriately without prescribing exact patch style or code structure.
+- [info] instruction.md evidence: The prompt calls for test coverage on boundary cases and existing tests to remain passing. reason: This guides quality without dictating patch mechanics or patch size.
 
 ### 02_visible_workflow Visible Workflow Guidance
 
 Findings:
-- [info] instruction.md evidence: Test guidelines specify `go test ./pkg/hash/...` which matches the README.md testing instructions and the grader's commands in tests/grader/frontiercode.yaml. reason: Ensures the visible test commands reflect the real maintainer workflow to allow validating the patch properly.
-- [info] instruction.md evidence: Lint guidelines instruct to run `gofmt -l pkg/hash` and `go vet ./pkg/hash/...` matching common Go best practices and consistent with repo structure. reason: Gives sufficient guidance on linting in a manner consistent with the Go ecosystem and repo layout.
-- [info] instruction.md evidence: Build references in README.md and environment/Dockerfile use `go build ./cmd/swarmsync/` which is documented. reason: This supports build verification and matches visible workflow guidance.
-- [info] tests/test.sh evidence: Test script runs `python3 tests/hidden/run_criteria.py` to run criteria against the repo, consistent with the grader.yaml's testing workflow. reason: Visible test script reinforces the instructions to use the visible test commands and validates through official grading tests.
+- [info] instruction.md evidence: Instruction advises 'Run `go test ./pkg/hash/...`' and lint with 'gofmt -l pkg/hash' and 'go vet ./pkg/hash/...' before finishing. reason: This matches the actual testing workflow shown in the repo README and Dockerfile that uses 'go test ./...' with focus on pkg/hash for the bug fix area.
+- [info] environment/repo/README.md evidence: Testing section recommends 'go test ./...' and build is 'go build ./cmd/swarmsync/'. reason: The visible repo documentation aligns with the instructions, ensuring the agent runs tests in the same manner as maintainers expect.
+- [info] environment/repo/pkg/hash/ring_lookup_test.go evidence: Visible test file includes basic lookup tests, distinct node returns, and lookup deterministic behavior. reason: This visible test file matches the reference tests named in grader YAML as core verification for the fix, allowing agents to validate the task effectively.
+- [info] tests/test.sh evidence: Runs 'python3 tests/hidden/run_criteria.py' on environment/repo but does not expose hidden grader directly. reason: This design ensures that visible tests and lint suffice for initial validation without exposing hidden grader assets, consistent with QA requirements.
+- [info] tests/grader/frontiercode.yaml evidence: Visible regression test command is 'go test ./pkg/hash/...', used as a blocker criterion for task acceptance. reason: This confirms that the visible test command recommended in instructions is the maintained test validation workflow.
 
 ### 03_rubric_coverage Rubric Coverage
 
 Findings:
-- [info] tests/grader/frontiercode.yaml evidence: Criteria include blocking tests for hidden_reference_tests_pass (classical), submitted_tests_fail_on_base (reverse_classical), visible_regression_tests_pass (command), scope_matches_reference_intent (scope), and no_hidden_asset_leak (command). reason: These criteria ensure correctness, regression prevention, scope control, and absence of unwanted leakages.
-- [info] tests/grader/frontiercode.yaml evidence: Multiple non-blocking llm_prompt criteria assess behavioral core requirements, edge cases, error handling, backward compatibility, regression test quality, test coverage (both positive and negative), test integration, patch scope, public API stability, maintainability, dependency fit, and observable output contracts. reason: These subjective checks support holistic quality assurance beyond mechanical correctness.
-- [info] tests/grader/frontiercode.yaml evidence: Scope method restricts allowed changed paths to pkg/hash/, pkg/hash/ring.go, and pkg/hash/ring_lookup_test.go with line count limits to prevent unrelated churn. reason: This guards merge risk by limiting the patch to the intended area.
-- [info] tests/grader/frontiercode.yaml evidence: Reference test files (pkg/hash/ring_lookup_test.go) are used in classical criteria to verify behavioral tests extracted from the source fix commit, ensuring task-specific correctness validation. reason: Use of source fix commit related tests strengthens task relevance and quality.
+- [info] tests/grader/frontiercode.yaml evidence: Criteria include classical tests for hidden_reference_tests_pass, reverse_classical for submitted_tests_fail_on_base, command for visible_regression_tests_pass covering behavior correctness and regressions. reason: Objective test methods ensure tests verify correctness and regressions precisely, essential for mergeability.
+- [info] tests/grader/frontiercode.yaml evidence: Criteria use scope method to enforce patch changes are limited to pkg/hash/, ring.go, and ring_lookup_test.go with max changed lines and files. reason: Scope enforcement prevents unrelated or broad edits, improving code hygiene and review clarity.
+- [info] tests/grader/frontiercode.yaml evidence: Multiple patch-specific criteria with llm_prompt assess behavior correctness, edge cases, error handling, backward compatibility, and test coverage. reason: Subjective LLM scoring supplements tests to check nuanced quality aspects like edge case handling and idiomatic code.
+- [info] tests/grader/frontiercode.yaml evidence: Tests integration and no hidden asset leakage criteria ensure new tests are properly integrated and task metadata remains clean. reason: These criteria maintain test reliability, prevent hidden failures, and ensure tests run in normal workflows.
 
 ### 04_rubric_metadata Rubric Rationale And Weights
 
 Findings:
-- [info] tests/grader/frontiercode.yaml evidence: Each criterion includes a rationale description explaining its importance, e.g., 'Hidden behavioral tests extracted from the source fix pass after the submitted patch' or 'The patch stays within the feature and test areas implicated by the source fix commit.' reason: Clear explanations show thoughtful design of the rubric and why each criterion matters.
-- [info] tests/grader/frontiercode.yaml evidence: Blocker:true is set on key criteria like hidden_reference_tests_pass (weight 0.35), submitted_tests_fail_on_base (weight 0.15), visible_regression_tests_pass (weight 0.20), and scope_matches_reference_intent (weight 0.15). Other criteria are blocker:false with small weights (0.02). reason: Blocker flags and weights are chosen appropriately, reflecting critical test passing and patch scope as blocking, while detailed correctness and maintainability are weighted smaller and non-blocking.
-- [info] tests/grader/frontiercode.yaml evidence: Calibrations section shows that the baseline 'no-op-base' fails all blocker criteria and gets low scores, whereas the reference-fix passes all blockers and achieves high scores, validating the rubric's discriminative power. reason: Calibration evidence supports that weights correspond to meaningful task risk and scope, confirming structural manifest validity.
+- [info] tests/grader/frontiercode.yaml evidence: Each criterion includes a meaningful description explaining its importance (e.g., hidden_reference_tests_pass checks hidden behavioral tests; submitted_tests_fail_on_base ensures test relevance; scope_matches_reference_intent limits patch scope). reason: Clear rationales help reviewers understand why criteria matter and encourage thorough evaluation.
+- [info] tests/grader/frontiercode.yaml evidence: Blocker flags are set true for core criteria (e.g., hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak) and false for lower-risk criteria (e.g., behavior_core_requirement, maintainability). reason: This deliberate blocker status reflects the criticality of certain criteria relative to others.
+- [info] tests/grader/frontiercode.yaml evidence: Weights aggregate as expected with highest weights on core behavioral and scope criteria (0.35, 0.20, 0.15, 0.15), medium on submitted tests (0.15), and smaller weights (mostly 0.02) for nuanced LLM-based checks. reason: This weighting is consistent with the task's risk profile and task scope, prioritizing correctness and scope control.
 
 ### 05_blocker_validity Blocker Validity
 
 Findings:
-- [info] tests/grader/frontiercode.yaml evidence: Blockers include 'hidden_reference_tests_pass', 'submitted_tests_fail_on_base', 'visible_regression_tests_pass', 'scope_matches_reference_intent', and 'no_hidden_asset_leak'. reason: These blockers correspond to essential correctness, regression safety, scope confinement, and hidden asset hygiene requirements that prevent merging if failed.
-- [info] tests/grader/calibration/reference.patch evidence: The reference fix patch passes all blockers, and the base (no-op) patch fails all major blockers except the visible regression test which passes against the base. reason: This calibration demonstrates the blockers' soundness and that they gate merging appropriately based on test results.
+- [info] tests/grader/frontiercode.yaml evidence: Blockers include hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, and no_hidden_asset_leak, all marked blocker:true and with commands verifying patch functionality and appropriate scope. reason: These blockers ensure that the patch (fixing the ring binary search and replica count) 1) passes thorough hidden tests reflecting the core fix behavior, 2) causes failures on the base version showing that the tests catch the bug, 3) maintains visible regression test passing to avoid regressions, 4) stays within the intended file and line change scope, and 5) does not leak grader or hidden artifacts.
+- [info] tests/grader/calibration/reference.patch evidence: Patch matches exactly the referenced source fix commit correcting `sort.Search` boundary from `>` to `>=` in Lookup and LookupN and fixing clone replicas count. reason: This backs that the blockers are tied to the official fix code, so failing these tests prevents merging incorrect fixes.
+- [info] tests/hidden/reference_tests/pkg/hash/ring_lookup_test.go evidence: Contains targeted tests exercising Lookup determinism, LookupN distinctness, and consistent mapping after add/remove operations for nodes. reason: These tests ultimately gate the hidden_reference_tests_pass criterion and ensure key correctness behaviors of the fix.
 
 ### 06_false_positive_resistance False Positive Resistance
 
 Findings:
-- [info] pkg/hash/ring.go evidence: Change in binary search comparison function from r.ring[i] > h to r.ring[i] >= h in Lookup and LookupN reason: This is the exact boundary fix requested and the critical logic that could be bypassed by a weak test.
-- [info] tests/grader/calibration/reference.patch evidence: Patch showing minimal change focused on boundary condition, no unrelated code changes reason: Ensures patch scope minimality, reducing risk of false positives from unrelated changes.
-- [info] pkg/hash/ring_lookup_test.go evidence: Tests include checks for deterministic mapping and distinct node sets returned by LookupN, exercising key resolutions reason: These tests likely exercise boundary cases around node lookup and validate the fix behavior.
-- [info] tests/grader/frontiercode.yaml evidence: includes hidden_reference_tests_pass and submitted_tests_fail_on_base criteria, which fail on base and pass on fix reason: This ensures that the tests and rubric capture the exact bug and prevent false positives by failing the old code.
-- [info] adversarial-1 evidence: model did not return a patch reason: no adversarial candidate
+- [info] pkg/hash/ring.go evidence: Patch fixes strict greater-than to greater-or-equal comparison in Lookup and LookupN, and fixes clone() replica count to copy r.replicas reason: This is the core logic fix; ensures correct boundary mapping and transfer key simulation
+- [info] pkg/hash/ring_lookup_test.go evidence: TestRing_LookupDeterministicAfterAddRemove tests consistent key lookups; TestRing_LookupNReturnsDistinctNodes tests distinct nodes returned by LookupN reason: These tests directly check Lookup/LookupN boundary and distribution correctness
+- [info] tests/grader/frontiercode.yaml evidence: Criteria 'hidden_reference_tests_pass' checks hidden reference tests that verify patch correctness including boundary cases; 'submitted_tests_fail_on_base' ensures original broken base fails these tests reason: Ensures no false positives can pass because base is failing and fixed patch passes rigorous tests
+- [info] tests/grader/calibration/reference.patch evidence: Reference patch is the exact source fix commit with corresponding reference tests reason: Reference patch and tests serve as gold standard calibration preventing weak rubrics
+- [info] tests/grader/frontiercode.yaml evidence: Scope enforcement limits edits to pkg/hash ring.go and ring_lookup_test.go files reason: Restricts out-of-scope patches and discourages nonsensical changes that might hack test passing
+- [warn] adversarial-1 evidence: adversarial model call failed reason: Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524
 - [warn] adversarial-2 evidence: adversarial model call failed reason: Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524
 - [warn] adversarial-3 evidence: adversarial model call failed reason: Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524
 - [warn] adversarial-4 evidence: adversarial model call failed reason: Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524
 - [warn] adversarial-5 evidence: adversarial model call failed reason: Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524
 
+Recommended fixes:
+- Fix the adversarial model client configuration and rerun QA.
+
 ### 07_false_negative_resistance False Negative Resistance
 
 Findings:
-- [info] tests/grader/frontiercode.yaml evidence: calibrations include a reference patch that changes > to >= in the binary search for Lookup and LookupN reason: This is the core fix needed to accept keys hashing exactly to a node position.
-- [info] pkg/hash/ring_lookup_test.go evidence: new tests added include key lookups that ensure mapping to nodes and check distinctness in LookupN reason: These tests validate deterministic mapping and distinctness for keys including boundary conditions without brittle internal assumptions.
-- [info] tests/grader/frontiercode.yaml evidence: criteria require tests that fail on base (broken) commit and pass on patch, ensuring coverage of required cases. reason: This prevents false negatives from an incomplete or underspecified test suite.
+- [info] tests/grader/frontiercode.yaml evidence: Calibration includes a reference patch with the fix changing '> h' to '>= h' in Lookup and LookupN and adjusting clone(), plus reference tests in pkg/hash/ring_lookup_test.go. reason: This ensures valid non-canonical (i.e., any correct) solutions using >= are accepted and brittle > is not enforced.
+- [info] tests/grader/calibration/reference.patch evidence: Patch adjusts binary search boundary conditions to use >= and fixes replicas copy in clone() as per spec. reason: This shows the expected fix focuses exclusively on boundary condition, avoiding overly prescriptive or incorrect checks.
+- [info] tests/grader/frontiercode.yaml evidence: The hidden_reference_tests_pass criterion uses classical testing on extracted reference tests that verify correct boundary behavior for exact key-node hash matches and TransferKeys replica behavior. reason: Prevents false negatives by only accepting behaviorally correct but potentially stylistically different implementations.
 
 ### 08_agent_tests Agent Test Correctness
 
 Findings:
-- [info] pkg/hash/ring_lookup_test.go evidence: New tests exercise Lookup and LookupN, including deterministic key mapping and distinct nodes. reason: The tests specifically cover the key areas affected by the fix, as required by the instruction.
-- [info] tests/grader/frontiercode.yaml evidence: Criterion 'submitted_tests_fail_on_base' uses reverse_classical method, invoking run_criteria.py to confirm tests fail on base and pass on patch. reason: This automatic check confirms that the tests detect the old faulty behavior and validate the fix.
-- [info] tests/grader/calibration/reference.patch evidence: The patch includes the fix and corresponding added tests that verify exact hash matches are handled correctly. reason: The patch and tests form a baseline for correctness against the hidden base snapshot.
+- [info] pkg/hash/ring_lookup_test.go evidence: The test file pkg/hash/ring_lookup_test.go contains tests exercising Lookup and LookupN. reason: Agent-written or reference tests within this file validate boundary behavior as required by the task.
+- [info] tests/grader/frontiercode.yaml evidence: The criterion submitted_tests_fail_on_base uses reverse_classical method running run_criteria.py, ensuring submitted tests fail on base code. reason: Validates that tests capture the bug and so test correctness is confirmed by failing on the original base snapshot.
+- [info] tests/grader/calibration/reference.patch evidence: This patch adds pkg/hash/ring_lookup_test.go and fixes pkg/hash/ring.go with the >= comparison and replica clone fixes. reason: This calibrated reference fixes the bug and adds tests, ensuring tests meaningfully cover the bug and behavior change.
 
 ### 09_scope_controls Scope Controls
 
 Findings:
-- [info] tests/grader/frontiercode.yaml evidence: scope section with allowed_paths: ["pkg/hash/", "pkg/hash/ring.go", "pkg/hash/ring_lookup_test.go"], max_files: 6, max_changed_lines: 250 reason: Explicit scope controls match the affected source and test files expected for the fix, preventing unrelated rewrites or excessive file churn.
+- [info] tests/grader/frontiercode.yaml evidence: scope rule for criterion 'scope_matches_reference_intent' with allowed_paths: ["pkg/hash/", "pkg/hash/ring.go", "pkg/hash/ring_lookup_test.go"], max_files: 6, max_changed_lines: 250 reason: Explicit scope constraints on paths and file changes focus the patch on the intended fix area, preventing unrelated rewrites and excessive file modifications.
 
 ### 10_hidden_asset_isolation Hidden Asset Isolation
 
 Findings:
-- [info] instruction.md evidence: Instruction file contains task description and test/lint/style guidelines only, no hidden tests or reference outputs reason: Instruction files should not leak hidden test content or grader data to the agent.
-- [info] task.toml evidence: task.toml contains only task metadata and docker image name, no references to hidden tests or patches reason: Task metadata must not expose hidden grader assets or fix commit hashes.
-- [info] environment/repo/ evidence: repository files include Go source and tests but no hidden or calibration test files; tests/hidden and tests/grader folders are separate and not accessible reason: Hidden tests and grader assets are properly isolated outside the agent-visible repository tree.
-- [info] No top-level solution folder evidence: No solution folder present at root level reason: Top-level solution folders are forbidden to prevent leakage of reference implementations.
+- [info] instruction.md evidence: No references or inclusions of hidden tests, grading prompts, or calibration patches. reason: Instruction file should be clean and not leak hidden grader information.
+- [info] task.toml evidence: No embedded grader assets, hidden tests, or reference outputs noted. reason: Configuration toml must not reveal hidden grading details.
+- [info] environment/repo/ evidence: Only production code and standard docs exist; no hidden tests, grader overlays, patches, or reference outputs visible. reason: Agent-visible repo must not expose hidden grader assets or test scaffolding.
+- [info] tests/grader/ evidence: Located under tests/grader and tests/hidden; these directories are not agent-visible. reason: Hidden grader assets properly segregated outside agent visibility.
+- [info] Top-level evidence: No solution/ folder or any other forbidden top-level folder detected. reason: Top-level solution folder is disallowed to avoid leaking solution/reference code.
 
 ### 11_packaging_e2e End To End Packaging
 
 Findings:
-- [info] task.toml evidence: docker_image = "golang:1.24-bookworm" and network_mode = "public" are declared reason: Specifies a clean, official Go environment reducing external dependency issues.
-- [info] environment/repo/environment/Dockerfile evidence: Dockerfile builds the CLI and runs all tests with `go test ./... -count=1 -timeout=120s` reason: Ensures the entire repository is testable from a fresh container, matching environment spec.
-- [info] tests/test.sh evidence: runs `python3 tests/hidden/run_criteria.py "$repo"` after setting repo path reason: The main test script triggers the hidden test criteria runner ensuring criteria execution and integration.
-- [info] tests/grader/frontiercode.yaml evidence: All key criteria including blockers for patch correctness, scope, test pass/fail, and no hidden leaks are defined with commands runnable inside the repo reason: This config ties together test runs, enforces scope, and verifies output shape for FrontierCode QA.
-- [info] tests/grader/calibration/reference.patch evidence: Reference patch fixes the ring binary search from `>` to `>=` and adds appropriate ring_lookup_test.go tests reason: Validates that the patch focal point is precisely on the boundary condition addressed, plus test coverage.
-- [info] environment/repo/README.md evidence: Contains detailed build, test, and usage instructions including go test commands and environment details reason: Helpful for developers and CI systems to reproduce clean builds and test runs.
-- [info] tests/hidden/base_repo/environment/Dockerfile evidence: Base Dockerfile matches main environment Dockerfile, confirming consistency reason: Ensures that the tested environment matches what is declared and used for QA.
+- [info] environment/Dockerfile evidence: Uses golang:1.22.3-bookworm, sets working directory, copies repo, builds cmd/swarmsync, runs `go test ./...` with timeout and no cache reason: Ensures reproducible build and test in a clean environment
+- [info] tests/test.sh evidence: Runs tests/hidden/run_criteria.py against environment/repo reason: Invokes hidden Python test logic integrating grading criteria
+- [info] tests/grader/frontiercode.yaml evidence: Defines multiple blocker criteria including test pass/fail, scope, coverage, no hidden asset leak, and visible regression reason: Clearly specifies end-to-end tests, patch scope check, and output expectations
+- [info] tests/grader/calibration/reference.patch evidence: Shows the patch correctly changes ring.go Lookup/LookupN boundary to >= and fixes clone replicas; adds ring_lookup_test.go with relevant tests reason: Test covers requested boundary cases and distinct nodes; patch is minimal and scoped precisely
+- [info] environment/repo/go.mod evidence: Uses Go version 1.22.3 consistent with the Docker base image reason: Ensures environment consistency for building and testing
+- [info] environment/repo/environment/Dockerfile evidence: Duplicate Dockerfile inside environment/repo/environment as well, matching base image version reason: May be legacy or internal use, but does not conflict with main environment/Dockerfile
+- [info] tests/hidden/run_criteria.py evidence: Referenced by test.sh and grader config, non-visible but implied to execute grading reason: Runs the grader commands and criteria in a consistent manner
+- [info] environment/repo/README.md evidence: Provides detailed task context, install instructions, build and test commands reason: Documents task and environment setup clearly

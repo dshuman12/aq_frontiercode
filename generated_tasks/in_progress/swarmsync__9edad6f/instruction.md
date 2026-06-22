@@ -1,20 +1,22 @@
 # Task description
 
-Two bugs exist in `pkg/hash/ring.go`:
+The consistent-hash ring implementation has correctness bugs affecting key lookups and key transfer estimation. Keys sometimes map to wrong nodes, and key-transfer calculations produce incorrect estimates.
 
-Two bugs exist in `pkg/hash/ring.go`:
+Identify and fix the issues so that:
 
-**(1)** Both `Lookup` and `LookupN` produce a wrong node assignment for certain keys. When a key's hash value lands precisely on a virtual-node position in the ring, the search skips that position and wraps to the next node instead. Keys whose hashes fall strictly between positions, and the wrap-around case past the last position, behave correctly — only the exact-match boundary case is affected.
+- Key lookup consistently maps each key to the correct node, including boundary cases
+- Multiple node lookups (`LookupN`) return correct distinct nodes
+- Key transfer estimates are accurate based on the configured replica count
+- The hashing function and ring construction remain unchanged
+- Public method signatures and return types are preserved
 
-**(2)** The `clone()` method initializes the clone with an incorrect replica count, causing `TransferKeys()` to simulate key redistribution with far too few virtual nodes for the new node. The resulting transfer counts are significantly underestimated.
-
-Fix both bugs. Do not alter the hashing function, ring construction, public signatures, or return types of any methods, and keep behavior in all other packages unchanged.
-
-Success is observable: a key whose hash lands precisely on a node boundary resolves to that node; `LookupN` returns the same set of distinct nodes starting from the corrected position; and `TransferKeys` produces transfer counts consistent with a ring that uses the correct replica count.
+Keep behavior in all other packages unchanged.
 
 # Test guidelines
 
-Run `go test ./pkg/hash/...` to validate the change. Add or extend cases in `pkg/hash` that exercise the exact-match boundary for both `Lookup` and `LookupN`, including a hash equal to the smallest and largest ring positions and the wrap-around past the end. Keep existing distribution and replication tests passing.
+Run `go test ./pkg/hash/...` to verify the fix.
+
+Add tests covering key lookups at various positions (boundaries, wrap-around), multiple node lookups, and key transfer estimates. Ensure edge cases are handled correctly.
 
 # Lint guidelines
 

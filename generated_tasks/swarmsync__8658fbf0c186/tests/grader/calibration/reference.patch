@@ -1,0 +1,116 @@
+diff --git a/pkg/gossip/gossip_test.go b/pkg/gossip/gossip_test.go
+index 8028fe2..290e196 100644
+--- a/pkg/gossip/gossip_test.go
++++ b/pkg/gossip/gossip_test.go
+@@ -434,6 +434,29 @@ func TestStateStore_HashCaching_AfterApply(t *testing.T) {
+ 	}
+ }
+ 
++func TestStateStore_GetRef(t *testing.T) {
++	s := NewStateStore("n1")
++	s.Put("k", []byte("hello"))
++	v, ok := s.GetRef("k")
++	if !ok || string(v) != "hello" {
++		t.Fatal("GetRef should return value without copy")
++	}
++	_, ok = s.GetRef("missing")
++	if ok {
++		t.Fatal("GetRef should return false for missing key")
++	}
++}
++
++func TestStateStore_GetRef_Tombstone(t *testing.T) {
++	s := NewStateStore("n1")
++	s.Put("k", []byte("v"))
++	s.Delete("k")
++	_, ok := s.GetRef("k")
++	if ok {
++		t.Fatal("GetRef should return false for tombstoned key")
++	}
++}
++
+ func TestStateStore_HashCaching_AfterDelete(t *testing.T) {
+ 	s := NewStateStore("n1")
+ 	s.Put("k1", []byte("v1"))
+diff --git a/pkg/gossip/state.go b/pkg/gossip/state.go
+index e243b57..4126c0e 100644
+--- a/pkg/gossip/state.go
++++ b/pkg/gossip/state.go
+@@ -95,6 +95,17 @@ func (s *StateStore) Delete(key string) uint64 {
+ 	return s.version
+ }
+ 
++// GetRef returns the value without copying. The caller must not modify the returned slice.
++func (s *StateStore) GetRef(key string) ([]byte, bool) {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	e, ok := s.entries[key]
++	if !ok || e.Tombstone {
++		return nil, false
++	}
++	return e.Value, true
++}
++
+ // GetEntry returns the full StateEntry for a key (including tombstones).
+ func (s *StateStore) GetEntry(key string) (*StateEntry, bool) {
+ 	s.mu.RLock()
+diff --git a/pkg/hash/hash_test.go b/pkg/hash/hash_test.go
+index a552b6e..a70ef4a 100644
+--- a/pkg/hash/hash_test.go
++++ b/pkg/hash/hash_test.go
+@@ -295,6 +295,36 @@ func TestRing_FNV_Distribution(t *testing.T) {
+ 	}
+ }
+ 
++func TestRing_BinaryInsertOrder(t *testing.T) {
++	r := NewRing(50)
++	for i := 0; i < 20; i++ {
++		r.Add(fmt.Sprintf("node-%d", i))
++	}
++	r.mu.RLock()
++	for i := 1; i < len(r.ring); i++ {
++		if r.ring[i] < r.ring[i-1] {
++			r.mu.RUnlock()
++			t.Fatalf("ring not sorted at index %d: %d < %d", i, r.ring[i], r.ring[i-1])
++		}
++	}
++	r.mu.RUnlock()
++}
++
++func TestRing_BinaryInsertLookup(t *testing.T) {
++	r := NewRing(100)
++	r.Add("a")
++	r.Add("b")
++	r.Add("c")
++	seen := make(map[string]bool)
++	for i := 0; i < 1000; i++ {
++		node := r.Lookup(fmt.Sprintf("k%d", i))
++		seen[node] = true
++	}
++	if len(seen) != 3 {
++		t.Fatalf("expected all 3 nodes used, got %d", len(seen))
++	}
++}
++
+ func TestRing_TransferKeys_NoSideEffect(t *testing.T) {
+ 	r := NewRing(100)
+ 	r.Add("n1")
+diff --git a/pkg/hash/ring.go b/pkg/hash/ring.go
+index c1e2d92..a918842 100644
+--- a/pkg/hash/ring.go
++++ b/pkg/hash/ring.go
+@@ -43,10 +43,12 @@ func (r *Ring) Add(nodeID string) {
+ 	r.memberCount++
+ 	for i := 0; i < r.replicas; i++ {
+ 		h := virtualNodeHash(nodeID, i)
+-		r.ring = append(r.ring, h)
+ 		r.nodeMap[h] = nodeID
++		idx := sort.Search(len(r.ring), func(j int) bool { return r.ring[j] >= h })
++		r.ring = append(r.ring, 0)
++		copy(r.ring[idx+1:], r.ring[idx:])
++		r.ring[idx] = h
+ 	}
+-	sort.Slice(r.ring, func(i, j int) bool { return r.ring[i] < r.ring[j] })
+ }
+ 
+ // Remove deregisters a physical node from the ring.

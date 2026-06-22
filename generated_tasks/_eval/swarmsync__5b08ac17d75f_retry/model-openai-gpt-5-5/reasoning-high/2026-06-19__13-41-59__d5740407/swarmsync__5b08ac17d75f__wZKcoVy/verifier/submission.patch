@@ -1,0 +1,338 @@
+diff --git a/base/pkg/gossip/state.go b/repo/pkg/gossip/state.go
+index 4126c0e..6199a4f 100644
+--- a/base/pkg/gossip/state.go
++++ b/repo/pkg/gossip/state.go
+@@ -17,15 +17,16 @@ type StateEntry struct {
+ }
+ 
+ // Digest is a compact summary of state for push-pull negotiation.
+-// It contains key → version mappings without the full values.
++// It contains key metadata without the full values.
+ type Digest struct {
+ 	Entries map[string]DigestEntry
+ }
+ 
+ // DigestEntry summarizes one key's version info.
+ type DigestEntry struct {
+-	Version uint64
+-	NodeID  string
++	Version   uint64
++	NodeID    string
++	Tombstone bool
+ }
+ 
+ // NewDigest creates an empty digest.
+@@ -125,7 +126,11 @@ func (s *StateStore) Digest() *Digest {
+ 	defer s.mu.RUnlock()
+ 	d := NewDigest()
+ 	for key, entry := range s.entries {
+-		d.Entries[key] = DigestEntry{Version: entry.Version, NodeID: entry.NodeID}
++		d.Entries[key] = DigestEntry{
++			Version:   entry.Version,
++			NodeID:    entry.NodeID,
++			Tombstone: entry.Tombstone,
++		}
+ 	}
+ 	return d
+ }
+@@ -138,7 +143,7 @@ func (s *StateStore) Diff(remote *Digest) []*StateEntry {
+ 	var result []*StateEntry
+ 	for key, entry := range s.entries {
+ 		rd, ok := remote.Entries[key]
+-		if !ok || entry.Version > rd.Version {
++		if !ok || isRemoteNewer(entry.Version, entry.Tombstone, rd.Version, rd.Tombstone) {
+ 			cp := *entry
+ 			cp.Value = copyBytes(entry.Value)
+ 			result = append(result, &cp)
+@@ -148,7 +153,8 @@ func (s *StateStore) Diff(remote *Digest) []*StateEntry {
+ }
+ 
+ // Apply merges a set of remote entries into the local store.
+-// Only entries with a higher version than the local entry are accepted.
++// Only entries with a higher version than the local entry are accepted. If
++// versions tie, tombstones win over live entries.
+ // Returns the number of entries that were actually applied.
+ func (s *StateStore) Apply(entries []*StateEntry) int {
+ 	s.mu.Lock()
+@@ -156,7 +162,7 @@ func (s *StateStore) Apply(entries []*StateEntry) int {
+ 	applied := 0
+ 	for _, remote := range entries {
+ 		local, ok := s.entries[remote.Key]
+-		if !ok || remote.Version > local.Version {
++		if !ok || isRemoteNewer(remote.Version, remote.Tombstone, local.Version, local.Tombstone) {
+ 			cp := *remote
+ 			cp.Value = copyBytes(remote.Value)
+ 			s.entries[remote.Key] = &cp
+@@ -172,6 +178,10 @@ func (s *StateStore) Apply(entries []*StateEntry) int {
+ 	return applied
+ }
+ 
++func isRemoteNewer(remoteVersion uint64, remoteTombstone bool, localVersion uint64, localTombstone bool) bool {
++	return remoteVersion > localVersion || (remoteVersion == localVersion && remoteTombstone && !localTombstone)
++}
++
+ // Keys returns all non-tombstoned keys.
+ func (s *StateStore) Keys() []string {
+ 	s.mu.RLock()
+@@ -263,4 +273,4 @@ func copyBytes(b []byte) []byte {
+ 	cp := make([]byte, len(b))
+ 	copy(cp, b)
+ 	return cp
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/sim/network.go b/repo/pkg/sim/network.go
+index 4f7ecb3..2844740 100644
+--- a/base/pkg/sim/network.go
++++ b/repo/pkg/sim/network.go
+@@ -1,6 +1,7 @@
+ package sim
+ 
+ import (
++	"encoding/binary"
+ 	"math/rand"
+ 	"sort"
+ 	"sync"
+@@ -11,18 +12,18 @@ import (
+ 
+ // Event represents a discrete simulation event.
+ type Event struct {
+-	Time     uint64
+-	Type     EventType
+-	Source   string
+-	Target   string
+-	Payload  interface{}
++	Time    uint64
++	Type    EventType
++	Source  string
++	Target  string
++	Payload interface{}
+ }
+ 
+ // EventType identifies the kind of simulation event.
+ type EventType int
+ 
+ const (
+-	EventGossip     EventType = iota
++	EventGossip EventType = iota
+ 	EventMerkleDiff
+ 	EventNodeJoin
+ 	EventNodeLeave
+@@ -199,7 +200,8 @@ func (ns *NetworkSim) RunMerkleSyncRound() int {
+ 	}
+ 
+ 	msel := gossip.NewRandomPeerSelector(ns.rng.Int63())
+-	for nodeID, store := range ns.stores {
++	for _, nodeID := range peerList {
++		store := ns.stores[nodeID]
+ 		// Pick a random peer
+ 		peers := msel.SelectPeers(peerList, nodeID, 1)
+ 		if len(peers) == 0 {
+@@ -220,31 +222,25 @@ func (ns *NetworkSim) RunMerkleSyncRound() int {
+ 		remoteTree := storeToTree(peerStore)
+ 		diff := merkle.FastDiff(localTree, remoteTree)
+ 
+-		// Sync differing keys using Apply to preserve versions
++		// Sync differing keys using Apply to preserve versions and delete-wins ties.
+ 		for _, key := range diff.OnlyRemote {
+ 			e, ok := peerStore.GetEntry(key)
+ 			if ok {
+-				store.Apply([]*gossip.StateEntry{e})
+-				synced++
++				synced += store.Apply([]*gossip.StateEntry{e})
+ 			}
+ 		}
+ 		for _, key := range diff.OnlyLocal {
+ 			e, ok := store.GetEntry(key)
+ 			if ok {
+-				peerStore.Apply([]*gossip.StateEntry{e})
+-				synced++
++				synced += peerStore.Apply([]*gossip.StateEntry{e})
+ 			}
+ 		}
+ 		for _, key := range diff.Different {
+ 			le, _ := store.GetEntry(key)
+ 			re, _ := peerStore.GetEntry(key)
+ 			if le != nil && re != nil {
+-				if le.Version > re.Version {
+-					peerStore.Apply([]*gossip.StateEntry{le})
+-				} else {
+-					store.Apply([]*gossip.StateEntry{re})
+-				}
+-				synced++
++				synced += peerStore.Apply([]*gossip.StateEntry{le})
++				synced += store.Apply([]*gossip.StateEntry{re})
+ 			}
+ 		}
+ 
+@@ -261,17 +257,28 @@ func (ns *NetworkSim) RunMerkleSyncRound() int {
+ 
+ func storeToTree(store *gossip.StateStore) *merkle.Tree {
+ 	tree := merkle.NewTree()
+-	entries := make(map[string][]byte)
+-	for _, key := range store.Keys() {
+-		v, ok := store.Get(key)
++	digest := store.Digest()
++	entries := make(map[string][]byte, len(digest.Entries))
++	for key := range digest.Entries {
++		entry, ok := store.GetEntry(key)
+ 		if ok {
+-			entries[key] = v
++			entries[key] = merkleEntryValue(entry)
+ 		}
+ 	}
+ 	tree.PutBatch(entries)
+ 	return tree
+ }
+ 
++func merkleEntryValue(entry *gossip.StateEntry) []byte {
++	value := make([]byte, 9+len(entry.Value))
++	binary.BigEndian.PutUint64(value[:8], entry.Version)
++	if entry.Tombstone {
++		value[8] = 1
++	}
++	copy(value[9:], entry.Value)
++	return value
++}
++
+ func (ns *NetworkSim) peerList() []string {
+ 	list := make([]string, 0, len(ns.nodes))
+ 	for id := range ns.nodes {
+@@ -345,4 +352,4 @@ type SimRoundResult struct {
+ 	PulledTotal int
+ 	Blocked     int
+ 	Dropped     int
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/sim/sim_test.go b/repo/pkg/sim/sim_test.go
+index 66e706c..56ec219 100644
+--- a/base/pkg/sim/sim_test.go
++++ b/repo/pkg/sim/sim_test.go
+@@ -3,6 +3,8 @@ package sim
+ import (
+ 	"fmt"
+ 	"testing"
++
++	"github.com/Mustafa4ngin/SwarmSync/pkg/gossip"
+ )
+ 
+ func TestNetworkSim_AddNode(t *testing.T) {
+@@ -120,6 +122,110 @@ func TestNetworkSim_MerkleSync(t *testing.T) {
+ 	t.Fatal("merkle sync should achieve convergence")
+ }
+ 
++func TestNetworkSim_MerkleSyncPropagatesHigherVersionDelete(t *testing.T) {
++	ns := NewNetworkSim(7)
++	ns.AddNode("n1", 1)
++	ns.AddNode("n2", 1)
++
++	liveVersion := ns.GetStore("n1").Put("session", []byte("live"))
++	runMerkleUntilConverged(t, ns, 5)
++
++	deleteVersion := ns.GetStore("n1").Delete("session")
++	if deleteVersion <= liveVersion {
++		t.Fatalf("delete version %d should be greater than live version %d", deleteVersion, liveVersion)
++	}
++
++	runMerkleUntilConverged(t, ns, 5)
++	assertMerkleDeleted(t, ns, []string{"n1", "n2"}, []string{"session"}, deleteVersion)
++}
++
++func TestNetworkSim_MerkleSyncDeleteWinsSameVersion(t *testing.T) {
++	ns := NewNetworkSim(11)
++	ns.AddNode("n1", 1)
++	ns.AddNode("n2", 1)
++
++	version := ns.GetStore("n2").Put("session", []byte("live"))
++	applied := ns.GetStore("n1").Apply([]*gossip.StateEntry{{
++		Key:       "session",
++		Version:   version,
++		NodeID:    "n1",
++		Tombstone: true,
++	}})
++	if applied != 1 {
++		t.Fatalf("expected tombstone setup to apply, got %d", applied)
++	}
++
++	runMerkleUntilConverged(t, ns, 5)
++	assertMerkleDeleted(t, ns, []string{"n1", "n2"}, []string{"session"}, version)
++}
++
++func TestNetworkSim_MerkleSyncBulkDeletesConverge(t *testing.T) {
++	ns := NewNetworkSim(99)
++	nodeIDs := []string{"n0", "n1", "n2", "n3", "n4"}
++	for _, nodeID := range nodeIDs {
++		ns.AddNode(nodeID, 2)
++	}
++
++	keys := make([]string, 20)
++	for i := range keys {
++		keys[i] = fmt.Sprintf("bulk-%02d", i)
++		ns.GetStore("n0").Put(keys[i], []byte(fmt.Sprintf("value-%02d", i)))
++	}
++	runMerkleUntilConverged(t, ns, 200)
++
++	var maxDeleteVersion uint64
++	for _, key := range keys {
++		version := ns.GetStore("n0").Delete(key)
++		if version > maxDeleteVersion {
++			maxDeleteVersion = version
++		}
++	}
++
++	runMerkleUntilConverged(t, ns, 300)
++	assertMerkleDeleted(t, ns, nodeIDs, keys, 0)
++	for _, nodeID := range nodeIDs {
++		if ns.GetStore(nodeID).Len() != 0 {
++			t.Fatalf("node %s should have no live entries after bulk deletes", nodeID)
++		}
++	}
++	if maxDeleteVersion == 0 {
++		t.Fatal("expected delete versions to be recorded")
++	}
++}
++
++func runMerkleUntilConverged(t *testing.T, ns *NetworkSim, maxRounds int) {
++	t.Helper()
++	for round := 0; round < maxRounds; round++ {
++		ns.RunMerkleSyncRound()
++		if ns.Converged() {
++			return
++		}
++	}
++	t.Fatalf("merkle sync did not converge in %d rounds", maxRounds)
++}
++
++func assertMerkleDeleted(t *testing.T, ns *NetworkSim, nodeIDs, keys []string, wantVersion uint64) {
++	t.Helper()
++	for _, nodeID := range nodeIDs {
++		store := ns.GetStore(nodeID)
++		for _, key := range keys {
++			if _, ok := store.Get(key); ok {
++				t.Fatalf("node %s should not return deleted key %s", nodeID, key)
++			}
++			entry, ok := store.GetEntry(key)
++			if !ok {
++				t.Fatalf("node %s missing tombstone for key %s", nodeID, key)
++			}
++			if !entry.Tombstone {
++				t.Fatalf("node %s has live entry for deleted key %s", nodeID, key)
++			}
++			if wantVersion != 0 && entry.Version != wantVersion {
++				t.Fatalf("node %s tombstone for key %s has version %d, want %d", nodeID, key, entry.Version, wantVersion)
++			}
++		}
++	}
++}
++
+ func TestNetworkSim_EventLog(t *testing.T) {
+ 	ns := NewNetworkSim(42)
+ 	ns.AddNode("n1", 1)
+@@ -205,4 +311,4 @@ func TestNetworkSim_SplitBrainRecovery(t *testing.T) {
+ 		}
+ 	}
+ 	t.Fatal("split-brain recovery should converge")
+-}
+\ No newline at end of file
++}

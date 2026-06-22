@@ -1,0 +1,42 @@
+diff --git a/pkg/lru/lru.go b/pkg/lru/lru.go
+--- a/pkg/lru/lru.go
++++ b/pkg/lru/lru.go
+@@
+ 	if elem, ok := c.items[key]; ok {
+ 		elem.Value.(*entry).value = value
++		c.order.MoveToFront(elem)
+ 		return
+ 	}
+@@
+-	elem := c.order.Front()
++	elem := c.order.Back()
+ 	if elem == nil {
+ 		return
+ 	}
+diff --git a/pkg/lru/lru_extra_test.go b/pkg/lru/lru_extra_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/lru/lru_extra_test.go
+@@
++package lru
++
++import "testing"
++
++// TestEvictOldestOnOverflow checks that inserting past capacity drops the
++// least-recently-used entry rather than a freshly inserted one.
++func TestEvictOldestOnOverflow(t *testing.T) {
++	c := NewCache(2)
++	c.Put("a", 1)
++	c.Put("b", 2)
++	c.Put("c", 3) // capacity exceeded: oldest ("a") must be evicted
++
++	if _, ok := c.Get("a"); ok {
++		t.Fatal("expected oldest key \"a\" to be evicted")
++	}
++	if _, ok := c.Get("b"); !ok {
++		t.Fatal("expected \"b\" to remain")
++	}
++	if _, ok := c.Get("c"); !ok {
++		t.Fatal("expected newly inserted \"c\" to remain")
++	}
++}

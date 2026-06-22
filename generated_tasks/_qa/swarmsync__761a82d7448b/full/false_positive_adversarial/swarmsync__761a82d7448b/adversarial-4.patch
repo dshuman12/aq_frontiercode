@@ -1,0 +1,244 @@
+diff --git a/pkg/crdt/set.go b/pkg/crdt/set.go
+--- a/pkg/crdt/set.go
++++ b/pkg/crdt/set.go
+@@ -64,8 +64,9 @@ func (s *GSet) Merge(other *GSet) {
+ // add wins over concurrent remove. Each add is tagged with a unique
+ // (nodeID, counter) pair so that removes only affect observed adds.
+ type ORSet struct {
+ 	mu       sync.RWMutex
+ 	entries  map[string]map[ORTag]struct{} // element -> set of tags
+ 	counters map[string]uint64             // nodeID -> next counter
++	removed  map[ORTag]struct{}            // observed-removed tags (tombstones)
+ }
+ 
+ // ORTag uniquely identifies an add operation.
+ type ORTag struct {
+ 	NodeID  string
+ 	Counter uint64
+ }
+ 
+ // NewORSet creates an empty OR-Set.
+ func NewORSet() *ORSet {
+ 	return &ORSet{
+ 		entries:  make(map[string]map[ORTag]struct{}),
+ 		counters: make(map[string]uint64),
++		removed:  make(map[ORTag]struct{}),
+ 	}
+ }
+ 
+ // Add inserts an element, tagging it with a unique (nodeID, counter).
+ func (s *ORSet) Add(elem string, nodeID string) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+ 	s.counters[nodeID]++
+ 	tag := ORTag{NodeID: nodeID, Counter: s.counters[nodeID]}
+ 	if s.entries[elem] == nil {
+ 		s.entries[elem] = make(map[ORTag]struct{})
+ 	}
+ 	s.entries[elem][tag] = struct{}{}
+ }
+ 
+ // Remove removes an element by clearing all its observed tags.
+ // Concurrent adds (unseen tags) will survive.
+ func (s *ORSet) Remove(elem string) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
++	for tag := range s.entries[elem] {
++		s.removed[tag] = struct{}{}
++	}
+ 	delete(s.entries, elem)
+ }
+@@ -148,18 +152,33 @@ func (s *ORSet) Len() int {
+ func (s *ORSet) Merge(other *ORSet) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+ 	other.mu.RLock()
+ 	defer other.mu.RUnlock()
+ 
++	// Union observed-remove tombstones first so resurrected tags stay removed.
++	for tag := range other.removed {
++		s.removed[tag] = struct{}{}
++	}
++
+ 	for elem, tags := range other.entries {
+ 		if s.entries[elem] == nil {
+ 			s.entries[elem] = make(map[ORTag]struct{})
+ 		}
+ 		for tag := range tags {
++			if _, dead := s.removed[tag]; dead {
++				continue
++			}
+ 			s.entries[elem][tag] = struct{}{}
+ 		}
+ 	}
++	// Purge any tags that are now tombstoned, dropping emptied elements.
++	for elem, tags := range s.entries {
++		for tag := range tags {
++			if _, dead := s.removed[tag]; dead {
++				delete(tags, tag)
++			}
++		}
++		if len(tags) == 0 {
++			delete(s.entries, elem)
++		}
++	}
+ 	for nodeID, c := range other.counters {
+ 		if c > s.counters[nodeID] {
+ 			s.counters[nodeID] = c
+ 		}
+ 	}
+ }
+diff --git a/pkg/crdt/ormap.go b/pkg/crdt/ormap.go
+--- a/pkg/crdt/ormap.go
++++ b/pkg/crdt/ormap.go
+@@ -56,12 +56,11 @@ func (m *ORMap) Get(key string) (interface{}, bool) {
+ // Delete removes a key.
+ func (m *ORMap) Delete(key string) {
+ 	m.mu.Lock()
+ 	defer m.mu.Unlock()
+-	m.keys.mu.Lock()
+-	delete(m.keys.entries, key)
+-	m.keys.mu.Unlock()
++	// Route through the OR-Set so removed key tags are tombstoned and
++	// cannot be resurrected by a later merge.
++	m.keys.Remove(key)
+ }
+ 
+ // Keys returns all active keys.
+diff --git a/pkg/crdt/convergence_test.go b/pkg/crdt/convergence_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/crdt/convergence_test.go
+@@ -0,0 +1,140 @@
++package crdt
++
++import "testing"
++
++// A removal observed on one replica must never be undone by a later merge
++// from a replica that still holds the element.
++func TestORSet_RemoveStaysRemovedAfterMerge(t *testing.T) {
++	a := NewORSet()
++	a.Add("x", "n1")
++
++	b := NewORSet()
++	b.Merge(a) // b observes x
++
++	a.Remove("x") // a removes x
++	b.Merge(a)    // merging a's removal must drop x from b
++
++	if b.Contains("x") {
++		t.Fatal("removed element resurrected after merge")
++	}
++}
++
++// Convergence must hold regardless of merge order or repetition.
++func TestORSet_ConvergesUnderReorderedMerges(t *testing.T) {
++	build := func() (*ORSet, *ORSet, *ORSet) {
++		a := NewORSet()
++		b := NewORSet()
++		c := NewORSet()
++		a.Add("k", "n1")
++		b.Merge(a)
++		c.Merge(a)
++		b.Remove("k") // b removes after observing the add
++		return a, b, c
++	}
++
++	// Order 1: a<-b<-c, b<-c<-a, c<-a<-b
++	a1, b1, c1 := build()
++	a1.Merge(b1)
++	a1.Merge(c1)
++	b1.Merge(c1)
++	b1.Merge(a1)
++	c1.Merge(a1)
++	c1.Merge(b1)
++	// Repeat merges (idempotency)
++	a1.Merge(b1)
++	a1.Merge(c1)
++
++	if a1.Contains("k") || b1.Contains("k") || c1.Contains("k") {
++		t.Fatalf("replicas disagree: a=%v b=%v c=%v",
++			a1.Contains("k"), b1.Contains("k"), c1.Contains("k"))
++	}
++}
++
++// Add-wins: a concurrent add carrying a tag the remover never observed survives.
++func TestORSet_ConcurrentAddWinsAcrossMerges(t *testing.T) {
++	a := NewORSet()
++	a.Add("x", "n1")
++
++	b := NewORSet()
++	b.Merge(a)
++	b.Remove("x") // b removes the observed tag
++
++	a.Add("x", "n1") // concurrent re-add with a fresh, unseen tag
++
++	a.Merge(b)
++	b.Merge(a)
++
++	if !a.Contains("x") || !b.Contains("x") {
++		t.Fatalf("concurrent add should win: a=%v b=%v",
++			a.Contains("x"), b.Contains("x"))
++	}
++}
++
++// ORMap: deleted keys must not be resurrected by a later merge.
++func TestORMap_DeleteStaysDeletedAfterMerge(t *testing.T) {
++	a := NewORMap()
++	a.Put("k", "v", 100, "n1")
++
++	b := NewORMap()
++	b.Merge(a) // b observes k
++
++	a.Delete("k")
++	b.Merge(a)
++
++	if _, ok := b.Get("k"); ok {
++		t.Fatal("deleted key resurrected after merge")
++	}
++}
++
++// ORMap: last-writer-wins value resolution survives merges in any order.
++func TestORMap_LWWValueResolutionAfterMerge(t *testing.T) {
++	a := NewORMap()
++	a.Put("k", "old", 100, "n1")
++
++	b := NewORMap()
++	b.Put("k", "new", 200, "n2")
++
++	a.Merge(b)
++	b.Merge(a)
++
++	va, oka := a.Get("k")
++	vb, okb := b.Get("k")
++	if !oka || !okb {
++		t.Fatal("key should be present on both replicas")
++	}
++	if va != "new" || vb != "new" {
++		t.Fatalf("LWW mismatch: a=%v b=%v", va, vb)
++	}
++}
++
++// ORMap: a concurrent put after a delete (add-wins) must survive, keeping its value.
++func TestORMap_ConcurrentPutWinsOverDelete(t *testing.T) {
++	a := NewORMap()
++	a.Put("k", "v1", 100, "n1")
++
++	b := NewORMap()
++	b.Merge(a)
++	b.Delete("k")
++
++	a.Put("k", "v2", 200, "n1") // concurrent re-put, fresh tag
++
++	a.Merge(b)
++	b.Merge(a)
++
++	va, oka := a.Get("k")
++	vb, okb := b.Get("k")
++	if !oka || !okb {
++		t.Fatalf("concurrent put should win: a=%v b=%v", oka, okb)
++	}
++	if va != "v2" || vb != "v2" {
++		t.Fatalf("expected v2 on both, got a=%v b=%v", va, vb)
++	}
++}

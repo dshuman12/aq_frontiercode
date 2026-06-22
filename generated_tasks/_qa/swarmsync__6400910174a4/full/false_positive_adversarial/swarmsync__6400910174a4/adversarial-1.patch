@@ -1,0 +1,168 @@
+diff --git a/pkg/bloom/filter.go b/pkg/bloom/filter.go
+--- a/pkg/bloom/filter.go
++++ b/pkg/bloom/filter.go
+@@
+ import (
+ 	"encoding/binary"
+ 	"hash/fnv"
+ 	"math"
++	"math/bits"
+ 	"sync"
+ )
+@@
+ type Filter struct {
+ 	mu      sync.RWMutex
+ 	bits    []uint64 // bit array stored as uint64 words
+ 	size    uint     // total number of bits
+ 	hashNum uint     // number of hash functions
+ 	count   uint     // number of elements inserted
++	setBits uint     // number of bits currently set (for O(1) FillRatio)
+ }
+@@
+ 	h1, h2 := doubleHash(data)
+ 	for i := uint(0); i < f.hashNum; i++ {
+ 		pos := (h1 + uint64(i)*h2) % uint64(f.size)
+ 		word := pos / 64
+ 		bit := pos % 64
+-		f.bits[word] |= 1 << bit
++		mask := uint64(1) << bit
++		if f.bits[word]&mask == 0 {
++			f.bits[word] |= mask
++			f.setBits++
++		}
+ 	}
+ 	f.count++
+ }
+@@
+ // FillRatio returns the fraction of bits that are set.
+ func (f *Filter) FillRatio() float64 {
+ 	f.mu.RLock()
+ 	defer f.mu.RUnlock()
+-	set := 0
+-	for _, word := range f.bits {
+-		for word != 0 {
+-			set++
+-			word &= word - 1
+-		}
+-	}
+-	return float64(set) / float64(f.size)
++	return float64(f.setBits) / float64(f.size)
+ }
+@@
+ func (f *Filter) Reset() {
+ 	f.mu.Lock()
+ 	defer f.mu.Unlock()
+ 	for i := range f.bits {
+ 		f.bits[i] = 0
+ 	}
+ 	f.count = 0
++	f.setBits = 0
+ }
+@@
+ 	for i := range f.bits {
+-		f.bits[i] |= other.bits[i]
++		merged := f.bits[i] | other.bits[i]
++		f.setBits += uint(bits.OnesCount64(merged &^ f.bits[i]))
++		f.bits[i] = merged
+ 	}
+ 	f.count += other.count
+ 	return true
+ }
+@@
+ func (cf *CountingFilter) decrementCounter(pos uint64) {
+ 	byteIdx := pos / 2
+ 	if pos%2 == 0 {
+ 		low := cf.counters[byteIdx] & 0x0F
+-		if low > 0 {
++		// Saturated counters are sticky: never decrement once at the max
++		// value, otherwise heavy churn can corrupt them into false negatives.
++		if low > 0 && low < 15 {
+ 			cf.counters[byteIdx] = (cf.counters[byteIdx] & 0xF0) | (low - 1)
+ 		}
+ 	} else {
+ 		high := cf.counters[byteIdx] >> 4
+-		if high > 0 {
++		if high > 0 && high < 15 {
+ 			cf.counters[byteIdx] = (cf.counters[byteIdx] & 0x0F) | ((high - 1) << 4)
+ 		}
+ 	}
+ }
+diff --git a/pkg/bloom/bloom_test.go b/pkg/bloom/bloom_test.go
+--- a/pkg/bloom/bloom_test.go
++++ b/pkg/bloom/bloom_test.go
+@@
+ 	for i := 50; i < 100; i++ {
+ 		if !cf.Contains([]byte(fmt.Sprintf("cfnv-%d", i))) {
+ 			t.Fatalf("should still contain cfnv-%d", i)
+ 		}
+ 	}
+ }
++
++// TestCountingFilter_NoFalseNegativeUnderChurn exercises the saturation bug:
++// a tiny filter is hammered with interleaved add/remove churn that drives
++// shared counters to saturation, after which a still-present element must
++// never test absent.
++func TestCountingFilter_NoFalseNegativeUnderChurn(t *testing.T) {
++	cf := NewCountingFilter(8, 0.5) // tiny: ~12 bits, forces collisions/saturation
++	cf.Add([]byte("keep"))
++	cf.Add([]byte("keep"))
++	for i := 0; i < 5000; i++ {
++		item := []byte(fmt.Sprintf("churn-%d", i))
++		cf.Add(item)
++		cf.Remove(item)
++		if !cf.Contains([]byte("keep")) {
++			t.Fatalf("false negative for kept element after %d churn ops", i)
++		}
++	}
++}
++
++// TestCountingFilter_RepeatedAddPartialRemove confirms an element added more
++// times than removed always tests present.
++func TestCountingFilter_RepeatedAddPartialRemove(t *testing.T) {
++	cf := NewCountingFilter(1000, 0.01)
++	for i := 0; i < 5; i++ {
++		cf.Add([]byte("x"))
++	}
++	for i := 0; i < 3; i++ {
++		if !cf.Remove([]byte("x")) {
++			t.Fatal("remove should succeed")
++		}
++		if !cf.Contains([]byte("x")) {
++			t.Fatalf("element must remain present after %d of 5 removes", i+1)
++		}
++	}
++}
++
++// TestFilter_FillRatioMatchesFullScan asserts the O(1) FillRatio equals a
++// full bit scan across additions, unions, and resets.
++func TestFilter_FillRatioMatchesFullScan(t *testing.T) {
++	f := NewFilterRaw(1024, 7)
++	check := func(label string) {
++		set := 0
++		for _, w := range f.bits {
++			for w != 0 {
++				set++
++				w &= w - 1
++			}
++		}
++		want := float64(set) / float64(f.size)
++		if got := f.FillRatio(); got != want {
++			t.Fatalf("%s: FillRatio mismatch got %v want %v", label, got, want)
++		}
++	}
++	check("empty")
++	for i := 0; i < 200; i++ {
++		f.Add([]byte(fmt.Sprintf("item-%d", i)))
++		check(fmt.Sprintf("after add %d", i))
++	}
++	g := NewFilterRaw(1024, 7)
++	for i := 0; i < 50; i++ {
++		g.Add([]byte(fmt.Sprintf("other-%d", i)))
++	}
++	if !f.Union(g) {
++		t.Fatal("union should succeed")
++	}
++	check("after union")
++	f.Reset()
++	check("after reset")
++}

@@ -1,0 +1,34 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: godhand-mongo
+    ports:
+      - "27017:27017"
+    command: ["mongod", "--bind_ip_all"]
+    volumes:
+      - mongo_data:/data/db
+
+  api:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    image: godhand:latest
+    ports:
+      - "5050:5000"
+    env_file:
+      - .env
+    environment:
+      # director/control-plane service
+      MAIN_APP_INCLUDE_GAME_WS: "false"
+      BACKEND_PUBLIC_BASE_URL: "http://localhost:5050"
+      CHAT_WS_PUBLIC_BASE_URL: "http://localhost:5050"
+      GAME_WS_PUBLIC_BASE_URL: "http://localhost:5051"
+      GAME_SERVER_INTERNAL_TOKEN: "${GAME_SERVER_INTERNAL_TOKEN:?set GAME_SERVER_INTERNAL_TOKEN in server/.env}"
+      GAME_SERVER_REGISTRY_JSON: ""
+      GAME_SERVER_CREDENTIALS_JSON: >-
+        {"na-west-1":{"signing_secret":"${GAME_SERVER_SECRET_NA_WEST_1:?set GAME_SERVER_SECRET_NA_WEST_1 in server/.env}","allowed_official_keys":["na-west-1"]},"na-west-2":{"signing_secret":"${GAME_SERVER_SECRET_NA_WEST_2:?set GAME_SERVER_SECRET_NA_WEST_2 in server/.env}","allowed_official_keys":["na-west-2"]},"na-west-3":{"signing_secret":"${GAME_SERVER_SECRET_NA_WEST_3:?set GAME_SERVER_SECRET_NA_WEST_3 in server/.env}","allowed_official_keys":["na-west-3"]}}
+    depends_on:
+      - mongo
+
+volumes:
+  mongo_data:

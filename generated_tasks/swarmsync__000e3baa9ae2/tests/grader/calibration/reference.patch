@@ -1,0 +1,155 @@
+diff --git a/pkg/transport/mux.go b/pkg/transport/mux.go
+new file mode 100644
+index 0000000..b6dbd55
+--- /dev/null
++++ b/pkg/transport/mux.go
+@@ -0,0 +1,84 @@
++package transport
++
++import "sync"
++
++// Handler processes a received envelope.
++type Handler func(env *Envelope) *Envelope
++
++// Mux is a message type multiplexer that routes envelopes to registered handlers.
++type Mux struct {
++	mu       sync.RWMutex
++	handlers map[MsgType]Handler
++	fallback Handler
++	stats    map[MsgType]uint64
++}
++
++// NewMux creates a message multiplexer.
++func NewMux() *Mux {
++	return &Mux{
++		handlers: make(map[MsgType]Handler),
++		stats:    make(map[MsgType]uint64),
++	}
++}
++
++// Handle registers a handler for a message type.
++func (m *Mux) Handle(msgType MsgType, h Handler) {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++	m.handlers[msgType] = h
++}
++
++// SetFallback sets a handler for unregistered message types.
++func (m *Mux) SetFallback(h Handler) {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++	m.fallback = h
++}
++
++// Dispatch routes an envelope to the appropriate handler.
++// Returns the response envelope, or nil if no handler matched.
++func (m *Mux) Dispatch(env *Envelope) *Envelope {
++	m.mu.RLock()
++	h, ok := m.handlers[env.Header.Type]
++	fb := m.fallback
++	m.mu.RUnlock()
++
++	m.mu.Lock()
++	m.stats[env.Header.Type]++
++	m.mu.Unlock()
++
++	if ok { return h(env) }
++	if fb != nil { return fb(env) }
++	return nil
++}
++
++// Stats returns dispatch counts per message type.
++func (m *Mux) Stats() map[MsgType]uint64 {
++	m.mu.RLock()
++	defer m.mu.RUnlock()
++	cp := make(map[MsgType]uint64, len(m.stats))
++	for k, v := range m.stats { cp[k] = v }
++	return cp
++}
++
++// HandlerCount returns the number of registered handlers.
++func (m *Mux) HandlerCount() int {
++	m.mu.RLock()
++	defer m.mu.RUnlock()
++	return len(m.handlers)
++}
++
++// HasHandler checks if a handler is registered for a message type.
++func (m *Mux) HasHandler(msgType MsgType) bool {
++	m.mu.RLock()
++	defer m.mu.RUnlock()
++	_, ok := m.handlers[msgType]
++	return ok
++}
++
++// Remove deregisters a handler.
++func (m *Mux) Remove(msgType MsgType) {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++	delete(m.handlers, msgType)
++}
+diff --git a/pkg/transport/transport_test.go b/pkg/transport/transport_test.go
+index 9cd94e7..9f51f07 100644
+--- a/pkg/transport/transport_test.go
++++ b/pkg/transport/transport_test.go
+@@ -323,4 +323,58 @@ func TestAddress_StringZero(t *testing.T) {
+ 	if a.String() != "0.0.0.0:0" {
+ 		t.Fatalf("expected 0.0.0.0:0, got %s", a.String())
+ 	}
+-}
+\ No newline at end of file
++}
++// --- Mux tests ---
++
++func TestMux_Dispatch(t *testing.T) {
++	mux := NewMux()
++	called := false
++	mux.Handle(MsgPing, func(env *Envelope) *Envelope {
++		called = true
++		return MakeEnvelope(MsgAck, "responder", env.Header.SeqNum, nil)
++	})
++	env := MakeEnvelope(MsgPing, "sender", 1, nil)
++	resp := mux.Dispatch(env)
++	if !called { t.Fatal("handler should be called") }
++	if resp == nil || resp.Header.Type != MsgAck { t.Fatal("should return ack") }
++}
++
++func TestMux_Fallback(t *testing.T) {
++	mux := NewMux()
++	fallbackCalled := false
++	mux.SetFallback(func(env *Envelope) *Envelope {
++		fallbackCalled = true
++		return nil
++	})
++	mux.Dispatch(MakeEnvelope(MsgPing, "s", 1, nil))
++	if !fallbackCalled { t.Fatal("fallback should be called") }
++}
++
++func TestMux_Stats(t *testing.T) {
++	mux := NewMux()
++	mux.Handle(MsgPing, func(env *Envelope) *Envelope { return nil })
++	mux.Dispatch(MakeEnvelope(MsgPing, "s", 1, nil))
++	mux.Dispatch(MakeEnvelope(MsgPing, "s", 2, nil))
++	stats := mux.Stats()
++	if stats[MsgPing] != 2 { t.Fatalf("expected 2, got %d", stats[MsgPing]) }
++}
++
++func TestMux_HandlerCount(t *testing.T) {
++	mux := NewMux()
++	mux.Handle(MsgPing, func(env *Envelope) *Envelope { return nil })
++	mux.Handle(MsgAck, func(env *Envelope) *Envelope { return nil })
++	if mux.HandlerCount() != 2 { t.Fatal("expected 2") }
++}
++
++func TestMux_Remove(t *testing.T) {
++	mux := NewMux()
++	mux.Handle(MsgPing, func(env *Envelope) *Envelope { return nil })
++	mux.Remove(MsgPing)
++	if mux.HasHandler(MsgPing) { t.Fatal("should be removed") }
++}
++
++func TestMux_NoHandler(t *testing.T) {
++	mux := NewMux()
++	resp := mux.Dispatch(MakeEnvelope(MsgPing, "s", 1, nil))
++	if resp != nil { t.Fatal("should return nil with no handler") }
++}

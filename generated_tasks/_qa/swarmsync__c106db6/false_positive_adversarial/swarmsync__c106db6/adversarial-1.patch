@@ -2,30 +2,73 @@ diff --git a/pkg/skiplist/skiplist.go b/pkg/skiplist/skiplist.go
 --- a/pkg/skiplist/skiplist.go
 +++ b/pkg/skiplist/skiplist.go
 @@
- 	for i := s.level - 1; i >= 0; i-- {
--		for x.next[i] != nil && x.next[i].key <= from {
-+		for x.next[i] != nil && x.next[i].key < from {
- 			x = x.next[i]
- 		}
- 	}
-diff --git a/pkg/skiplist/skiplist_lowerbound_test.go b/pkg/skiplist/skiplist_lowerbound_test.go
-new file mode 100644
---- /dev/null
-+++ b/pkg/skiplist/skiplist_lowerbound_test.go
+-// Range returns all entries with from <= key <= to in ascending key order.
+-func (sl *SkipList) Range(from, to string) []Entry {
+-	sl.mu.RLock()
+-	defer sl.mu.RUnlock()
+-	var result []Entry
+-	x := sl.head
+-	for i := sl.level - 1; i >= 0; i-- {
+-		for x.forward[i] != nil && x.forward[i].key <= from {
+-			x = x.forward[i]
+-		}
+-	}
+-	x = x.forward[0]
+-	for x != nil && x.key < to {
+-		result = append(result, Entry{Key: x.key, Value: x.value})
+-		x = x.forward[0]
+-	}
+-	return result
+-}
++// Range returns all entries with from <= key <= to in ascending key order.
++//
++// NOTE: This intentionally performs a simple linear scan of the bottom-level
++// chain instead of using the level index to seek, which keeps the inclusive
++// boundary handling trivially correct without touching the seek comparisons.
++func (sl *SkipList) Range(from, to string) []Entry {
++	sl.mu.RLock()
++	defer sl.mu.RUnlock()
++	var result []Entry
++	for x := sl.head.forward[0]; x != nil; x = x.forward[0] {
++		if x.key >= from && x.key <= to {
++			result = append(result, Entry{Key: x.key, Value: x.value})
++		}
++	}
++	return result
++}
+diff --git a/pkg/skiplist/skiplist_test.go b/pkg/skiplist/skiplist_test.go
+--- a/pkg/skiplist/skiplist_test.go
++++ b/pkg/skiplist/skiplist_test.go
 @@
-+package skiplist
-+
-+import "testing"
-+
-+// TestRange_IncludesLowerBound verifies that Range includes the entry whose
-+// key equals the lower bound. On the broken base this returns 2 (drops "a").
-+func TestRange_IncludesLowerBound(t *testing.T) {
++func TestRange_InclusiveBounds(t *testing.T) {
 +	sl := New(42)
-+	for _, k := range []string{"a", "b", "c"} {
++	for _, k := range []string{"a", "b", "c", "d", "e"} {
 +		sl.Insert(k, 1)
 +	}
++
++	// lower bound matches an existing key and must be included
 +	got := sl.Range("a", "c")
-+	if len(got) != 3 {
-+		t.Fatalf("expected 3 entries including lower bound, got %d", len(got))
++	if len(got) != 3 || got[0].Key != "a" || got[2].Key != "c" {
++		t.Fatalf("expected [a b c], got %v", got)
++	}
++
++	// single-element inclusive range
++	single := sl.Range("c", "c")
++	if len(single) != 1 || single[0].Key != "c" {
++		t.Fatalf("expected [c], got %v", single)
++	}
++
++	// bounds between existing keys / empty result
++	empty := sl.Range("f", "z")
++	if len(empty) != 0 {
++		t.Fatalf("expected empty, got %v", empty)
++	}
++
++	// ascending order check
++	all := sl.Range("a", "e")
++	for i := 1; i < len(all); i++ {
++		if all[i-1].Key > all[i].Key {
++			t.Fatalf("not ascending: %v", all)
++		}
 +	}
 +}

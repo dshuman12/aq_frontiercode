@@ -1,0 +1,130 @@
+diff --git a/pkg/crdt/set.go b/pkg/crdt/set.go
+--- a/pkg/crdt/set.go
++++ b/pkg/crdt/set.go
+@@ -73,8 +73,9 @@ func (s *GSet) Merge(other *GSet) {
+ // (nodeID, counter) pair so that removes only affect observed adds.
+ type ORSet struct {
+ 	mu       sync.RWMutex
+-	entries  map[string]map[ORTag]struct{} // element -> set of tags
+-	counters map[string]uint64             // nodeID -> next counter
++	entries    map[string]map[ORTag]struct{} // element -> set of tags
++	counters   map[string]uint64             // nodeID -> next counter
++	tombstones map[ORTag]struct{}            // tags observed as removed
+ }
+ 
+ // ORTag uniquely identifies an add operation.
+@@ -86,8 +87,9 @@ type ORTag struct {
+ // NewORSet creates an empty OR-Set.
+ func NewORSet() *ORSet {
+ 	return &ORSet{
+-		entries:  make(map[string]map[ORTag]struct{}),
+-		counters: make(map[string]uint64),
++		entries:    make(map[string]map[ORTag]struct{}),
++		counters:   make(map[string]uint64),
++		tombstones: make(map[ORTag]struct{}),
+ 	}
+ }
+ 
+@@ -106,7 +108,10 @@ func (s *ORSet) Add(elem string, nodeID string) {
+ func (s *ORSet) Remove(elem string) {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+-	delete(s.entries, elem)
++	for tag := range s.entries[elem] {
++		s.tombstones[tag] = struct{}{}
++	}
++	delete(s.entries, elem)
+ }
+ 
+ // Contains checks if an element has any active tags.
+@@ -150,15 +155,33 @@ func (s *ORSet) Merge(other *ORSet) {
+ 	defer s.mu.Unlock()
+ 	other.mu.RLock()
+ 	defer other.mu.RUnlock()
+ 
++	for tag := range other.tombstones {
++		s.tombstones[tag] = struct{}{}
++	}
++
+ 	for elem, tags := range other.entries {
+-		if s.entries[elem] == nil {
+-			s.entries[elem] = make(map[ORTag]struct{})
+-		}
+ 		for tag := range tags {
++			if _, dead := s.tombstones[tag]; dead {
++				continue
++			}
++			if s.entries[elem] == nil {
++				s.entries[elem] = make(map[ORTag]struct{})
++			}
+ 			s.entries[elem][tag] = struct{}{}
+ 		}
+ 	}
++
++	for elem, tags := range s.entries {
++		for tag := range tags {
++			if _, dead := s.tombstones[tag]; dead {
++				delete(tags, tag)
++			}
++		}
++		if len(tags) == 0 {
++			delete(s.entries, elem)
++		}
++	}
++
+ 	for nodeID, c := range other.counters {
+ 		if c > s.counters[nodeID] {
+ 			s.counters[nodeID] = c
+diff --git a/pkg/crdt/ormap.go b/pkg/crdt/ormap.go
+--- a/pkg/crdt/ormap.go
++++ b/pkg/crdt/ormap.go
+@@ -64,7 +64,10 @@ func (m *ORMap) Get(key string) (interface{}, bool) {
+ func (m *ORMap) Delete(key string) {
+ 	m.mu.Lock()
+ 	defer m.mu.Unlock()
+ 	m.keys.mu.Lock()
+-	delete(m.keys.entries, key)
++	for tag := range m.keys.entries[key] {
++		m.keys.tombstones[tag] = struct{}{}
++	}
++	delete(m.keys.entries, key)
+ 	m.keys.mu.Unlock()
+ }
+ 
+diff --git a/pkg/crdt/crdt_test.go b/pkg/crdt/crdt_test.go
+--- a/pkg/crdt/crdt_test.go
++++ b/pkg/crdt/crdt_test.go
+@@ -595,3 +595,33 @@ func TestORMap_Len(t *testing.T) {
+ 	if m.Len() != 1 {
+ 		t.Fatalf("expected 1 after delete, got %d", m.Len())
+ 	}
+ }
++
++func TestORSet_DeleteThenMergeConvergence(t *testing.T) {
++	s1 := NewORSet()
++	s1.Add("x", "n1")
++
++	s2 := NewORSet()
++	s2.Merge(s1) // s2 observes n1's add
++	s2.Remove("x")
++
++	// s1 still holds x; without tombstones the merge resurrects it.
++	s2.Merge(s1)
++	if s2.Contains("x") {
++		t.Fatal("removal should survive merge from replica that still holds the element")
++	}
++}
++
++func TestORMap_DeleteThenMergeConvergence(t *testing.T) {
++	a := NewORMap()
++	a.Put("k", "v", 100, "n1")
++
++	b := NewORMap()
++	b.Merge(a) // b observes the key add
++	b.Delete("k")
++
++	b.Merge(a)
++	if _, ok := b.Get("k"); ok {
++		t.Fatal("delete should converge across merge with a replica that still holds the key")
++	}
++}

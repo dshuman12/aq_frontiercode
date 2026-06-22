@@ -2,31 +2,31 @@ diff --git a/pkg/crdt/set.go b/pkg/crdt/set.go
 --- a/pkg/crdt/set.go
 +++ b/pkg/crdt/set.go
 @@
--	for elem, tags := range other.entries {
--		s.entries[elem] = tags
--	}
-+	for elem, tags := range other.entries {
-+		local := s.entries[elem]
-+		if local == nil {
-+			local = make(map[ORTag]bool)
-+			s.entries[elem] = local
-+		}
-+		for tag := range tags {
-+			local[tag] = true
-+		}
-+	}
-diff --git a/pkg/crdt/orset_union_test.go b/pkg/crdt/orset_union_test.go
+ 		if s.entries[elem] == nil {
+ 			s.entries[elem] = make(map[ORTag]struct{})
+ 		}
+-		s.entries[elem] = make(map[ORTag]struct{})
+ 		for tag := range tags {
+ 			s.entries[elem][tag] = struct{}{}
+ 		}
+@@
+ 	tags := s.entries[elem]
+-	return len(tags) == 0
++	return len(tags) > 0
+ }
+diff --git a/pkg/crdt/orset_extra_test.go b/pkg/crdt/orset_extra_test.go
 new file mode 100644
 --- /dev/null
-+++ b/pkg/crdt/orset_union_test.go
++++ b/pkg/crdt/orset_extra_test.go
 @@
 +package crdt
 +
 +import "testing"
 +
-+// TestORSet_MergeUnionsTags is a minimal positive-path check that a
-+// concurrently-added element survives a bidirectional merge.
-+func TestORSet_MergeUnionsTags(t *testing.T) {
++// TestORSet_MergeUnionSmoke is a minimal smoke check that the same element
++// concurrently added on two replicas survives a bidirectional merge and is
++// reported as present. It fails against the broken base snapshot.
++func TestORSet_MergeUnionSmoke(t *testing.T) {
 +	a := NewORSet("a")
 +	b := NewORSet("b")
 +	a.Add("x")
