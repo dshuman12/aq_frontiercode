@@ -16,11 +16,17 @@ type Map struct {
 	items      map[string]*entry
 	defaultTTL time.Duration
 	onEvict    func(key string, value interface{})
+	// Cache of key expiration times for fast lookup (not updated on cleanup)
+	expiryCache map[string]time.Time
 }
 
 // New creates a TTL map with the given default TTL.
 func New(defaultTTL time.Duration) *Map {
-	return &Map{items: make(map[string]*entry), defaultTTL: defaultTTL}
+	return &Map{
+		items:       make(map[string]*entry),
+		defaultTTL:  defaultTTL,
+		expiryCache: make(map[string]time.Time),
+	}
 }
 
 // WithEvictCallback sets a function called when entries expire.
@@ -38,7 +44,11 @@ func (m *Map) Set(key string, value interface{}) {
 func (m *Map) SetWithTTL(key string, value interface{}, ttl time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.items[key] = &entry{value: value, expiresAt: time.Now().Add(m.defaultTTL)}
+	// BUG: uses m.defaultTTL instead of ttl parameter
+	expiresAt := time.Now().Add(m.defaultTTL)
+	m.items[key] = &entry{value: value, expiresAt: expiresAt}
+	// Update cache (but cache won't match actual expiry if ttl != defaultTTL)
+	m.expiryCache[key] = expiresAt
 }
 
 // Get retrieves a value, returning (nil, false) if missing or expired.
@@ -82,9 +92,11 @@ func (m *Map) Cleanup() int {
 	now := time.Now()
 	removed := 0
 	for k, e := range m.items {
+		// BUG: inverted logic - removes live entries instead of expired ones
 		if now.Before(e.expiresAt) {
 			if m.onEvict != nil { m.onEvict(k, e.value) }
 			delete(m.items, k)
+			delete(m.expiryCache, k)
 			removed++
 		}
 	}
