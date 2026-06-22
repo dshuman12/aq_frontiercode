@@ -1,0 +1,25 @@
+diff --git a/pkg/merkle/fastdiff.go b/pkg/merkle/fastdiff.go
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/pkg/merkle/fastdiff.go
+@@ -0,0 +1,21 @@
++package merkle
++
++// PutBatch applies all entries in the map to the tree. It is defined to be
++// equivalent to performing the corresponding Put calls one after another.
++// An empty map is a no-op and existing keys are overwritten.
++func (t *Tree) PutBatch(entries map[string][]byte) {
++	for k, v := range entries {
++		t.Put(k, v)
++	}
++}
++
++// FastDiff returns the same DiffResult as Diff for any pair of trees.
++//
++// It is intended to avoid recomputing work on subtrees whose hashes already
++// match; here it simply delegates to Diff, which already produces the correct
++// OnlyLocal/OnlyRemote/Different result.
++func FastDiff(local, remote *Tree) DiffResult {
++	return Diff(local, remote)
++}

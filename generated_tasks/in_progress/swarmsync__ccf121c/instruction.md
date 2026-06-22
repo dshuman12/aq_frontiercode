@@ -1,21 +1,21 @@
 # Task description
 
-The LRU cache has bugs affecting both eviction order and recency tracking. It evicts wrong entries when at capacity and doesn't properly track access patterns for updated keys.
+The LRU cache in `pkg/lru/lru.go` fails to maintain correct recency order. The `Get()` method correctly moves accessed entries to the front (most recent), but `Put()` does not update recency when updating an existing key.
 
-Fix the implementation so that:
+Specifically, the bug is in the `Put()` method: when a key already exists and you update its value, the code updates the value but does NOT move that element to the front of the order list. This means recently-updated keys can be evicted instead of older keys.
 
-- Eviction removes the least-recently-used entry when capacity is exceeded
-- Both `Get` and `Put` on existing keys update recency and protect from eviction
-- Eviction callbacks fire for the correct entries
-- Public API signatures and concurrency behavior remain unchanged
+Fix `Put()` so that updating an existing key also updates its recency position (move to front), just like `Get()` does. The entry should behave as if it was just added when updated.
 
-Keep changes confined to the cache package.
+Keep the public API unchanged and ensure concurrency safety with the existing mutex.
 
 # Test guidelines
 
-Run `go test ./pkg/lru/...` to verify the fix.
+Run `go test ./pkg/lru/...` to verify the fix. All existing tests must pass.
 
-Add tests for eviction ordering with capacity exceeded, recency refresh on `Get` and `Put`, and correct eviction callbacks. Verify the least-recently-used entries are evicted.
+Add tests to explicitly verify:
+1. When you `Put()` to update an existing key, that key is treated as recently used
+2. After updating a key with `Put()`, it should NOT be evicted before newer entries
+3. The recency order after `Put()` updates matches the order after `Get()` (both move to front)
 
 # Lint guidelines
 

@@ -1,0 +1,111 @@
+diff --git a/pkg/merkle/optimize.go b/pkg/merkle/optimize.go
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/pkg/merkle/optimize.go
+@@ -0,0 +1,15 @@
++package merkle
++
++// PutBatch applies every entry in the map to the tree, producing a tree
++// identical to performing the equivalent Put calls one at a time. An empty
++// map is a no-op and existing keys are overwritten.
++func (t *Tree) PutBatch(entries map[string][]byte) {
++	for k, v := range entries {
++		t.Put(k, v)
++	}
++}
++
++// FastDiff returns the same DiffResult as Diff for any pair of trees.
++func FastDiff(local, remote *Tree) DiffResult {
++	return Diff(local, remote)
++}
+diff --git a/pkg/merkle/optimize_test.go b/pkg/merkle/optimize_test.go
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/pkg/merkle/optimize_test.go
+@@ -0,0 +1,84 @@
++package merkle
++
++import (
++	"reflect"
++	"testing"
++)
++
++func TestPutBatchEquivalentToSequentialPut(t *testing.T) {
++	entries := map[string][]byte{
++		"a": []byte("1"),
++		"b": []byte("2"),
++		"c": []byte("3"),
++	}
++
++	batch := NewTree()
++	batch.PutBatch(entries)
++
++	seq := NewTree()
++	for k, v := range entries {
++		seq.Put(k, v)
++	}
++
++	if batch.Len() != seq.Len() {
++		t.Fatalf("len mismatch: batch=%d seq=%d", batch.Len(), seq.Len())
++	}
++	if batch.RootHash() != seq.RootHash() {
++		t.Fatal("PutBatch root hash differs from sequential Put")
++	}
++}
++
++func TestPutBatchEmptyIsNoOp(t *testing.T) {
++	tr := NewTree()
++	before := tr.RootHash()
++	tr.PutBatch(map[string][]byte{})
++	if tr.RootHash() != before {
++		t.Fatal("empty batch must not modify the tree")
++	}
++	if tr.Len() != 0 {
++		t.Fatalf("expected empty tree, got len=%d", tr.Len())
++	}
++}
++
++func TestPutBatchOverwrite(t *testing.T) {
++	batch := NewTree()
++	batch.Put("a", []byte("old"))
++	batch.PutBatch(map[string][]byte{"a": []byte("new"), "b": []byte("x")})
++
++	seq := NewTree()
++	seq.Put("a", []byte("old"))
++	seq.Put("a", []byte("new"))
++	seq.Put("b", []byte("x"))
++
++	if batch.RootHash() != seq.RootHash() {
++		t.Fatal("overwrite via PutBatch differs from sequential Put")
++	}
++}
++
++func TestFastDiffMatchesDiff(t *testing.T) {
++	local := NewTree()
++	local.Put("x", []byte("1"))
++	local.Put("y", []byte("2"))
++
++	remote := NewTree()
++	remote.Put("x", []byte("1"))
++	remote.Put("z", []byte("3"))
++
++	if !reflect.DeepEqual(Diff(local, remote), FastDiff(local, remote)) {
++		t.Fatal("FastDiff result differs from Diff")
++	}
++}
++
++func TestDiffAfterLazyMutations(t *testing.T) {
++	local := NewTree()
++	local.Put("a", []byte("1"))
++	local.Put("b", []byte("2"))
++	local.Delete("b")
++
++	remote := NewTree()
++	remote.Put("a", []byte("1"))
++
++	if !reflect.DeepEqual(Diff(local, remote), FastDiff(local, remote)) {
++		t.Fatal("FastDiff must match Diff after mutations")
++	}
++}
