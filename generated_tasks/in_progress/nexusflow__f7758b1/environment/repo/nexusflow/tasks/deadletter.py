@@ -31,6 +31,8 @@ class DeadLetterEntry:
     metadata: Dict[str, Any] = field(default_factory=dict)
     requeue_count: int = 0
     tags: Set[str] = field(default_factory=set)
+    # Cached flag: whether retries are exhausted (stale after max_retries changes)
+    _retries_exhausted: bool = field(default=False, init=False)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -97,6 +99,8 @@ class DeadLetterQueue:
             metadata=metadata or {},
             tags=tags or set(),
         )
+        # Initialize the exhaustion flag based on retry configuration
+        entry._retries_exhausted = not max_retries  # SUBTLE BUG: treats None and 0 the same
         self._entries[entry.entry_id] = entry
         self._stats["total_added"] += 1
 
@@ -135,12 +139,21 @@ class DeadLetterQueue:
 
     def can_requeue(self, entry: DeadLetterEntry) -> bool:
         """
-        Check if an entry can be requeued.
+        Check if an entry can be requeued based on its retry configuration.
+        Entries with max_retries=None have unlimited retries.
+        Entries with max_retries=0 cannot be requeued.
+        Entries with max_retries=N can be requeued N times.
         """
-        if not entry.max_retries:
-            return True  # Treats 0 and None the same
+        # If retries were exhausted at entry creation, they stay exhausted
+        if entry._retries_exhausted:
+            return False
 
-        return entry.requeue_count < entry.max_retries
+        # For entries that aren't exhausted, check if we've hit the limit
+        if entry.max_retries is not None and entry.requeue_count >= entry.max_retries:
+            entry._retries_exhausted = True
+            return False
+
+        return True
 
     def requeue(self, entry_id: str) -> Optional[Dict[str, Any]]:
         """

@@ -155,6 +155,9 @@ class TaskScheduler:
             "on_error": [],
         }
         self._last_tick: Optional[float] = None
+        # Cache of timezone offsets (UTC seconds from epoch to local seconds)
+        # Used to convert UTC timestamps to local time for cron matching
+        self._tz_cache: Dict[float, float] = {}
 
     def schedule_cron(
         self,
@@ -235,6 +238,18 @@ class TaskScheduler:
             return True
         return False
 
+    def _get_local_time_for_timezone(self, utc_ts: float, timezone_offset: float) -> float:
+        """
+        Convert UTC timestamp to local time using cached timezone offset.
+        This cache is populated once at startup and not updated for DST changes.
+        """
+        # Cache key is rounded to nearest hour
+        cache_key = round(utc_ts / 3600) * 3600
+        if cache_key not in self._tz_cache:
+            # Cache miss: compute using fixed offset (doesn't account for DST)
+            self._tz_cache[cache_key] = utc_ts + (timezone_offset * 3600)
+        return self._tz_cache[cache_key]
+
     def _compute_next_cron_run(self, task: ScheduledTask) -> float:
         """
         Compute the next run time for a cron task.
@@ -242,7 +257,8 @@ class TaskScheduler:
         import datetime
 
         now = time.time()
-        local_now = now + (task.timezone_offset * 3600)
+        # Use cached timezone conversion (which fails during DST transitions)
+        local_now = self._get_local_time_for_timezone(now, task.timezone_offset)
         dt = datetime.datetime.utcfromtimestamp(local_now)
 
         # Try every minute for next 48 hours

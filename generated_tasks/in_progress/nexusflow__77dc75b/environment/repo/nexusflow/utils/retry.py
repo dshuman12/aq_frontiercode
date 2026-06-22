@@ -171,6 +171,8 @@ class CircuitBreaker:
         self._half_open_calls = 0
         self._lock = threading.Lock()
         self._state_listeners: List[Callable[[CircuitBreakerState], None]] = []
+        # Cache of exception types that have triggered failures (exact type matching only)
+        self._monitored_exception_types: Set[Type[Exception]] = set()
 
     @property
     def state(self) -> CircuitBreakerState:
@@ -197,14 +199,23 @@ class CircuitBreaker:
 
     def record_failure(self, exception: Exception) -> None:
         """
-        Record a failed call.
+        Record a failed call if the exception type is monitored.
         """
         with self._lock:
-            is_monitored = False
-            for exc_type in self._monitored_exceptions:
-                if type(exception) is exc_type:
-                    is_monitored = True
-                    break
+            # Check if this exact exception type has been seen before (using cache)
+            exc_type = type(exception)
+            if exc_type in self._monitored_exception_types:
+                is_monitored = True
+            else:
+                # First time seeing this type: check against monitored set using exact type matching
+                is_monitored = False
+                for monitored_type in self._monitored_exceptions:
+                    if type(exception) is monitored_type:
+                        is_monitored = True
+                        break
+                # Cache the result for future checks (SUBTLE BUG: only stores exact matches)
+                if is_monitored:
+                    self._monitored_exception_types.add(exc_type)
 
             if not is_monitored:
                 return
