@@ -1,0 +1,102 @@
+diff --git a/base/pkg/ttlmap/ttlmap.go b/repo/pkg/ttlmap/ttlmap.go
+index da13fa4..e0286f2 100644
+--- a/base/pkg/ttlmap/ttlmap.go
++++ b/repo/pkg/ttlmap/ttlmap.go
+@@ -77,18 +77,21 @@ func (m *Map) Len() int {
+ 
+ // Cleanup removes all expired entries and returns how many were removed.
+ func (m *Map) Cleanup() int {
+-	m.mu.Lock()
+-	defer m.mu.Unlock()
+-	now := time.Now()
+-	removed := 0
+-	for k, e := range m.items {
+-		if now.Before(e.expiresAt) {
+-			if m.onEvict != nil { m.onEvict(k, e.value) }
+-			delete(m.items, k)
+-			removed++
+-		}
+-	}
+-	return removed
++    m.mu.Lock()
++    defer m.mu.Unlock()
++    now := time.Now()
++    removed := 0
++    for k, e := range m.items {
++        // Expire entries whose deadline has elapsed: at or before now.
++        // This matches lazy expiry semantics used by Get(), while ensuring
++        // a sweep only removes truly expired items.
++        if !e.expiresAt.After(now) { // expired when expiresAt <= now
++            delete(m.items, k)
++            if m.onEvict != nil { m.onEvict(k, e.value) }
++            removed++
++        }
++    }
++    return removed
+ }
+ 
+ // Keys returns all non-expired keys.
+diff --git a/base/pkg/ttlmap/ttlmap_test.go b/repo/pkg/ttlmap/ttlmap_test.go
+index b6a0ca3..23cbca4 100644
+--- a/base/pkg/ttlmap/ttlmap_test.go
++++ b/repo/pkg/ttlmap/ttlmap_test.go
+@@ -69,17 +69,49 @@ func TestMap_CustomTTL(t *testing.T) {
+ }
+ 
+ func TestMap_EvictCallback(t *testing.T) {
+-	evicted := 0
+-	m := New(10 * time.Millisecond)
+-	m.WithEvictCallback(func(k string, v interface{}) { evicted++ })
+-	m.Set("a", 1)
+-	time.Sleep(20 * time.Millisecond)
+-	m.Cleanup()
+-	if evicted != 1 { t.Fatalf("expected 1 eviction callback, got %d", evicted) }
++    evicted := 0
++    m := New(10 * time.Millisecond)
++    m.WithEvictCallback(func(k string, v interface{}) { evicted++ })
++    m.Set("a", 1)
++    time.Sleep(20 * time.Millisecond)
++    m.Cleanup()
++    if evicted != 1 { t.Fatalf("expected 1 eviction callback, got %d", evicted) }
+ }
+ 
+ func TestMap_Len(t *testing.T) {
+-	m := New(time.Second)
+-	m.Set("a", 1); m.Set("b", 2)
+-	if m.Len() != 2 { t.Fatal("expected 2") }
++    m := New(time.Second)
++    m.Set("a", 1); m.Set("b", 2)
++    if m.Len() != 2 { t.Fatal("expected 2") }
++}
++
++// Cleanup should remove only entries whose deadline has elapsed (<= now),
++// preserve live entries, and fire eviction callbacks for removed keys.
++func TestMap_CleanupSelective(t *testing.T) {
++    evicted := make(map[string]interface{})
++    m := New(time.Hour) // long default TTL; we set per-key TTLs explicitly
++    m.WithEvictCallback(func(k string, v interface{}) { evicted[k] = v })
++
++    // Prepare a mix of expired and live entries using deterministic TTLs.
++    m.SetWithTTL("expired_past", "vp", -1*time.Second) // definitely expired
++    m.SetWithTTL("expired_now", "vn", 0)                // boundary at now: treat as expired
++    m.SetWithTTL("live_long", "vl", 10*time.Minute)     // clearly live
++    m.SetWithTTL("live_long2", 42, 5*time.Minute)        // also live
++
++    removed := m.Cleanup()
++
++    if removed != 2 {
++        t.Fatalf("expected 2 removed, got %d", removed)
++    }
++
++    // Expired keys should be gone; live keys should remain accessible.
++    if _, ok := m.Get("expired_past"); ok { t.Fatal("expired_past should be removed") }
++    if _, ok := m.Get("expired_now"); ok { t.Fatal("expired_now should be removed (boundary)") }
++    if v, ok := m.Get("live_long"); !ok || v.(string) != "vl" { t.Fatal("live_long should remain") }
++    if v, ok := m.Get("live_long2"); !ok || v.(int) != 42 { t.Fatal("live_long2 should remain") }
++
++    // Eviction callback should have fired for removed keys only.
++    if len(evicted) != 2 { t.Fatalf("expected 2 evictions, got %d", len(evicted)) }
++    if evicted["expired_past"] != "vp" { t.Fatalf("unexpected eviction payload for expired_past: %v", evicted["expired_past"]) }
++    if evicted["expired_now"] != "vn" { t.Fatalf("unexpected eviction payload for expired_now: %v", evicted["expired_now"]) }
++    if _, ok := evicted["live_long"]; ok { t.Fatal("live_long should not have been evicted") }
+ }

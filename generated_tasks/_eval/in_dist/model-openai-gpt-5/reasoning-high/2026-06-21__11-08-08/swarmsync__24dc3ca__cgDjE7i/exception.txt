@@ -1,0 +1,59 @@
+Traceback (most recent call last):
+  File "/Users/daniela/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/trial/trial.py", line 961, in run
+    await self._execute_agent()
+  File "/Users/daniela/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/trial/trial.py", line 370, in _execute_agent
+    await asyncio.wait_for(
+    ...<6 lines>...
+    )
+  File "/Users/daniela/.local/share/uv/python/cpython-3.13.13-macos-aarch64-none/lib/python3.13/asyncio/tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/Users/daniela/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 42, in wrapper
+    return await fn(self, instruction, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/daniela/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/codex.py", line 796, in run
+    await self.exec_as_agent(
+    ...<17 lines>...
+    )
+  File "/Users/daniela/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 366, in exec_as_agent
+    return await self._exec(
+           ^^^^^^^^^^^^^^^^^
+        environment, command, env=env, cwd=cwd, timeout_sec=timeout_sec
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/daniela/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 329, in _exec
+    raise NonZeroAgentExitCodeError(
+    ...<3 lines>...
+    )
+harbor.agents.installed.base.NonZeroAgentExitCodeError: Command failed (exit 1): if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-5 --json --enable unified_exec -c model_reasoning_effort=high -- '# Task description
+
+`TTLMap.Cleanup` in `pkg/ttlmap/ttlmap.go` currently evicts the wrong entries. Its expiry comparison runs in the wrong direction, so it deletes entries whose deadline has **not** yet passed while leaving already-expired entries in the map. Those stale entries then linger until a later `Get` lazily removes them.
+
+Fix `Cleanup` so it removes only entries whose TTL has elapsed (deadline at or before the current time) and retains entries that are still live. The lazy-expiry behavior of `Get` and any registered eviction callbacks must continue to fire for the entries that `Cleanup` removes, matching the semantics already used elsewhere in the package. Do not change the exported API, the `TTLMap` struct layout, the callback signature, or the behavior of unrelated methods such as `Set`, `Get`, or `Len`.
+
+Keep the change confined to the `ttlmap` package; other packages must remain untouched. Success means a sweep over a populated map purges exactly the expired keys, preserves live keys, and invokes eviction callbacks consistently with lazy removal.
+
+# Test guidelines
+
+Run `go test ./pkg/ttlmap/...` to validate the change.
+
+Add or extend tests in `pkg/ttlmap` to cover a `Cleanup` sweep over a map containing both expired and live entries: confirm expired keys are gone, live keys survive, eviction callbacks fire for removed keys, and that boundary deadlines (exactly at the current time) are treated as expired. Use deterministic time control rather than real sleeps where the existing tests allow it.
+
+# Lint guidelines
+
+Run `gofmt -l pkg/ttlmap` and ensure it reports no files, and run `go vet ./pkg/ttlmap/...` with no findings before finishing.
+
+# Style guidelines
+
+You are already on the correct starting snapshot. Create your branch from this state. Do not rebase or start from master, main, or any other branch.
+' 2>&1 </dev/null | tee /logs/agent/codex.txt
+stdout: WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "/tmp" (codex_home: AbsolutePathBuf("/tmp/codex-home"))
+Reading additional input from stdin...
+{"type":"thread.started","thread_id":"019eeb5f-7312-7e83-b98a-c7cd584f6616"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `gpt-5` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
+{"type":"turn.started"}
+2026-06-21T18:09:21.994791Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses
+2026-06-21T18:09:22.145587Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses
+2026-06-21T18:09:22.523528Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthoriz ... [truncated]
+stderr: None

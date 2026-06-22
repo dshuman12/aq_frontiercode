@@ -1,0 +1,148 @@
+diff --git a/base/pkg/crdt/crdt_test.go b/repo/pkg/crdt/crdt_test.go
+index f2334af..5f38f71 100644
+--- a/base/pkg/crdt/crdt_test.go
++++ b/repo/pkg/crdt/crdt_test.go
+@@ -514,6 +514,82 @@ func TestORSet_Elements(t *testing.T) {
+ 	}
+ }
+ 
++func TestORSet_BidirectionalMergeUnionsTags(t *testing.T) {
++    a := NewORSet()
++    b := NewORSet()
++    a.Add("x", "n1")
++    b.Add("x", "n2")
++
++    // Bidirectional merge should converge with unioned tag sets on both
++    a.Merge(b)
++    b.Merge(a)
++
++    if !a.Contains("x") || !b.Contains("x") {
++        t.Fatal("both replicas should contain x after merge")
++    }
++    if len(a.Tags("x")) != 2 || len(b.Tags("x")) != 2 {
++        t.Fatal("both replicas should have two tags for x after merge")
++    }
++}
++
++func TestORSet_MergeIdempotent_NoChange(t *testing.T) {
++    a := NewORSet()
++    b := NewORSet()
++    a.Add("x", "n1")
++    b.Add("x", "n2")
++
++    a.Merge(b)
++    before := len(a.Tags("x"))
++    a.Merge(b) // re-merge should not change state
++    after := len(a.Tags("x"))
++    if before != 2 || after != 2 {
++        t.Fatalf("expected stable 2 tags across idempotent merge, got before=%d after=%d", before, after)
++    }
++}
++
++func TestORSet_MergeDoesNotResurrectOrDrop(t *testing.T) {
++    // Not drop: one side removes after seeing first add, the other adds concurrently.
++    a := NewORSet()
++    b := NewORSet()
++    a.Add("x", "n1")
++    b.Merge(a)
++    b.Remove("x")            // b forgets all tags for x
++    a.Add("x", "n2")        // concurrent unseen add on a
++    a.Merge(b); b.Merge(a)    // exchange states
++    if !a.Contains("x") || !b.Contains("x") {
++        t.Fatal("merge should not drop x when any tags exist")
++    }
++    if len(a.Tags("x")) != 2 || len(b.Tags("x")) != 2 {
++        t.Fatal("both sides should converge to two tags for x")
++    }
++
++    // Not resurrect: both sides have removed x entirely
++    a.Remove("x")
++    b.Remove("x")
++    a.Merge(b); b.Merge(a)
++    if a.Contains("x") || b.Contains("x") {
++        t.Fatal("merge should not resurrect x when no tags remain")
++    }
++}
++
++func TestORSet_MergeAdvancesCounters(t *testing.T) {
++    a := NewORSet()
++    b := NewORSet()
++
++    // Make a's counter for n1 higher than b's
++    a.Add("x", "n1") // counter 1 on a
++    a.Add("y", "n1") // counter 2 on a
++    b.Add("z", "n1") // counter 1 on b
++
++    // After merging into b, b's next add for n1 should be counter 3
++    b.Merge(a)
++    b.Add("w", "n1")
++    tags := b.Tags("w")
++    if len(tags) != 1 || tags[0].Counter != 3 {
++        t.Fatalf("expected counter 3 after merge, got %+v", tags)
++    }
++}
++
+ // --- ORMap ---
+ 
+ func TestORMap_PutGet(t *testing.T) {
+diff --git a/base/pkg/crdt/set.go b/repo/pkg/crdt/set.go
+index d76f7bb..8eaf675 100644
+--- a/base/pkg/crdt/set.go
++++ b/repo/pkg/crdt/set.go
+@@ -138,25 +138,30 @@ func (s *ORSet) Len() int {
+ // Merge combines two OR-Sets. For each element, the resulting tag set
+ // is the union of both replicas' tag sets.
+ func (s *ORSet) Merge(other *ORSet) {
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-	other.mu.RLock()
+-	defer other.mu.RUnlock()
+-
+-	for elem, tags := range other.entries {
+-		if s.entries[elem] == nil {
+-			s.entries[elem] = make(map[ORTag]struct{})
+-		}
+-		s.entries[elem] = make(map[ORTag]struct{})
+-		for tag := range tags {
+-			s.entries[elem][tag] = struct{}{}
+-		}
+-	}
+-	for nodeID, c := range other.counters {
+-		if c > s.counters[nodeID] {
+-			s.counters[nodeID] = c
+-		}
+-	}
++    s.mu.Lock()
++    defer s.mu.Unlock()
++    other.mu.RLock()
++    defer other.mu.RUnlock()
++
++    // For every element observed on either side, ensure the resulting
++    // tag set is the union of local and remote observations. Elements
++    // that exist only locally are preserved unchanged. Elements that
++    // exist only remotely are copied in. For shared elements, add the
++    // remote tags into the existing local tag set rather than
++    // overwriting it, to preserve add-wins semantics.
++    for elem, tags := range other.entries {
++        if s.entries[elem] == nil {
++            s.entries[elem] = make(map[ORTag]struct{})
++        }
++        for tag := range tags {
++            s.entries[elem][tag] = struct{}{}
++        }
++    }
++    for nodeID, c := range other.counters {
++        if c > s.counters[nodeID] {
++            s.counters[nodeID] = c
++        }
++    }
+ }
+ 
+ // Tags returns the tag set for an element (for testing/debugging).
+@@ -172,4 +177,4 @@ func (s *ORSet) Tags(elem string) []ORTag {
+ 		result = append(result, t)
+ 	}
+ 	return result
+-}
+\ No newline at end of file
++}

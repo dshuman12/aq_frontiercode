@@ -1,0 +1,229 @@
+{
+  "blocker_failures": [
+    "hidden_reference_tests_pass",
+    "submitted_tests_fail_on_base",
+    "visible_regression_tests_pass",
+    "scope_matches_reference_intent"
+  ],
+  "criteria_results": [
+    {
+      "blocker": true,
+      "category": "patch_specific",
+      "criterion_id": "hidden_reference_tests_pass",
+      "details": "hidden reference tests: `python -m pytest tests/ -x -q` exited 1\nSTDOUT:\n...............F\n=================================== FAILURES ===================================\n_________________________ test_simple_bipartite_graph __________________________\n\n    def test_simple_bipartite_graph():\n        G = Graph()\n        for n in [1, 2, 3, 4]:\n            G.add_node(n)\n        G.add_edge(1, 2)\n        G.add_edge(1, 4)\n        G.add_edge(3, 2)\n        G.add_edge(3, 4)\n    \n>       top, bottom = bipartite_sets(G)\n                      ^^^^^^^^^^^^^^^^^\n\ntests/test_bipartite_fix.py:16: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nG = Graph(name='', nodes=4, edges=4)\n\n    def bipartite_sets(G) -> Tuple[Set, Set]:\n        \"\"\"Return (top, bottom) node sets for a bipartite graph.\n    \n        Raises ValueError if the graph is not bipartite.\n        \"\"\"\n        color: Dict[Any, int] = {}\n        for start in G:\n            if start in color:\n                continue\n            color[start] = 0\n            queue: deque = deque([start])\n            while queue:\n                v = queue.popleft()\n                for nbr in G.neighbors(v):\n                    if nbr not in color:\n                        color[nbr] = 1 - color[v]\n                        queue.append(nbr)\n                    elif color[nbr] != color[v]:\n>                       raise ValueError(f\"Graph is not bipartite; odd cycle found near {v!r}\")\nE                       ValueError: Graph is not bipartite; odd cycle found near 2\n\nmeridian/analysis/bipartite.py:36: ValueError\n=============================== warnings summary ===============================\nmeridian/partition.py:323\n  /tmp/frontiercode-hidden-tests-5ntqahud/repo/meridian/partition.py:323: SyntaxWarning: invalid escape sequence '\\A'\n    \"\"\"Conductance of cut (A, V\\A): cut / min(vol(A), vol(B)).\"\"\"\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/test_bipartite_fix.py::test_simple_bipartite_graph - ValueError: Graph is not bipartite; odd cycle found near 2\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 15 passed, 1 warning in 0.19s\n\nSTDERR:\n",
+      "method": "classical",
+      "passed": false,
+      "score": 0.0,
+      "weight": 0.35
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "submitted_tests_fail_on_base",
+      "details": "No submitted visible test changes were found to replay against the base snapshot.",
+      "method": "reverse_classical",
+      "passed": false,
+      "score": 0.0,
+      "weight": 0.15
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "visible_regression_tests_pass",
+      "details": "visible regression command: `python -m pytest tests/ -x -q` exited 1\nSTDOUT:\n..................................................F\n=================================== FAILURES ===================================\n_____________________ TestBipartite.test_path_is_bipartite _____________________\n\nself = <tests.test_clique_bipartite.TestBipartite object at 0xffff7e43cec0>\n\n    def test_path_is_bipartite(self):\n        g = path_graph(5)\n>       assert is_bipartite(g) is True\nE       AssertionError: assert False is True\nE        +  where False = is_bipartite(Graph(name='P_5', nodes=5, edges=4))\n\ntests/test_clique_bipartite.py:104: AssertionError\n=============================== warnings summary ===============================\nmeridian/partition.py:323\n  /tmp/frontiercode-visible-tests-487qbni0/repo/meridian/partition.py:323: SyntaxWarning: invalid escape sequence '\\A'\n    \"\"\"Conductance of cut (A, V\\A): cut / min(vol(A), vol(B)).\"\"\"\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/test_clique_bipartite.py::TestBipartite::test_path_is_bipartite - AssertionError: assert False is True\n +  where False = is_bipartite(Graph(name='P_5', nodes=5, edges=4))\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 50 passed, 1 warning in 0.19s\n\nSTDERR:\n",
+      "method": "command",
+      "passed": false,
+      "score": 0.0,
+      "weight": 0.2
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "scope_matches_reference_intent",
+      "details": "No files changed relative to the hidden base snapshot.",
+      "method": "scope",
+      "passed": false,
+      "score": 0.0,
+      "weight": 0.15
+    },
+    {
+      "blocker": true,
+      "category": "regular",
+      "criterion_id": "no_hidden_asset_leak",
+      "details": "No generated hidden asset names or fix commit identifiers were found in the agent-visible repo.",
+      "method": "command",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.05
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "behavior_core_requirement",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "behavior_edge_cases",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "behavior_error_handling",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "behavior_backward_compatibility",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "regression_visible_tests_meaningful",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "regression_reference_area_preserved",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "test_coverage_positive_path",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "test_coverage_negative_path",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "test_integration_with_existing_workflow",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "scope_minimal_patch",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "scope_no_unrelated_public_api_changes",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "maintainability_idiomatic_design",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "maintainability_simple_control_flow",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "regular",
+      "criterion_id": "dependency_and_environment_fit",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    },
+    {
+      "blocker": false,
+      "category": "patch_specific",
+      "criterion_id": "observable_output_contracts",
+      "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+      "method": "llm_prompt",
+      "passed": true,
+      "score": 1.0,
+      "weight": 0.02
+    }
+  ],
+  "metadata": {
+    "category_counts": {
+      "patch_specific": {
+        "passed": 5,
+        "total": 6
+      },
+      "regular": {
+        "passed": 11,
+        "total": 14
+      }
+    },
+    "criteria_passed": 16,
+    "criteria_total": 20
+  },
+  "pass": false,
+  "reward": 0.0,
+  "score": 0.0,
+  "submission_id": "",
+  "task_id": "meridian__8dfe46c"
+}

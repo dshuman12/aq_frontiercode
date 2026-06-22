@@ -1,0 +1,302 @@
+diff --git a/base/pkg/gossip/state.go b/repo/pkg/gossip/state.go
+index 4126c0e..ea6778c 100644
+--- a/base/pkg/gossip/state.go
++++ b/repo/pkg/gossip/state.go
+@@ -151,25 +151,34 @@ func (s *StateStore) Diff(remote *Digest) []*StateEntry {
+ // Only entries with a higher version than the local entry are accepted.
+ // Returns the number of entries that were actually applied.
+ func (s *StateStore) Apply(entries []*StateEntry) int {
+-	s.mu.Lock()
+-	defer s.mu.Unlock()
+-	applied := 0
+-	for _, remote := range entries {
+-		local, ok := s.entries[remote.Key]
+-		if !ok || remote.Version > local.Version {
+-			cp := *remote
+-			cp.Value = copyBytes(remote.Value)
+-			s.entries[remote.Key] = &cp
+-			if cp.Version > s.version {
+-				s.version = cp.Version
+-			}
+-			applied++
+-		}
+-	}
+-	if applied > 0 {
+-		s.hashDirty = true
+-	}
+-	return applied
++    s.mu.Lock()
++    defer s.mu.Unlock()
++    applied := 0
++    for _, remote := range entries {
++        local, ok := s.entries[remote.Key]
++        if !ok || remote.Version > local.Version {
++            cp := *remote
++            cp.Value = copyBytes(remote.Value)
++            s.entries[remote.Key] = &cp
++            if cp.Version > s.version {
++                s.version = cp.Version
++            }
++            applied++
++        } else if remote.Version == local.Version {
++            // Delete-wins on equal versions: if one side is tombstoned and the
++            // other is live, the tombstone should prevail.
++            if remote.Tombstone && !local.Tombstone {
++                cp := *remote
++                cp.Value = copyBytes(remote.Value)
++                s.entries[remote.Key] = &cp
++                applied++
++            }
++        }
++    }
++    if applied > 0 {
++        s.hashDirty = true
++    }
++    return applied
+ }
+ 
+ // Keys returns all non-tombstoned keys.
+@@ -263,4 +272,4 @@ func copyBytes(b []byte) []byte {
+ 	cp := make([]byte, len(b))
+ 	copy(cp, b)
+ 	return cp
+-}
+\ No newline at end of file
++}
+diff --git a/repo/pkg/sim/merkle_delete_test.go b/repo/pkg/sim/merkle_delete_test.go
+new file mode 100644
+index 0000000..f8fa8f3
+--- /dev/null
++++ b/repo/pkg/sim/merkle_delete_test.go
+@@ -0,0 +1,112 @@
++package sim
++
++import (
++    "fmt"
++    "testing"
++)
++
++// (a) Deletion propagates via Merkle-only when tombstone has higher version.
++func TestMerkleOnlySync_DeletePropagates_HigherVersion(t *testing.T) {
++    ns := NewNetworkSim(7)
++    ns.AddNode("n1", 1)
++    ns.AddNode("n2", 1)
++
++    // Both nodes start with a live value; n1 then deletes (higher version).
++    ns.GetStore("n2").Put("k", []byte("v"))        // v1 on n2
++    ns.GetStore("n1").Put("k", []byte("v"))        // v1 on n1
++    ns.GetStore("n1").Delete("k")                   // v2 tombstone on n1
++
++    for i := 0; i < 50; i++ {
++        ns.RunMerkleSyncRound()
++        if ns.Converged() {
++            break
++        }
++    }
++
++    if !ns.Converged() {
++        t.Fatal("expected convergence with merkle-only sync")
++    }
++    if _, ok := ns.GetStore("n2").Get("k"); ok {
++        t.Fatal("n2 should reflect deletion after merkle sync")
++    }
++}
++
++// (b) Delete-wins when tombstone and live entry share the same version.
++func TestMerkleOnlySync_DeleteWins_EqualVersion(t *testing.T) {
++    ns := NewNetworkSim(9)
++    ns.AddNode("n1", 1)
++    ns.AddNode("n2", 1)
++
++    // Arrange equal versions: both reach version 2 independently.
++    ns.GetStore("n1").Put("k", []byte("v")) // v1
++    ns.GetStore("n1").Delete("k")            // v2 tombstone
++
++    ns.GetStore("n2").Put("k", []byte("v")) // v1
++    ns.GetStore("n2").Put("k", []byte("v")) // v2 live
++
++    // Run only Merkle rounds; after sync, tombstone should win.
++    for i := 0; i < 50; i++ {
++        ns.RunMerkleSyncRound()
++        if ns.Converged() {
++            break
++        }
++    }
++
++    if !ns.Converged() {
++        t.Fatal("expected convergence with merkle-only sync")
++    }
++    if _, ok := ns.GetStore("n2").Get("k"); ok {
++        t.Fatal("delete-wins should remove live value at equal version")
++    }
++}
++
++// (c) Multi-node convergence after bulk deletes on one node using Merkle-only rounds.
++func TestMerkleOnlySync_BulkDelete_ClusterConverges(t *testing.T) {
++    ns := NewNetworkSim(42)
++    const nodes = 5
++    for i := 0; i < nodes; i++ {
++        ns.AddNode(fmt.Sprintf("n%d", i), 2)
++    }
++
++    // Prepopulate: each node writes 10 unique keys
++    for i := 0; i < nodes; i++ {
++        id := fmt.Sprintf("n%d", i)
++        for k := 0; k < 10; k++ {
++            key := fmt.Sprintf("k-%s-%02d", id, k)
++            ns.GetStore(id).Put(key, []byte("v"))
++        }
++    }
++
++    // Node n0 issues bulk deletes for half the keys in the cluster
++    // (regardless of origin). These will have high versions on n0.
++    for i := 0; i < nodes; i++ {
++        id := fmt.Sprintf("n%d", i)
++        for k := 0; k < 5; k++ { // delete 5 of the 10 per node
++            key := fmt.Sprintf("k-%s-%02d", id, k)
++            ns.GetStore("n0").Delete(key)
++        }
++    }
++
++    // Run only Merkle rounds until convergence or limit.
++    for round := 0; round < 200; round++ {
++        ns.RunMerkleSyncRound()
++        if ns.Converged() {
++            break
++        }
++    }
++    if !ns.Converged() {
++        t.Fatal("cluster did not converge with merkle-only rounds after bulk deletes")
++    }
++
++    // Verify all deleted keys are invisible on every node.
++    for i := 0; i < nodes; i++ {
++        id := fmt.Sprintf("n%d", i)
++        for k := 0; k < 5; k++ {
++            key := fmt.Sprintf("k-%s-%02d", id, k)
++            if _, ok := ns.GetStore(id).Get(key); ok {
++                t.Fatalf("node %s should not return deleted key %s", id, key)
++            }
++        }
++    }
++}
++
+diff --git a/base/pkg/sim/network.go b/repo/pkg/sim/network.go
+index 4f7ecb3..ea77648 100644
+--- a/base/pkg/sim/network.go
++++ b/repo/pkg/sim/network.go
+@@ -1,9 +1,10 @@
+ package sim
+ 
+ import (
+-	"math/rand"
+-	"sort"
+-	"sync"
++    "encoding/binary"
++    "math/rand"
++    "sort"
++    "sync"
+ 
+ 	"github.com/Mustafa4ngin/SwarmSync/pkg/gossip"
+ 	"github.com/Mustafa4ngin/SwarmSync/pkg/merkle"
+@@ -235,18 +236,28 @@ func (ns *NetworkSim) RunMerkleSyncRound() int {
+ 				synced++
+ 			}
+ 		}
+-		for _, key := range diff.Different {
+-			le, _ := store.GetEntry(key)
+-			re, _ := peerStore.GetEntry(key)
+-			if le != nil && re != nil {
+-				if le.Version > re.Version {
+-					peerStore.Apply([]*gossip.StateEntry{le})
+-				} else {
+-					store.Apply([]*gossip.StateEntry{re})
+-				}
+-				synced++
+-			}
+-		}
++        for _, key := range diff.Different {
++            le, _ := store.GetEntry(key)
++            re, _ := peerStore.GetEntry(key)
++            if le != nil && re != nil {
++                switch {
++                case le.Version > re.Version:
++                    peerStore.Apply([]*gossip.StateEntry{le})
++                case re.Version > le.Version:
++                    store.Apply([]*gossip.StateEntry{re})
++                default: // equal version → apply delete-wins if one is a tombstone
++                    if le.Tombstone && !re.Tombstone {
++                        peerStore.Apply([]*gossip.StateEntry{le})
++                    } else if re.Tombstone && !le.Tombstone {
++                        store.Apply([]*gossip.StateEntry{re})
++                    } else {
++                        // Fallback: prefer remote to break ties deterministically
++                        store.Apply([]*gossip.StateEntry{re})
++                    }
++                }
++                synced++
++            }
++        }
+ 
+ 		ns.recordEvent(Event{
+ 			Time:    ns.clock,
+@@ -260,16 +271,42 @@ func (ns *NetworkSim) RunMerkleSyncRound() int {
+ }
+ 
+ func storeToTree(store *gossip.StateStore) *merkle.Tree {
+-	tree := merkle.NewTree()
+-	entries := make(map[string][]byte)
+-	for _, key := range store.Keys() {
+-		v, ok := store.Get(key)
+-		if ok {
+-			entries[key] = v
+-		}
+-	}
+-	tree.PutBatch(entries)
+-	return tree
++    // Build a Merkle tree that reflects both live values and tombstones.
++    // We encode each leaf value as: [marker][version][value...]
++    // - marker: 0x00 for live, 0x01 for tombstone
++    // - version: 8 bytes big-endian
++    // This ensures deletions (tombstones) are visible to the diff and that
++    // equal-value updates with different versions still register as different.
++    tree := merkle.NewTree()
++    entries := make(map[string][]byte)
++
++    d := store.Digest()
++    for key := range d.Entries {
++        e, ok := store.GetEntry(key)
++        if !ok {
++            continue
++        }
++        var buf []byte
++        if e.Tombstone {
++            buf = make([]byte, 1+8)
++            buf[0] = 0x01
++            // version
++            var vbuf [8]byte
++            binary.BigEndian.PutUint64(vbuf[:], e.Version)
++            copy(buf[1:], vbuf[:])
++        } else {
++            // live: marker + version + value
++            buf = make([]byte, 1+8+len(e.Value))
++            buf[0] = 0x00
++            var vbuf [8]byte
++            binary.BigEndian.PutUint64(vbuf[:], e.Version)
++            copy(buf[1:], vbuf[:])
++            copy(buf[1+8:], e.Value)
++        }
++        entries[key] = buf
++    }
++    tree.PutBatch(entries)
++    return tree
+ }
+ 
+ func (ns *NetworkSim) peerList() []string {
+@@ -345,4 +382,4 @@ type SimRoundResult struct {
+ 	PulledTotal int
+ 	Blocked     int
+ 	Dropped     int
+-}
+\ No newline at end of file
++}

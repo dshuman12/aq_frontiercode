@@ -1,0 +1,337 @@
+diff --git a/base/nexusflow/tasks/scheduler.py b/repo/nexusflow/tasks/scheduler.py
+index 48c1936..e0af1e6 100644
+--- a/base/nexusflow/tasks/scheduler.py
++++ b/repo/nexusflow/tasks/scheduler.py
+@@ -19,7 +19,7 @@ import time
+ import uuid
+ from dataclasses import dataclass, field
+ from enum import Enum
+-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
++from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+ 
+ 
+ class TaskStatus(Enum):
+@@ -117,7 +117,7 @@ class CronExpression:
+ 
+ 
+ @dataclass
+-class ScheduledTask:
++class ScheduledTask:
+     """A task registered with the scheduler."""
+     task_id: str
+     name: str
+@@ -133,7 +133,11 @@ class ScheduledTask:
+     error_count: int = 0
+     last_error: Optional[str] = None
+     tags: Set[str] = field(default_factory=set)
+-    timezone_offset: float = 0.0  # hours offset from UTC
++    timezone_offset: float = 0.0  # hours offset from UTC
++    # Optional named timezone (e.g., "America/New_York").
++    # Kept internal to preserve public API; configured via tags like
++    # "tz:America/New_York" or "timezone=America/New_York".
++    timezone_name: Optional[str] = None
+ 
+     def __lt__(self, other: "ScheduledTask") -> bool:
+         """For heap ordering by next_run time."""
+@@ -167,29 +171,41 @@ class TaskScheduler:
+         }
+         self._last_tick: Optional[float] = None
+ 
+-    def schedule_cron(
+-        self,
+-        name: str,
+-        func: Callable,
+-        cron_expr: str,
+-        timezone_offset: float = 0.0,
+-        max_runs: Optional[int] = None,
+-        tags: Optional[Set[str]] = None,
+-    ) -> str:
+-        """Schedule a task with a cron expression."""
+-        task = ScheduledTask(
+-            task_id=str(uuid.uuid4()),
+-            name=name,
+-            func=func,
+-            cron=CronExpression(cron_expr),
+-            max_runs=max_runs,
+-            tags=tags or set(),
+-            timezone_offset=timezone_offset,
+-        )
+-        task.next_run = self._compute_next_cron_run(task)
+-        self._tasks[task.task_id] = task
+-        heapq.heappush(self._run_queue, task)
+-        return task.task_id
++    def schedule_cron(
++        self,
++        name: str,
++        func: Callable,
++        cron_expr: str,
++        timezone_offset: float = 0.0,
++        max_runs: Optional[int] = None,
++        tags: Optional[Set[str]] = None,
++    ) -> str:
++        """Schedule a task with a cron expression."""
++        # Detect an explicit timezone name from tags, without changing
++        # the public API. Accepted forms: "tz:Region/City" or
++        # "timezone=Region/City" (case-insensitive key).
++        tz_name: Optional[str] = None
++        if tags:
++            for t in tags:
++                m = re.match(r"^(?i:(tz|timezone))[:=](.+)$", t.strip())
++                if m:
++                    tz_name = m.group(2).strip()
++                    break
++
++        task = ScheduledTask(
++            task_id=str(uuid.uuid4()),
++            name=name,
++            func=func,
++            cron=CronExpression(cron_expr),
++            max_runs=max_runs,
++            tags=tags or set(),
++            timezone_offset=timezone_offset,
++            timezone_name=tz_name,
++        )
++        task.next_run = self._compute_next_cron_run(task)
++        self._tasks[task.task_id] = task
++        heapq.heappush(self._run_queue, task)
++        return task.task_id
+ 
+     def schedule_interval(
+         self,
+@@ -246,40 +262,101 @@ class TaskScheduler:
+             return True
+         return False
+ 
+-    def _compute_next_cron_run(self, task: ScheduledTask) -> float:
+-        """
+-        Compute the next run time for a cron task.
+-
+-        BUG CANDIDATE #12: The timezone_offset is applied as a simple
+-        arithmetic offset, which doesn't account for DST. When DST
+-        transitions occur, the offset changes by 1 hour, but this
+-        code uses a fixed offset, leading to double execution during
+-        fall-back or missed execution during spring-forward.
+-        """
+-        import datetime
+-
+-        now = time.time()
+-        # BUG: Uses fixed timezone_offset instead of actual TZ rules
+-        # This means DST transitions produce incorrect local times
+-        local_now = now + (task.timezone_offset * 3600)
+-        dt = datetime.datetime.utcfromtimestamp(local_now)
+-
+-        # Try every minute for next 48 hours
+-        for minutes_ahead in range(1, 48 * 60):
+-            candidate = dt + datetime.timedelta(minutes=minutes_ahead)
+-            if task.cron and task.cron.matches(
+-                candidate.minute,
+-                candidate.hour,
+-                candidate.day,
+-                candidate.month,
+-                candidate.weekday(),
+-            ):
+-                # Convert back to UTC timestamp
+-                # BUG: Same fixed offset applied in reverse
+-                utc_ts = candidate.timestamp() - (task.timezone_offset * 3600)
+-                return utc_ts
+-
+-        return now + 86400  # fallback: 24 hours later
++    def _compute_next_cron_run(self, task: ScheduledTask) -> float:
++        """
++        Compute the next run time for a cron task.
++
++        Fix for BUG CANDIDATE #12: Use real timezone rules when
++        interpreting the cron expression in wall-clock time. If a
++        named zone is provided (via tags), resolve candidate times in
++        that zone using zoneinfo so DST transitions map to the correct
++        UTC instants. For fixed-offset zones (including UTC), preserve
++        existing behavior.
++        """
++        import datetime
++        try:
++            from zoneinfo import ZoneInfo  # Python 3.9+
++        except Exception:  # pragma: no cover - extremely old Python
++            ZoneInfo = None  # type: ignore
++
++        # Base "now" in UTC, anchored to time.time() for testability
++        now_ts = time.time()
++        now_utc = datetime.datetime.fromtimestamp(now_ts, tz=datetime.timezone.utc)
++
++        # Build a timezone object according to configuration
++        tz: datetime.tzinfo
++        if task.timezone_name and ZoneInfo is not None:
++            try:
++                tz = ZoneInfo(task.timezone_name)
++            except Exception:
++                # Fallback to fixed offset if the named zone is invalid
++                tz = datetime.timezone(datetime.timedelta(hours=task.timezone_offset))
++        else:
++            # Fixed-offset (including UTC) behaves exactly as before
++            tz = datetime.timezone(datetime.timedelta(hours=task.timezone_offset))
++
++        # Convert current UTC time into the target local wall-clock time
++        local_now = now_utc.astimezone(tz)
++
++        # Search window: next 48 hours of local wall-clock time. Rather than
++        # adding timedeltas on aware datetimes (which follow timeline
++        # semantics and skip the repeated hour at fall-back), enumerate
++        # wall-clock candidates by constructing naive local times for each
++        # minute and then resolving them in the timezone. For ambiguous times
++        # (fall-back), consider both folds; for nonexistent times
++        # (spring-forward), ZoneInfo normalizes deterministically.
++        base_date = local_now.date()
++        second = local_now.second
++        microsecond = local_now.microsecond
++
++        for days_ahead in range(0, 2):  # 0..1 => up to 48 hours
++            day_date = base_date + datetime.timedelta(days=days_ahead)
++            # Precompute cron day filters using local calendar values
++            # weekday: Monday=0 per datetime, but our CronField uses 0=Monday? It
++            # matches datetime.weekday() already used elsewhere in the module.
++            weekday = day_date.weekday()
++            month = day_date.month
++            day = day_date.day
++
++            for hour in range(0, 24):
++                for minute in range(0, 60):
++                    if not task.cron:
++                        continue
++                    if not (
++                        task.cron.minute.matches(minute)
++                        and task.cron.hour.matches(hour)
++                        and task.cron.day.matches(day)
++                        and task.cron.month.matches(month)
++                        and task.cron.weekday.matches(weekday)
++                    ):
++                        continue
++
++                    naive = datetime.datetime(
++                        day_date.year,
++                        day_date.month,
++                        day_date.day,
++                        hour,
++                        minute,
++                        second,
++                        microsecond,
++                    )
++
++                    # Consider both folds to cover the repeated hour case.
++                    # Prefer fold=0 when both are in the future (handles
++                    # spring-forward sensibly by mapping to the first valid
++                    # post-gap instant); if fold=0 is in the past but fold=1
++                    # is future (fall-back second occurrence), take fold=1.
++                    for fold in (0, 1):
++                        aware = naive.replace(tzinfo=tz, fold=fold)
++                        utc_dt = aware.astimezone(datetime.timezone.utc)
++                        ts = utc_dt.timestamp()
++                        if ts > now_ts:
++                            return ts
++
++        # If nothing matched in window (should be rare), fall back
++
++        # Fallback: 24 hours later in UTC
++        return now_ts + 86400
+ 
+     def tick(self) -> List[str]:
+         """
+diff --git a/base/tests/test_tasks/test_scheduler.py b/repo/tests/test_tasks/test_scheduler.py
+index 72a0a20..76f3134 100644
+--- a/base/tests/test_tasks/test_scheduler.py
++++ b/repo/tests/test_tasks/test_scheduler.py
+@@ -62,8 +62,8 @@ class TestCronField:
+         assert field.next_match(31) is None
+ 
+ 
+-class TestTaskScheduler:
+-    """Tests for the TaskScheduler."""
++class TestTaskScheduler:
++    """Tests for the TaskScheduler."""
+ 
+     def test_schedule_interval(self):
+         scheduler = TaskScheduler()
+@@ -91,4 +91,84 @@ class TestTaskScheduler:
+ 
+     def test_get_nonexistent_task(self):
+         scheduler = TaskScheduler()
+-        assert scheduler.get_task("nope") is None
++        assert scheduler.get_task("nope") is None
++
++    def test_cron_next_run_respects_fixed_offset_no_dst(self, monkeypatch):
++        # 2025-01-15T10:07:30Z, fixed offset +02:00; cron "0 12 * * *"
++        import datetime
++
++        now_utc = datetime.datetime(2025, 1, 15, 10, 7, 30, tzinfo=datetime.timezone.utc)
++        monkeypatch.setattr(__import__("time"), "time", lambda: now_utc.timestamp())
++
++        scheduler = TaskScheduler()
++        task_id = scheduler.schedule_cron(
++            "no-dst", lambda: None, cron_expr="0 12 * * *", timezone_offset=2.0
++        )
++        task = scheduler.get_task(task_id)
++        assert task is not None
++
++        # Expected: next day at 12:00:30 local (+02:00) => 10:00:30Z
++        expected_utc = datetime.datetime(2025, 1, 16, 10, 0, 30, tzinfo=datetime.timezone.utc)
++        assert task.next_run == pytest.approx(expected_utc.timestamp(), rel=0, abs=1e-6)
++
++    def test_cron_spring_forward_skipped_hour_maps_sensibly(self, monkeypatch):
++        # US/Eastern spring-forward on 2025-03-09 at 02:00 -> 03:00
++        # Cron: 30 2 * * * should map to 07:30Z on that date (03:30 EDT)
++        import datetime
++
++        now_utc = datetime.datetime(2025, 3, 9, 0, 0, 0, tzinfo=datetime.timezone.utc)
++        monkeypatch.setattr(__import__("time"), "time", lambda: now_utc.timestamp())
++
++        scheduler = TaskScheduler()
++        task_id = scheduler.schedule_cron(
++            "spring-forward",
++            lambda: None,
++            cron_expr="30 2 * * *",
++            tags={"tz:America/New_York"},
++        )
++        task = scheduler.get_task(task_id)
++        assert task is not None
++
++        expected_utc = datetime.datetime(2025, 3, 9, 7, 30, 0, tzinfo=datetime.timezone.utc)
++        assert task.next_run == pytest.approx(expected_utc.timestamp(), rel=0, abs=1e-6)
++
++    def test_cron_fall_back_first_occurrence(self, monkeypatch):
++        # US/Eastern fall-back on 2025-11-02 at 02:00 -> 01:00
++        # Cron: 30 1 * * * should first map to 05:30Z (01:30 EDT)
++        import datetime
++
++        now_utc = datetime.datetime(2025, 11, 2, 4, 0, 0, tzinfo=datetime.timezone.utc)
++        monkeypatch.setattr(__import__("time"), "time", lambda: now_utc.timestamp())
++
++        scheduler = TaskScheduler()
++        task_id = scheduler.schedule_cron(
++            "fall-back-first",
++            lambda: None,
++            cron_expr="30 1 * * *",
++            tags={"tz:America/New_York"},
++        )
++        task = scheduler.get_task(task_id)
++        assert task is not None
++
++        expected_utc = datetime.datetime(2025, 11, 2, 5, 30, 0, tzinfo=datetime.timezone.utc)
++        assert task.next_run == pytest.approx(expected_utc.timestamp(), rel=0, abs=1e-6)
++
++    def test_cron_fall_back_second_occurrence_after_first_passes(self, monkeypatch):
++        # After the first 01:30 EDT passes, the next should be 01:30 EST (06:30Z)
++        import datetime
++
++        after_first_utc = datetime.datetime(2025, 11, 2, 5, 31, 0, tzinfo=datetime.timezone.utc)
++        monkeypatch.setattr(__import__("time"), "time", lambda: after_first_utc.timestamp())
++
++        scheduler = TaskScheduler()
++        task_id = scheduler.schedule_cron(
++            "fall-back-second",
++            lambda: None,
++            cron_expr="30 1 * * *",
++            tags={"tz:America/New_York"},
++        )
++        task = scheduler.get_task(task_id)
++        assert task is not None
++
++        expected_utc = datetime.datetime(2025, 11, 2, 6, 30, 0, tzinfo=datetime.timezone.utc)
++        assert task.next_run == pytest.approx(expected_utc.timestamp(), rel=0, abs=1e-6)

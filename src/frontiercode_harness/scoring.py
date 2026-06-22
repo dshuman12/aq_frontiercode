@@ -48,7 +48,7 @@ def aggregate_criterion_results(
     )
     passed = not blocker_failures
     weight_total = sum(max(item.weight, 0.0) for item in criterion_results)
-    if not passed or weight_total <= 0:
+    if weight_total <= 0:
         score = 0.0
     else:
         score = sum(_clamp_score(item.score) * max(item.weight, 0.0) for item in criterion_results)

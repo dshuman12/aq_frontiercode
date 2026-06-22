@@ -1,0 +1,411 @@
+diff --git a/repo/=0.23 b/repo/=0.23
+new file mode 100644
+index 0000000..e69de29
+diff --git a/repo/=6.0 b/repo/=6.0
+new file mode 100644
+index 0000000..e69de29
+diff --git a/base/nexusflow/auth/jwt.py b/repo/nexusflow/auth/jwt.py
+index dd6ac89..881b303 100644
+--- a/base/nexusflow/auth/jwt.py
++++ b/repo/nexusflow/auth/jwt.py
+@@ -2,12 +2,13 @@
+ 
+ from __future__ import annotations
+ 
+-import hashlib
+-import hmac
+-import json
+-import logging
+-import time
+-import base64
++import hashlib
++import hmac
++import json
++import logging
++import time
++import base64
++import uuid
+ from dataclasses import dataclass, field
+ from enum import Enum
+ from typing import Any, Optional
+@@ -133,9 +134,12 @@ class JWTManager:
+         else:
+             ttl = self._access_ttl
+ 
+-        # Generate JTI — unique token identifier
+-        jti_input = f"{user_id}:{now}:{token_type.value}"
+-        jti = hashlib.sha256(jti_input.encode()).hexdigest()[:16]
++        # Generate JTI — unique token identifier. Include randomness to
++        # avoid collisions when multiple tokens are created within the same
++        # second for the same user and type.
++        rand = uuid.uuid4().hex
++        jti_input = f"{user_id}:{now}:{token_type.value}:{rand}"
++        jti = hashlib.sha256(jti_input.encode()).hexdigest()[:16]
+ 
+         claims = TokenClaims(
+             sub=user_id,
+diff --git a/base/nexusflow/db/query_builder.py b/repo/nexusflow/db/query_builder.py
+index 3e81a2a..f2784ba 100644
+--- a/base/nexusflow/db/query_builder.py
++++ b/repo/nexusflow/db/query_builder.py
+@@ -51,51 +51,62 @@ class Condition:
+         return Condition(f"NOT ({self.clause})", self.params)
+ 
+ 
+-def col_eq(column: str, value: Any) -> Condition:
+-    """column = $X"""
+-    return Condition(f"{_safe_identifier(column)} = ${{}}", [value])
++def _identifier_or_expr(name: str) -> str:
++    """Return a safe SQL identifier, or pass through simple function expressions.
++
++    Allows common aggregate/function expressions like "COUNT(*)" while keeping
++    strict validation for bare identifiers to prevent injection in typical cases.
++    """
++    if re.search(r"[()\*]", name):
++        return name
++    return _safe_identifier(name)
++
++
++def col_eq(column: str, value: Any) -> Condition:
++    """column = $X"""
++    return Condition(f"{_identifier_or_expr(column)} = ${{}}", [value])
+ 
+ 
+-def col_ne(column: str, value: Any) -> Condition:
+-    """column != $X"""
+-    return Condition(f"{_safe_identifier(column)} != ${{}}", [value])
++def col_ne(column: str, value: Any) -> Condition:
++    """column != $X"""
++    return Condition(f"{_identifier_or_expr(column)} != ${{}}", [value])
+ 
+ 
+-def col_gt(column: str, value: Any) -> Condition:
+-    return Condition(f"{_safe_identifier(column)} > ${{}}", [value])
++def col_gt(column: str, value: Any) -> Condition:
++    return Condition(f"{_identifier_or_expr(column)} > ${{}}", [value])
+ 
+ 
+-def col_lt(column: str, value: Any) -> Condition:
+-    return Condition(f"{_safe_identifier(column)} < ${{}}", [value])
++def col_lt(column: str, value: Any) -> Condition:
++    return Condition(f"{_identifier_or_expr(column)} < ${{}}", [value])
+ 
+ 
+-def col_gte(column: str, value: Any) -> Condition:
+-    return Condition(f"{_safe_identifier(column)} >= ${{}}", [value])
++def col_gte(column: str, value: Any) -> Condition:
++    return Condition(f"{_identifier_or_expr(column)} >= ${{}}", [value])
+ 
+ 
+-def col_lte(column: str, value: Any) -> Condition:
+-    return Condition(f"{_safe_identifier(column)} <= ${{}}", [value])
++def col_lte(column: str, value: Any) -> Condition:
++    return Condition(f"{_identifier_or_expr(column)} <= ${{}}", [value])
+ 
+ 
+-def col_in(column: str, values: list[Any]) -> Condition:
+-    placeholders = ", ".join(["${}"] * len(values))
+-    return Condition(f"{_safe_identifier(column)} IN ({placeholders})", values)
++def col_in(column: str, values: list[Any]) -> Condition:
++    placeholders = ", ".join(["${}"] * len(values))
++    return Condition(f"{_identifier_or_expr(column)} IN ({placeholders})", values)
+ 
+ 
+-def col_like(column: str, pattern: str) -> Condition:
+-    return Condition(f"{_safe_identifier(column)} LIKE ${{}}", [pattern])
++def col_like(column: str, pattern: str) -> Condition:
++    return Condition(f"{_identifier_or_expr(column)} LIKE ${{}}", [pattern])
+ 
+ 
+-def col_is_null(column: str) -> Condition:
+-    return Condition(f"{_safe_identifier(column)} IS NULL")
++def col_is_null(column: str) -> Condition:
++    return Condition(f"{_identifier_or_expr(column)} IS NULL")
+ 
+ 
+-def col_is_not_null(column: str) -> Condition:
+-    return Condition(f"{_safe_identifier(column)} IS NOT NULL")
++def col_is_not_null(column: str) -> Condition:
++    return Condition(f"{_identifier_or_expr(column)} IS NOT NULL")
+ 
+ 
+-def col_between(column: str, low: Any, high: Any) -> Condition:
+-    return Condition(f"{_safe_identifier(column)} BETWEEN ${{}}", [low, high])
++def col_between(column: str, low: Any, high: Any) -> Condition:
++    return Condition(f"{_identifier_or_expr(column)} BETWEEN ${{}}", [low, high])
+ 
+ 
+ def _safe_identifier(name: str) -> str:
+diff --git a/base/nexusflow/plugins/registry.py b/repo/nexusflow/plugins/registry.py
+index c33cb10..df6334a 100644
+--- a/base/nexusflow/plugins/registry.py
++++ b/repo/nexusflow/plugins/registry.py
+@@ -142,19 +142,22 @@ class PluginRegistry:
+         order: List[str] = []
+         in_progress: Set[str] = set()
+ 
+-        def visit(name: str) -> None:
+-            if name in visited:
+-                return
+-            if name in in_progress:
+-                return  # Circular dependency — skip silently
+-            in_progress.add(name)
+-            entry = self._plugins.get(name)
+-            if entry:
+-                for dep in entry.meta.dependencies:
+-                    visit(dep)
+-            in_progress.discard(name)
+-            visited.add(name)
+-            order.append(name)
++        def visit(name: str) -> None:
++            if name in visited:
++                return
++            if name in in_progress:
++                return  # Circular dependency — skip silently
++            entry = self._plugins.get(name)
++            if entry is None:
++                # Unknown dependency; mark visited but do not include in order
++                visited.add(name)
++                return
++            in_progress.add(name)
++            for dep in entry.meta.dependencies:
++                visit(dep)
++            in_progress.discard(name)
++            visited.add(name)
++            order.append(name)
+ 
+         for name in self._plugins:
+             visit(name)
+diff --git a/base/nexusflow/tasks/scheduler.py b/repo/nexusflow/tasks/scheduler.py
+index 48c1936..a3090de 100644
+--- a/base/nexusflow/tasks/scheduler.py
++++ b/repo/nexusflow/tasks/scheduler.py
+@@ -256,13 +256,13 @@ class TaskScheduler:
+         code uses a fixed offset, leading to double execution during
+         fall-back or missed execution during spring-forward.
+         """
+-        import datetime
++        import datetime
+ 
+         now = time.time()
+         # BUG: Uses fixed timezone_offset instead of actual TZ rules
+         # This means DST transitions produce incorrect local times
+         local_now = now + (task.timezone_offset * 3600)
+-        dt = datetime.datetime.utcfromtimestamp(local_now)
++        dt = datetime.datetime.fromtimestamp(local_now, datetime.timezone.utc)
+ 
+         # Try every minute for next 48 hours
+         for minutes_ahead in range(1, 48 * 60):
+diff --git a/base/nexusflow/tasks/worker.py b/repo/nexusflow/tasks/worker.py
+index 6b49c83..82901db 100644
+--- a/base/nexusflow/tasks/worker.py
++++ b/repo/nexusflow/tasks/worker.py
+@@ -64,17 +64,19 @@ class RetryPolicy:
+         if attempt >= self.max_retries:
+             return False
+ 
+-        # BUG: type() check instead of isinstance()
+-        # A TimeoutError subclass won't match TimeoutError here
+-        for exc_type in self.no_retry_on:
+-            if type(exception) is exc_type:  # BUG: should be isinstance
+-                return False
+-
+-        if self.retry_on is not None:
+-            for exc_type in self.retry_on:
+-                if type(exception) is exc_type:  # BUG: should be isinstance
+-                    return True
+-            return False
++        # Exclude: do not retry when exception is an instance (or subclass)
++        # of any configured non‑retryable type.
++        for exc_type in self.no_retry_on:
++            if isinstance(exception, exc_type):
++                return False
++
++        if self.retry_on is not None:
++            # Inclusive list: only retry when the exception is an instance
++            # (or subclass) of one of these configured types.
++            for exc_type in self.retry_on:
++                if isinstance(exception, exc_type):
++                    return True
++            return False
+ 
+         return True
+ 
+diff --git a/base/nexusflow/utils/retry.py b/repo/nexusflow/utils/retry.py
+index 4fa30b1..4476132 100644
+--- a/base/nexusflow/utils/retry.py
++++ b/repo/nexusflow/utils/retry.py
+@@ -217,17 +217,15 @@ class CircuitBreaker:
+         a TimeoutError(ConnectionError) subclass is raised, it
+         won't be counted as a failure.
+         """
+-        with self._lock:
+-            is_monitored = False
+-            for exc_type in self._monitored_exceptions:
+-                # BUG: type() check instead of isinstance()
+-                # Subclass exceptions won't match
+-                if type(exception) is exc_type:
+-                    is_monitored = True
+-                    break
+-
+-            if not is_monitored:
+-                return  # Silently ignores subclass exceptions
++        with self._lock:
++            # Count failures for any instance of the configured exception types,
++            # including subclass instances.
++            is_monitored = any(
++                isinstance(exception, exc_type) for exc_type in self._monitored_exceptions
++            )
++
++            if not is_monitored:
++                return  # Ignore non‑monitored exceptions entirely
+ 
+             self._failure_count += 1
+             self._last_failure_time = time.time()
+diff --git a/base/tests/test_tasks/test_worker.py b/repo/tests/test_tasks/test_worker.py
+index e1cd9ce..83d9fca 100644
+--- a/base/tests/test_tasks/test_worker.py
++++ b/repo/tests/test_tasks/test_worker.py
+@@ -11,8 +11,8 @@ from nexusflow.tasks.worker import (
+ )
+ 
+ 
+-class TestRetryPolicy:
+-    """Tests for the RetryPolicy."""
++class TestRetryPolicy:
++    """Tests for the RetryPolicy."""
+ 
+     def test_should_retry_within_limit(self):
+         policy = RetryPolicy(max_retries=3)
+@@ -27,10 +27,24 @@ class TestRetryPolicy:
+         policy = RetryPolicy(max_retries=3, no_retry_on={KeyboardInterrupt})
+         assert policy.should_retry(KeyboardInterrupt(), attempt=0) is False
+ 
+-    def test_retry_only_on_specified_types(self):
+-        policy = RetryPolicy(max_retries=3, retry_on={ConnectionError})
+-        assert policy.should_retry(ConnectionError(), attempt=0) is True
+-        assert policy.should_retry(ValueError(), attempt=0) is False
++    def test_retry_only_on_specified_types(self):
++        policy = RetryPolicy(max_retries=3, retry_on={ConnectionError})
++        assert policy.should_retry(ConnectionError(), attempt=0) is True
++        assert policy.should_retry(ValueError(), attempt=0) is False
++
++    def test_retry_on_subclass_type(self):
++        class MyConnError(ConnectionError):
++            pass
++
++        policy = RetryPolicy(max_retries=3, retry_on={ConnectionError})
++        assert policy.should_retry(MyConnError(), attempt=0) is True
++
++    def test_excluded_subclass_not_retried(self):
++        class MyValError(ValueError):
++            pass
++
++        policy = RetryPolicy(max_retries=3, no_retry_on={ValueError})
++        assert policy.should_retry(MyValError(), attempt=0) is False
+ 
+     def test_get_delay_exponential(self):
+         policy = RetryPolicy(base_delay=1.0, exponential_base=2.0, max_delay=60)
+@@ -68,7 +82,7 @@ class TestWorker:
+         assert execution.success is False
+         assert execution.error is not None
+ 
+-    def test_retry_on_failure(self):
++    def test_retry_on_failure(self):
+         attempt_count = [0]
+ 
+         def flaky():
+@@ -81,8 +95,27 @@ class TestWorker:
+         task = WorkerTask(name="flaky", func=flaky)
+         worker.submit(task)
+         execution = worker.process_next()
+-        assert execution.success is True
+-        assert attempt_count[0] == 3
++        assert execution.success is True
++        assert attempt_count[0] == 3
++
++    def test_retry_on_failure_with_subclass_exception(self):
++        class MyConnError(ConnectionError):
++            pass
++
++        attempt_count = [0]
++
++        def flaky():
++            attempt_count[0] += 1
++            if attempt_count[0] < 3:
++                raise MyConnError("not yet")
++            return "ok"
++
++        worker = Worker(default_retry_policy=RetryPolicy(max_retries=5, base_delay=0.01, retry_on={ConnectionError}))
++        task = WorkerTask(name="flaky-subclass", func=flaky)
++        worker.submit(task)
++        execution = worker.process_next()
++        assert execution.success is True
++        assert attempt_count[0] == 3
+ 
+     def test_task_execution_to_dict(self):
+         ex = TaskExecution(task_id="t1", attempt=2, success=True, duration=0.5)
+diff --git a/base/tests/test_utils/test_retry.py b/repo/tests/test_utils/test_retry.py
+index 74733b7..b16a8c0 100644
+--- a/base/tests/test_utils/test_retry.py
++++ b/repo/tests/test_utils/test_retry.py
+@@ -13,7 +13,7 @@ from nexusflow.utils.retry import (
+ )
+ 
+ 
+-class TestRetryConfig:
++class TestRetryConfig:
+     """Tests for retry configuration and delay calculation."""
+ 
+     def test_exponential_delay(self):
+@@ -55,10 +55,17 @@ class TestRetryConfig:
+         config = RetryConfig(no_retry_on={KeyboardInterrupt})
+         assert config.should_retry(KeyboardInterrupt()) is False
+ 
+-    def test_should_retry_only_specified(self):
+-        config = RetryConfig(retry_on={ConnectionError})
+-        assert config.should_retry(ConnectionError()) is True
+-        assert config.should_retry(ValueError()) is False
++    def test_should_retry_only_specified(self):
++        config = RetryConfig(retry_on={ConnectionError})
++        assert config.should_retry(ConnectionError()) is True
++        assert config.should_retry(ValueError()) is False
++
++    def test_should_retry_on_subclass(self):
++        class MyConnError(ConnectionError):
++            pass
++
++        config = RetryConfig(retry_on={ConnectionError})
++        assert config.should_retry(MyConnError()) is True
+ 
+ 
+ class TestRetryDecorator:
+@@ -113,7 +120,7 @@ class TestRetryDecorator:
+         assert len(retries_logged) == 2
+ 
+ 
+-class TestCircuitBreaker:
++class TestCircuitBreaker:
+     """Tests for the CircuitBreaker pattern."""
+ 
+     def test_initial_state_closed(self):
+@@ -175,7 +182,15 @@ class TestCircuitBreaker:
+         cb.record_failure(Exception("fail"))
+         assert CircuitBreakerState.OPEN in transitions
+ 
+-    def test_unmonitored_exception_ignored(self):
+-        cb = CircuitBreaker(failure_threshold=1, monitored_exceptions={ConnectionError})
+-        cb.record_failure(ValueError("not monitored"))
+-        assert cb.state == CircuitBreakerState.CLOSED
++    def test_unmonitored_exception_ignored(self):
++        cb = CircuitBreaker(failure_threshold=1, monitored_exceptions={ConnectionError})
++        cb.record_failure(ValueError("not monitored"))
++        assert cb.state == CircuitBreakerState.CLOSED
++
++    def test_subclass_counts_toward_threshold(self):
++        class MyConnError(ConnectionError):
++            pass
++
++        cb = CircuitBreaker(failure_threshold=1, monitored_exceptions={ConnectionError})
++        cb.record_failure(MyConnError("subclass fail"))
++        assert cb.state == CircuitBreakerState.OPEN

@@ -1,0 +1,81 @@
+diff --git a/base/pkg/lru/lru.go b/repo/pkg/lru/lru.go
+index 73239b6..0866cf6 100644
+--- a/base/pkg/lru/lru.go
++++ b/repo/pkg/lru/lru.go
+@@ -137,9 +137,10 @@ func (c *Cache) Clear() {
+ }
+ 
+ func (c *Cache) evictOldest() {
+-	back := c.order.Front()
+-	if back == nil { return }
+-	c.removeElement(back)
++    // The list's back holds the least-recently-used element.
++    oldest := c.order.Back()
++    if oldest == nil { return }
++    c.removeElement(oldest)
+ }
+ 
+ func (c *Cache) removeElement(elem *list.Element) {
+diff --git a/base/pkg/lru/lru_test.go b/repo/pkg/lru/lru_test.go
+index bbb5bbc..985f35c 100644
+--- a/base/pkg/lru/lru_test.go
++++ b/repo/pkg/lru/lru_test.go
+@@ -90,14 +90,51 @@ func TestCache_Clear(t *testing.T) {
+ }
+ 
+ func TestCache_EvictCallback(t *testing.T) {
+-	evicted := 0
+-	c := NewCache(1)
+-	c.WithEvictCallback(func(k string, v interface{}) { evicted++ })
+-	c.Put("a", 1); c.Put("b", 2)
+-	if evicted != 1 { t.Fatalf("expected 1, got %d", evicted) }
++    evicted := 0
++    c := NewCache(1)
++    c.WithEvictCallback(func(k string, v interface{}) { evicted++ })
++    c.Put("a", 1); c.Put("b", 2)
++    if evicted != 1 { t.Fatalf("expected 1, got %d", evicted) }
+ }
+ 
+ func TestCache_Capacity(t *testing.T) {
+-	c := NewCache(42)
+-	if c.Capacity() != 42 { t.Fatal("wrong capacity") }
++    c := NewCache(42)
++    if c.Capacity() != 42 { t.Fatal("wrong capacity") }
++}
++
++func TestCache_PutRefreshesRecency(t *testing.T) {
++    c := NewCache(2)
++    c.Put("a", 1)
++    c.Put("b", 2)
++    // Update existing key; this should also refresh recency for "a".
++    c.Put("a", 3)
++    // Next insert should evict least-recently-used, which is "b".
++    c.Put("c", 4)
++
++    if _, ok := c.Get("b"); ok {
++        t.Fatal("b should be evicted after a was refreshed")
++    }
++    if v, ok := c.Get("a"); !ok || v.(int) != 3 {
++        t.Fatal("a should remain with updated value 3")
++    }
++}
++
++func TestCache_EvictCallback_LRUKeyValue(t *testing.T) {
++    var called int
++    var lastKey string
++    var lastVal interface{}
++    c := NewCache(2)
++    c.WithEvictCallback(func(k string, v interface{}) { called++; lastKey = k; lastVal = v })
++
++    c.Put("a", 1)
++    c.Put("b", 2)
++    // Touch "a" so that "b" becomes the least-recently-used.
++    if _, ok := c.Get("a"); !ok { t.Fatal("expected to get a") }
++    // Inserting "c" should evict "b" and fire callback once with k=b, v=2.
++    c.Put("c", 3)
++
++    if called != 1 { t.Fatalf("expected 1 eviction callback, got %d", called) }
++    if lastKey != "b" || lastVal.(int) != 2 {
++        t.Fatalf("expected eviction of b=2, got %s=%v", lastKey, lastVal)
++    }
+ }

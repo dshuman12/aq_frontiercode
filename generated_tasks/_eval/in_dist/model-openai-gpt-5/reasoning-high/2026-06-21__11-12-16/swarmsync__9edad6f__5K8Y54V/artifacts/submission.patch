@@ -1,0 +1,161 @@
+diff --git a/repo/largest b/repo/largest
+new file mode 100644
+index 0000000..e69de29
+diff --git a/repo/pkg/hash/boundary_test.go b/repo/pkg/hash/boundary_test.go
+new file mode 100644
+index 0000000..bde7847
+--- /dev/null
++++ b/repo/pkg/hash/boundary_test.go
+@@ -0,0 +1,119 @@
++package hash
++
++import (
++	"testing"
++)
++func TestRing_Lookup_ExactMatch_SmallestAndLargest(t *testing.T) {
++	r := NewRing(32)
++	r.Add("n1")
++	r.Add("n2")
++	r.Add("n3")
++
++	r.mu.RLock()
++	if len(r.ring) < 2 {
++		r.mu.RUnlock()
++		t.Fatalf("unexpected small ring: " + itoa(len(r.ring)))
++	}
++	smallest := r.ring[0]
++	largest := r.ring[len(r.ring)-1]
++	nSmall := r.nodeMap[smallest]
++	nLarge := r.nodeMap[largest]
++	rep := r.replicas
++	r.mu.RUnlock()
++
++	// find indices for those virtual nodes
++	iSmall := -1
++	for i := 0; i < rep; i++ {
++		if virtualNodeHash(nSmall, i) == smallest {
++			iSmall = i
++			break
++		}
++	}
++	if iSmall < 0 { t.Fatal("cannot locate smallest index") }
++
++	iLarge := -1
++	for i := 0; i < rep; i++ {
++		if virtualNodeHash(nLarge, i) == largest {
++			iLarge = i
++			break
++		}
++	}
++	if iLarge < 0 { t.Fatal("cannot locate largest index") }
++
++	kSmall := nSmall + "#" + itoa(iSmall)
++	kLarge := nLarge + "#" + itoa(iLarge)
++	if got := r.Lookup(kSmall); got != nSmall { t.Fatalf("exact match at smallest: expected " + nSmall + ", got " + got) }
++	if got := r.Lookup(kLarge); got != nLarge { t.Fatalf("exact match at largest: expected " + nLarge + ", got " + got) }
++}
++
++
++func itoa(n int) string {
++	if n == 0 { return "0" }
++	var b [20]byte
++	i := len(b)
++	for n > 0 {
++		rem := n - (n/10)*10
++		i--
++		b[i] = byte('0' + byte(rem))
++		n = n / 10
++	}
++	return string(b[i:])
++}
++
++
++func TestRing_LookupN_ExactMatch_StartsAtPosition(t *testing.T) {
++	r := NewRing(64)
++	r.Add("a")
++	r.Add("b")
++	r.Add("c")
++
++	r.mu.RLock()
++	midIdx := len(r.ring) / 2
++	h := r.ring[midIdx]
++	startNode := r.nodeMap[h]
++	rep := r.replicas
++	r.mu.RUnlock()
++
++	vi := -1
++	for i := 0; i < rep; i++ {
++		if virtualNodeHash(startNode, i) == h { vi = i; break }
++	}
++	if vi < 0 { t.Fatal("cannot locate virtual index") }
++	key := startNode + "#" + itoa(vi)
++
++	expected := make([]string, 0, 3)
++	seen := make(map[string]bool)
++	r.mu.RLock()
++	for i := 0; i < len(r.ring) && len(expected) < 3; i++ {
++		pos := midIdx + i
++		if pos >= len(r.ring) { pos -= len(r.ring) }
++		n := r.nodeMap[r.ring[pos]]
++		if !seen[n] { seen[n] = true; expected = append(expected, n) }
++	}
++	r.mu.RUnlock()
++
++	got := r.LookupN(key, 3)
++	if len(got) != len(expected) { t.Fatal("LookupN length mismatch") }
++	for i := range expected { if got[i] != expected[i] { t.Fatal("LookupN order mismatch") } }
++}
++
++func TestRing_Lookup_WrapAround_PastEnd(t *testing.T) {
++	r := NewRing(1)
++	r.Add("na")
++	r.Add("nb")
++	r.Add("nc")
++
++	r.mu.RLock()
++	largest := r.ring[len(r.ring)-1]
++	wrapNode := r.nodeMap[r.ring[0]]
++	r.mu.RUnlock()
++
++	probe := ""
++	for i := 0; i < 200000; i++ {
++		cand := "X#" + itoa(i)
++		if keyHash(cand) > largest { probe = cand; break }
++	}
++	if probe == "" { t.Fatal("failed to find probe key") }
++
++	if got := r.Lookup(probe); got != wrapNode { t.Fatal("wrap-around mismatch") }
++}
+diff --git a/base/pkg/hash/hash_test.go b/repo/pkg/hash/hash_test.go
+index a70ef4a..acab75e 100644
+--- a/base/pkg/hash/hash_test.go
++++ b/repo/pkg/hash/hash_test.go
+@@ -368,4 +368,4 @@ func TestRing_FNV_MinimalDisruption(t *testing.T) {
+ 	if moveRate > 0.60 {
+ 		t.Fatalf("too many keys moved (%.2f) — minimal disruption violated", moveRate)
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/hash/ring.go b/repo/pkg/hash/ring.go
+index 0da323e..a918842 100644
+--- a/base/pkg/hash/ring.go
++++ b/repo/pkg/hash/ring.go
+@@ -82,7 +82,7 @@ func (r *Ring) Lookup(key string) string {
+ 		return ""
+ 	}
+ 	h := keyHash(key)
+-	idx := sort.Search(len(r.ring), func(i int) bool { return r.ring[i] > h })
++	idx := sort.Search(len(r.ring), func(i int) bool { return r.ring[i] >= h })
+ 	if idx >= len(r.ring) {
+ 		idx = 0 // wrap around
+ 	}
+@@ -102,7 +102,7 @@ func (r *Ring) LookupN(key string, n int) []string {
+ 	}
+ 
+ 	h := keyHash(key)
+-	idx := sort.Search(len(r.ring), func(i int) bool { return r.ring[i] > h })
++	idx := sort.Search(len(r.ring), func(i int) bool { return r.ring[i] >= h })
+ 
+ 	seen := make(map[string]bool)
+ 	result := make([]string, 0, n)

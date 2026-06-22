@@ -552,7 +552,7 @@ def _eval_manifest(
         },
         "metrics": {
             "trial_pass": "true iff all blocker criteria pass",
-            "trial_score": "weighted criterion score gated to zero by any blocker failure",
+            "trial_score": "weighted average of criterion scores, including failed trials",
             "effort_score": "mean trial_score for a task/model/reasoning-effort cell",
             "effort_pass_rate": "mean trial_pass for a task/model/reasoning-effort cell",
             "final_score": "best effort_score over evaluated reasoning efforts",

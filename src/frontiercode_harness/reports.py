@@ -150,8 +150,8 @@ def _render_grader_details(results: list[FrontierCodeResult]) -> list[str]:
         "## Grader Details",
         "",
         (
-            "Trial score is zero when any blocker criterion fails; otherwise it is "
-            "the weighted average of criterion scores."
+            "Trial pass/fail is determined by blocker criteria. Trial score is "
+            "the weighted average of criterion scores, including failed trials."
         ),
         "",
     ]

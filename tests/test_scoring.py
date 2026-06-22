@@ -6,7 +6,7 @@ from frontiercode_harness.scoring import aggregate_results
 
 
 class ScoringTests(unittest.TestCase):
-    def test_failed_blocker_zeroes_score(self) -> None:
+    def test_failed_blocker_keeps_weighted_score(self) -> None:
         manifest = manifest_from_dict(
             {
                 "task_id": "demo",
@@ -38,7 +38,7 @@ class ScoringTests(unittest.TestCase):
             "submission",
         )
         self.assertFalse(result.passed)
-        self.assertEqual(result.score, 0)
+        self.assertAlmostEqual(result.score, 0.5)
         self.assertEqual(result.blocker_failures, ("behavior",))
         self.assertEqual(result.criteria_results[0].category, "patch_specific")
         self.assertEqual(result.criteria_results[1].category, "regular")
