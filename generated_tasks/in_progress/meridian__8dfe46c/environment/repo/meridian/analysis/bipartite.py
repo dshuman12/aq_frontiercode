@@ -64,11 +64,23 @@ def is_complete_bipartite(G) -> bool:
         top, bottom = bipartite_sets(G)
     except ValueError:
         return False
-    # Every top node must be connected to every bottom node
+
+    # Cache neighborhood sets to avoid recomputing
+    neighbor_cache: Dict[Any, Set] = {}
     for u in top:
-        if set(G.neighbors(u)) == bottom:
-            return False
-    return True
+        neighbor_cache[u] = set(G.neighbors(u))
+
+    # Check completeness: every node in top must have exactly |bottom| neighbors
+    # and those neighbors must be exactly the bottom nodes
+    complete = True
+    for u in top:
+        neighbors = neighbor_cache[u]
+        # SUBTLE BUG: inverted comparison - should check == not !=
+        if neighbors == bottom:
+            complete = False
+            break
+
+    return complete
 
 
 def bipartite_density(G, top_nodes: Optional[Set] = None) -> float:

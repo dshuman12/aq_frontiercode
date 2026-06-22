@@ -10,45 +10,45 @@ Trial mode: each trial is one independent agent solve trajectory. The agent rece
 
 | Task | Agent | Model | Best Reasoning Effort | Trials | Final Pass Rate | Final Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| nexusflow__77dc75b | codex | openai/gpt-5.5 | high | 2 | 0.000 | 0.000 | 0.000 |
+| nexusflow__77dc75b | codex | openai/gpt-5.5 | high | 2 | 1.000 | 1.000 | 1.000 |
 
 ## Effort Results
 
 | Task | Agent | Model | Reasoning Effort | Trials | Pass Rate | Average Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| nexusflow__77dc75b | codex | openai/gpt-5.5 | high | 2 | 0.000 | 0.000 | 0.000 |
+| nexusflow__77dc75b | codex | openai/gpt-5.5 | high | 2 | 1.000 | 1.000 | 1.000 |
 
 ## Trial Details
 
 | Task | Agent | Model | Reasoning Effort | Submission | Pass | Criteria | Categories | Score | Blocker Failures |
 | --- | --- | --- | --- | --- | --- | ---: | --- | ---: | --- |
-| nexusflow__77dc75b | codex | openai/gpt-5.5 | high | nexusflow__77dc75b__aMqiRvn | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
-| nexusflow__77dc75b | codex | openai/gpt-5.5 | high | nexusflow__77dc75b__nAJC6HC | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
+| nexusflow__77dc75b | codex | openai/gpt-5.5 | high | nexusflow__77dc75b__XjHEkZN | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
+| nexusflow__77dc75b | codex | openai/gpt-5.5 | high | nexusflow__77dc75b__cnwYMRq | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
 
 ## Grader Details
 
 Trial score is zero when any blocker criterion fails; otherwise it is the weighted average of criterion scores.
 
 <details>
-<summary>nexusflow__77dc75b__aMqiRvn: FAIL, score 0.000, criteria 19/20</summary>
+<summary>nexusflow__77dc75b__XjHEkZN: PASS, score 1.000, criteria 20/20</summary>
 
 - Task: `nexusflow__77dc75b`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
-- Pass: no
-- Score: 0.000
-- Reward: 0.000
-- Criteria: 19/20
-- Categories: patch_specific 6/6, regular 13/14
-- Blocker failures: `scope_matches_reference_intent`
+- Pass: yes
+- Score: 1.000
+- Reward: 1.000
+- Criteria: 20/20
+- Categories: patch_specific 6/6, regular 14/14
+- Blocker failures: none
 
 | Criterion | Category | Method | Blocker | Weight | Score | Pass |
 | --- | --- | --- | --- | ---: | ---: | --- |
 | hidden_reference_tests_pass | patch_specific | classical | yes | 0.350 | 1.000 | yes |
 | submitted_tests_fail_on_base | regular | reverse_classical | yes | 0.150 | 1.000 | yes |
 | visible_regression_tests_pass | regular | command | yes | 0.200 | 1.000 | yes |
-| scope_matches_reference_intent | regular | scope | yes | 0.150 | 0.000 | no |
+| scope_matches_reference_intent | regular | scope | yes | 0.150 | 1.000 | yes |
 | no_hidden_asset_leak | regular | command | yes | 0.050 | 1.000 | yes |
 | behavior_core_requirement | patch_specific | llm_prompt | no | 0.020 | 1.000 | yes |
 | behavior_edge_cases | patch_specific | llm_prompt | no | 0.020 | 1.000 | yes |
@@ -73,11 +73,12 @@ Criterion evidence:
 ```text
 hidden reference tests: `python -m pytest tests/ -x -q --ignore=tests/test_auth --ignore=tests/test_db --ignore=tests/test_plugins --ignore=tests/test_tasks/test_scheduler.py` exited 0
 STDOUT:
-........................................................................ [ 25%]
-........................................................................ [ 50%]
-........................................................................ [ 75%]
-........................................................................ [100%]
-288 passed in 1.16s
+........................................................................ [ 24%]
+........................................................................ [ 48%]
+........................................................................ [ 73%]
+........................................................................ [ 97%]
+......                                                                   [100%]
+294 passed in 1.45s
 
 STDERR:
 ```
@@ -88,33 +89,30 @@ STDERR:
 Submitted tests failed on the broken base snapshot as expected.
 submitted tests on base snapshot: `python -m pytest tests/ -x -q --ignore=tests/test_auth --ignore=tests/test_db --ignore=tests/test_plugins --ignore=tests/test_tasks/test_scheduler.py` exited 1
 STDOUT:
-........................................................................ [ 25%]
-........................................................................ [ 50%]
-.............................F
+........................................................................ [ 24%]
+........................................................................ [ 49%]
+....................................F
 =================================== FAILURES ===================================
-____________ TestRetryPolicy.test_retry_only_on_specified_subclass _____________
+____________ test_retry_policy_retries_retryable_exception_subclass ____________
 
-self = <test_tasks.test_worker.TestRetryPolicy object at 0xffff9c35ae40>
-
-    def test_retry_only_on_specified_subclass(self):
-        class CustomConnectionError(ConnectionError):
-            pass
+    def test_retry_policy_retries_retryable_exception_subclass() -> None:
+        policy = RetryPolicy(max_retries=3, retry_on={TaskRetryError})
     
-        policy = RetryPolicy(max_retries=3, retry_on={ConnectionError})
->       assert policy.should_retry(CustomConnectionError(), attempt=0) is True
+        assert policy.should_retry(TaskRetryError("base"), attempt=0) is True
+>       assert policy.should_retry(TransientTaskError("subclass"), attempt=0) is True
 E       AssertionError: assert False is True
-E        +  where False = should_retry(CustomConnectionError(), attempt=0)
-E        +    where should_retry = <nexusflow.tasks.worker.RetryPolicy object at 0xffff9c09eed0>.should_retry
-E        +    and   CustomConnectionError() = <class 'test_tasks.test_worker.TestRetryPolicy.test_retry_only_on_specified_subclass.<locals>.CustomConnectionError'>()
+E        +  where False = should_retry(TransientTaskError('subclass'), attempt=0)
+E        +    where should_retry = <nexusflow.tasks.worker.RetryPolicy object at 0xffffb795c1d0>.should_retry
+E        +    and   TransientTaskError('subclass') = TransientTaskError('subclass')
 
-tests/test_tasks/test_worker.py:51: AssertionError
+tests/test_tasks/test_worker_exception_subclasses.py:28: AssertionError
 =========================== short test summary info ============================
-FAILED tests/test_tasks/test_worker.py::TestRetryPolicy::test_retry_only_on_specified_subclass - AssertionError: assert False is True
- +  where False = should_retry(CustomConnectionError(), attempt=0)
- +    where should_retry = <nexusflow.tasks.worker.RetryPolicy object at 0xffff9c09eed0>.should_retry
- +    and   CustomConnectionError() = <class 'test_tasks.test_worker.TestRetryPolicy.test_retry_only_on_specified_subclass.<locals>.CustomConnectionError'>()
+FAILED tests/test_tasks/test_worker_exception_subclasses.py::test_retry_policy_retries_retryable_exception_subclass - AssertionError: assert False is True
+ +  where False = should_retry(TransientTaskError('subclass'), attempt=0)
+ +    where should_retry = <nexusflow.tasks.worker.RetryPolicy object at 0xffffb795c1d0>.should_retry
+ +    and   TransientTaskError('subclass') = TransientTaskError('subclass')
 !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
-1 failed, 173 passed in 0.22s
+1 failed, 180 passed in 0.47s
 
 STDERR:
 ```
@@ -124,19 +122,20 @@ STDERR:
 ```text
 visible regression command: `python -m pytest tests/ -x -q --ignore=tests/test_auth --ignore=tests/test_db --ignore=tests/test_plugins --ignore=tests/test_tasks/test_scheduler.py` exited 0
 STDOUT:
-........................................................................ [ 25%]
-........................................................................ [ 50%]
-........................................................................ [ 75%]
-.....................................................................    [100%]
-285 passed in 1.15s
+........................................................................ [ 24%]
+........................................................................ [ 49%]
+........................................................................ [ 74%]
+........................................................................ [ 98%]
+...                                                                      [100%]
+291 passed in 1.17s
 
 STDERR:
 ```
 
-#### `scope_matches_reference_intent` (FAIL, score 0.000)
+#### `scope_matches_reference_intent` (PASS, score 1.000)
 
 ```text
-Too many changed files: 7 > 6
+Changed files stay within the generated reference scope: nexusflow/tasks/deadletter.py, nexusflow/tasks/scheduler.py, nexusflow/tasks/worker.py, nexusflow/utils/encoding.py, nexusflow/utils/retry.py, tests/test_tasks/test_worker_exception_subclasses.py, tests/test_utils/test_retry_exception_subclasses.py
 ```
 
 #### `no_hidden_asset_leak` (PASS, score 1.000)
@@ -239,25 +238,25 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>nexusflow__77dc75b__nAJC6HC: FAIL, score 0.000, criteria 19/20</summary>
+<summary>nexusflow__77dc75b__cnwYMRq: PASS, score 1.000, criteria 20/20</summary>
 
 - Task: `nexusflow__77dc75b`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
-- Pass: no
-- Score: 0.000
-- Reward: 0.000
-- Criteria: 19/20
-- Categories: patch_specific 6/6, regular 13/14
-- Blocker failures: `scope_matches_reference_intent`
+- Pass: yes
+- Score: 1.000
+- Reward: 1.000
+- Criteria: 20/20
+- Categories: patch_specific 6/6, regular 14/14
+- Blocker failures: none
 
 | Criterion | Category | Method | Blocker | Weight | Score | Pass |
 | --- | --- | --- | --- | ---: | ---: | --- |
 | hidden_reference_tests_pass | patch_specific | classical | yes | 0.350 | 1.000 | yes |
 | submitted_tests_fail_on_base | regular | reverse_classical | yes | 0.150 | 1.000 | yes |
 | visible_regression_tests_pass | regular | command | yes | 0.200 | 1.000 | yes |
-| scope_matches_reference_intent | regular | scope | yes | 0.150 | 0.000 | no |
+| scope_matches_reference_intent | regular | scope | yes | 0.150 | 1.000 | yes |
 | no_hidden_asset_leak | regular | command | yes | 0.050 | 1.000 | yes |
 | behavior_core_requirement | patch_specific | llm_prompt | no | 0.020 | 1.000 | yes |
 | behavior_edge_cases | patch_specific | llm_prompt | no | 0.020 | 1.000 | yes |
@@ -282,11 +281,12 @@ Criterion evidence:
 ```text
 hidden reference tests: `python -m pytest tests/ -x -q --ignore=tests/test_auth --ignore=tests/test_db --ignore=tests/test_plugins --ignore=tests/test_tasks/test_scheduler.py` exited 0
 STDOUT:
-........................................................................ [ 25%]
-........................................................................ [ 50%]
-........................................................................ [ 75%]
-........................................................................ [100%]
-288 passed in 1.08s
+........................................................................ [ 24%]
+........................................................................ [ 48%]
+........................................................................ [ 73%]
+........................................................................ [ 97%]
+......                                                                   [100%]
+294 passed in 1.09s
 
 STDERR:
 ```
@@ -297,33 +297,29 @@ STDERR:
 Submitted tests failed on the broken base snapshot as expected.
 submitted tests on base snapshot: `python -m pytest tests/ -x -q --ignore=tests/test_auth --ignore=tests/test_db --ignore=tests/test_plugins --ignore=tests/test_tasks/test_scheduler.py` exited 1
 STDOUT:
-........................................................................ [ 25%]
-........................................................................ [ 50%]
-............................F
+........................................................................ [ 24%]
+........................................................................ [ 49%]
+...........F
 =================================== FAILURES ===================================
-_________ TestRetryPolicy.test_should_retry_subclass_of_specified_type _________
+_____________ test_task_retry_policy_retries_retryable_subclasses ______________
 
-self = <test_tasks.test_worker.TestRetryPolicy object at 0xffff8ddb3350>
-
-    def test_should_retry_subclass_of_specified_type(self):
-        class TransientConnectionError(ConnectionError):
-            pass
+    def test_task_retry_policy_retries_retryable_subclasses() -> None:
+        policy = RetryPolicy(max_retries=1, retry_on={RetryableError})
     
-        policy = RetryPolicy(max_retries=3, retry_on={ConnectionError})
->       assert policy.should_retry(TransientConnectionError(), attempt=0) is True
+>       assert policy.should_retry(RetryableChildError("retry"), attempt=0) is True
 E       AssertionError: assert False is True
-E        +  where False = should_retry(TransientConnectionError(), attempt=0)
-E        +    where should_retry = <nexusflow.tasks.worker.RetryPolicy object at 0xffff8dab2e10>.should_retry
-E        +    and   TransientConnectionError() = <class 'test_tasks.test_worker.TestRetryPolicy.test_should_retry_subclass_of_specified_type.<locals>.TransientConnectionError'>()
+E        +  where False = should_retry(RetryableChildError('retry'), attempt=0)
+E        +    where should_retry = <nexusflow.tasks.worker.RetryPolicy object at 0xffffab257680>.should_retry
+E        +    and   RetryableChildError('retry') = RetryableChildError('retry')
 
-tests/test_tasks/test_worker.py:40: AssertionError
+tests/test_exception_matching.py:58: AssertionError
 =========================== short test summary info ============================
-FAILED tests/test_tasks/test_worker.py::TestRetryPolicy::test_should_retry_subclass_of_specified_type - AssertionError: assert False is True
- +  where False = should_retry(TransientConnectionError(), attempt=0)
- +    where should_retry = <nexusflow.tasks.worker.RetryPolicy object at 0xffff8dab2e10>.should_retry
- +    and   TransientConnectionError() = <class 'test_tasks.test_worker.TestRetryPolicy.test_should_retry_subclass_of_specified_type.<locals>.TransientConnectionError'>()
+FAILED tests/test_exception_matching.py::test_task_retry_policy_retries_retryable_subclasses - AssertionError: assert False is True
+ +  where False = should_retry(RetryableChildError('retry'), attempt=0)
+ +    where should_retry = <nexusflow.tasks.worker.RetryPolicy object at 0xffffab257680>.should_retry
+ +    and   RetryableChildError('retry') = RetryableChildError('retry')
 !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
-1 failed, 172 passed in 0.21s
+1 failed, 155 passed in 0.21s
 
 STDERR:
 ```
@@ -333,19 +329,20 @@ STDERR:
 ```text
 visible regression command: `python -m pytest tests/ -x -q --ignore=tests/test_auth --ignore=tests/test_db --ignore=tests/test_plugins --ignore=tests/test_tasks/test_scheduler.py` exited 0
 STDOUT:
-........................................................................ [ 25%]
-........................................................................ [ 50%]
-........................................................................ [ 75%]
-.....................................................................    [100%]
-285 passed in 1.11s
+........................................................................ [ 24%]
+........................................................................ [ 49%]
+........................................................................ [ 74%]
+........................................................................ [ 98%]
+...                                                                      [100%]
+291 passed in 1.04s
 
 STDERR:
 ```
 
-#### `scope_matches_reference_intent` (FAIL, score 0.000)
+#### `scope_matches_reference_intent` (PASS, score 1.000)
 
 ```text
-Too many changed files: 7 > 6
+Changed files stay within the generated reference scope: nexusflow/tasks/deadletter.py, nexusflow/tasks/scheduler.py, nexusflow/tasks/worker.py, nexusflow/utils/encoding.py, nexusflow/utils/retry.py, tests/test_exception_matching.py
 ```
 
 #### `no_hidden_asset_leak` (PASS, score 1.000)
