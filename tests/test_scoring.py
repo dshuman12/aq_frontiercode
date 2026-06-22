@@ -104,6 +104,37 @@ class ScoringTests(unittest.TestCase):
         )
         self.assertEqual(legacy.criteria_results[0].category, "regular")
 
+    def test_result_json_recomputes_stale_blocker_gated_score(self) -> None:
+        result = FrontierCodeResult.from_dict(
+            {
+                "task_id": "demo",
+                "submission_id": "legacy",
+                "pass": False,
+                "score": 0,
+                "reward": 0,
+                "blocker_failures": ["behavior"],
+                "criteria_results": [
+                    {
+                        "criterion_id": "behavior",
+                        "passed": False,
+                        "score": 0,
+                        "blocker": True,
+                        "weight": 0.5,
+                    },
+                    {
+                        "criterion_id": "quality",
+                        "passed": True,
+                        "score": 1,
+                        "blocker": False,
+                        "weight": 0.5,
+                    },
+                ],
+            }
+        )
+        self.assertFalse(result.passed)
+        self.assertAlmostEqual(result.score, 0.5)
+        self.assertEqual(result.reward, 0)
+
 
 
 if __name__ == "__main__":

@@ -1,0 +1,206 @@
+diff --git a/base/rope/base/default_config.py b/repo/rope/base/default_config.py
+index 1398fac..376f74c 100644
+--- a/base/rope/base/default_config.py
++++ b/repo/rope/base/default_config.py
+@@ -14,7 +14,8 @@ def set_prefs(prefs):
+     # 'build/*.o': matches 'build/lib.o' but not 'build/sub/lib.o'
+     # 'build//*.o': matches 'build/lib.o' and 'build/sub/lib.o'
+     prefs['ignored_resources'] = ['*.pyc', '*~', '.ropeproject',
+-                                  '.hg', '.svn', '_svn', '.git', '.tox']
++                                  '.hg', '.svn', '_svn', '.git', '.tox',
++                                  '.venv', 'venv']
+ 
+     # Specifies which files should be considered python files.  It is
+     # useful when you have scripts inside your project.  Only files
+diff --git a/base/rope/base/libutils.py b/repo/rope/base/libutils.py
+index aafe443..2f947b6 100644
+--- a/base/rope/base/libutils.py
++++ b/repo/rope/base/libutils.py
+@@ -31,6 +31,53 @@ def path_to_resource(project, path, type=None):
+     return None
+ 
+ 
++def modname_to_path(project, modname, folder=None):
++    """Return the canonical path for a module name if it can be found."""
++    return project.find_module_path(modname, folder)
++
++
++def pyname_to_path(project, pyname, folder=None):
++    """Return the canonical path for a module name or a `PyName`.
++
++    `pyname` can be a dotted module name or a Rope `PyName` instance.
++    Unknown names and objects without a source resource return `None`.
++    """
++    if pyname is None:
++        return None
++    if isinstance(pyname, basestring):
++        return modname_to_path(project, pyname, folder)
++    if not hasattr(pyname, 'get_object'):
++        return None
++
++    resource = _pyname_to_resource(pyname)
++    if resource is not None:
++        return rope.base.project._canonical_path(resource.real_path)
++
++
++def get_canonical_path(project, pyname, folder=None):
++    return pyname_to_path(project, pyname, folder)
++
++
++def _pyname_to_resource(pyname):
++    resource = _pyobject_to_resource(pyname.get_object())
++    if resource is not None:
++        return resource
++    if not hasattr(pyname, 'get_definition_location'):
++        return None
++    module, lineno = pyname.get_definition_location()
++    if module is not None:
++        return _pyobject_to_resource(module)
++
++
++def _pyobject_to_resource(pyobject):
++    if hasattr(pyobject, 'get_resource'):
++        return pyobject.get_resource()
++    if hasattr(pyobject, 'get_module'):
++        module = pyobject.get_module()
++        if hasattr(module, 'get_resource'):
++            return module.get_resource()
++
++
+ def relative(root, path):
+     root = rope.base.project._realpath(root).replace(os.path.sep, '/')
+     path = rope.base.project._realpath(path).replace(os.path.sep, '/')
+diff --git a/base/rope/base/project.py b/repo/rope/base/project.py
+index e2be965..8c3496a 100644
+--- a/base/rope/base/project.py
++++ b/repo/rope/base/project.py
+@@ -130,6 +130,30 @@ class _Project(object):
+             raise ModuleNotFoundError('Module %s not found' % name)
+         return self.pycore.resource_to_pyobject(module)
+ 
++    def get_module_path(self, name, folder=None):
++        """Return the canonical path of a module.
++
++        The returned path is absolute, normalized, and symlink-resolved.
++        """
++        module = self.find_module(name, folder)
++        if module is None:
++            raise ModuleNotFoundError('Module %s not found' % name)
++        return _canonical_path(module.real_path)
++
++    def find_module_path(self, modname, folder=None):
++        """Return the canonical path of a module if it can be found."""
++        module = self.find_module(modname, folder)
++        if module is not None:
++            return _canonical_path(module.real_path)
++
++    def get_pyname_path(self, pyname, folder=None):
++        """Return the canonical path for a module name or `PyName`."""
++        import rope.base.libutils
++        return rope.base.libutils.pyname_to_path(self, pyname, folder)
++
++    def get_canonical_path(self, pyname, folder=None):
++        return self.get_pyname_path(pyname, folder)
++
+     def find_module(self, modname, folder=None):
+         """Returns a resource corresponding to the given module
+ 
+@@ -457,10 +481,16 @@ def _realpath(path):
+     if sys.platform == 'cygwin':
+         if path[1:3] == ':\\':
+             return path
++        if path[1:3] == ':/':
++            path = '/cygdrive/' + path[0] + path[2:]
+         return os.path.abspath(os.path.expanduser(path))
+     return os.path.realpath(os.path.abspath(os.path.expanduser(path)))
+ 
+ 
++def _canonical_path(path):
++    return os.path.normcase(_realpath(path))
++
++
+ def _find_module_in_folder(folder, modname):
+     module = folder
+     packages = modname.split('.')
+diff --git a/base/ropetest/projecttest.py b/repo/ropetest/projecttest.py
+index 892d2d7..c31e980 100644
+--- a/base/ropetest/projecttest.py
++++ b/repo/ropetest/projecttest.py
+@@ -5,6 +5,7 @@ except ImportError:
+     import unittest
+ 
+ from rope.base.exceptions import RopeError, ResourceNotFoundError
++from rope.base import default_config, prefs
+ from rope.base.fscommands import FileSystemCommands
+ from rope.base.libutils import path_to_resource
+ from rope.base.project import Project, NoProject, _realpath
+@@ -481,6 +482,25 @@ class ProjectTest(unittest.TestCase):
+         finally:
+             testutils.remove_project(project2)
+ 
++    @testutils.run_only_for_unix
++    def test_get_module_path_for_symlinked_module(self):
++        project2 = testutils.sample_project(folder_name='sampleproject2')
++        mod = project2.root.create_file('mod.py')
++        try:
++            path = os.path.join(self.project.address, 'linkedmod.py')
++            os.symlink(mod.real_path, path)
++            self.assertEquals(_realpath(mod.real_path),
++                              self.project.get_module_path('linkedmod'))
++        finally:
++            testutils.remove_project(project2)
++
++    def test_default_config_ignores_virtualenv_folders(self):
++        project_prefs = prefs.Prefs()
++        default_config.set_prefs(project_prefs)
++        ignored = project_prefs.get('ignored_resources')
++        self.assertTrue('.venv' in ignored)
++        self.assertTrue('venv' in ignored)
++
+     def test_getting_empty_source_folders(self):
+         self.assertEquals([], self.project.get_source_folders())
+ 
+diff --git a/base/ropetest/pycoretest.py b/repo/ropetest/pycoretest.py
+index 946ada2..a76bb11 100644
+--- a/base/ropetest/pycoretest.py
++++ b/repo/ropetest/pycoretest.py
+@@ -6,6 +6,7 @@ except ImportError:
+ 
+ from rope.base import exceptions
+ from rope.base import libutils
++from rope.base.project import _realpath
+ from rope.base.pycore import _TextChangeDetector
+ from rope.base.pyobjects import get_base_type, AbstractFunction
+ from ropetest import testutils
+@@ -273,6 +274,31 @@ class PyCoreTest(unittest.TestCase):
+         found_module = self.project.find_module('samplepkg')
+         self.assertEquals(samplepkg, found_module)
+ 
++    def test_get_module_path(self):
++        src = self.project.root.create_folder('src')
++        samplemod = testutils.create_module(self.project, 'samplemod', src)
++        self.assertEquals(_realpath(samplemod.real_path),
++                          self.project.get_module_path('samplemod'))
++
++    def test_get_module_path_packages(self):
++        samplepkg = testutils.create_package(self.project, 'samplepkg')
++        self.assertEquals(_realpath(samplepkg.real_path),
++                          self.project.get_module_path('samplepkg'))
++
++    def test_pyname_to_path_for_defined_pyname(self):
++        samplemod = testutils.create_module(self.project, 'samplemod')
++        samplemod.write('class AClass(object):\n    pass\n')
++        pyname = self.project.get_module('samplemod')['AClass']
++        self.assertEquals(_realpath(samplemod.real_path),
++                          libutils.pyname_to_path(self.project, pyname))
++
++    def test_pyname_to_path_for_imported_package(self):
++        samplepkg = testutils.create_package(self.project, 'samplepkg')
++        scope = libutils.get_string_scope(self.project, 'import samplepkg\n')
++        self.assertEquals(_realpath(samplepkg.real_path),
++                          libutils.pyname_to_path(self.project,
++                                                  scope['samplepkg']))
++
+     def test_find_module_when_module_and_package_with_the_same_name(self):
+         src = self.project.root
+         testutils.create_module(self.project, 'sample', src)

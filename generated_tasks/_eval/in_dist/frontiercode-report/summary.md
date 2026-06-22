@@ -10,14 +10,14 @@ Trial mode: each trial is one independent agent solve trajectory. The agent rece
 
 | Task | Agent | Model | Best Reasoning Effort | Trials | Final Pass Rate | Final Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| meridian__8dfe46c | codex | openai/gpt-5 | high | 1 | 0.000 | 0.000 | 0.000 |
-| nexusflow__1f4cbe0 | codex | openai/gpt-5 | high | 1 | 0.000 | 0.000 | 0.000 |
-| nexusflow__77dc75b | codex | openai/gpt-5 | high | 1 | 0.000 | 0.000 | 0.000 |
-| nexusflow__f7758b1 | codex | openai/gpt-5 | high | 1 | 0.000 | 0.000 | 0.000 |
+| meridian__8dfe46c | codex | openai/gpt-5 | high | 1 | 0.000 | 0.875 | 0.000 |
+| nexusflow__1f4cbe0 | codex | openai/gpt-5 | high | 1 | 0.000 | 0.542 | 0.000 |
+| nexusflow__77dc75b | codex | openai/gpt-5 | high | 1 | 0.000 | 0.875 | 0.000 |
+| nexusflow__f7758b1 | codex | openai/gpt-5 | high | 1 | 0.000 | 0.875 | 0.000 |
 | swarmsync__24dc3ca | codex | openai/gpt-5 | high | 1 | 1.000 | 1.000 | 1.000 |
 | swarmsync__2d0560eaaa43 | codex | openai/gpt-5 | high | 1 | 1.000 | 1.000 | 1.000 |
 | swarmsync__5b08ac17d75f | codex | openai/gpt-5 | high | 1 | 1.000 | 1.000 | 1.000 |
-| swarmsync__9edad6f | codex | openai/gpt-5 | high | 1 | 0.000 | 0.000 | 0.000 |
+| swarmsync__9edad6f | codex | openai/gpt-5 | high | 1 | 0.000 | 0.875 | 0.000 |
 | swarmsync__c106db6 | codex | openai/gpt-5 | high | 1 | 1.000 | 1.000 | 1.000 |
 | swarmsync__ccf121c | codex | openai/gpt-5 | high | 1 | 1.000 | 1.000 | 1.000 |
 | swarmsync__f090d17 | codex | openai/gpt-5 | high | 1 | 1.000 | 1.000 | 1.000 |
@@ -26,14 +26,14 @@ Trial mode: each trial is one independent agent solve trajectory. The agent rece
 
 | Task | Agent | Model | Reasoning Effort | Trials | Pass Rate | Average Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| meridian__8dfe46c | codex | openai/gpt-5 | high | 1 | 0.000 | 0.000 | 0.000 |
-| nexusflow__1f4cbe0 | codex | openai/gpt-5 | high | 1 | 0.000 | 0.000 | 0.000 |
-| nexusflow__77dc75b | codex | openai/gpt-5 | high | 1 | 0.000 | 0.000 | 0.000 |
-| nexusflow__f7758b1 | codex | openai/gpt-5 | high | 1 | 0.000 | 0.000 | 0.000 |
+| meridian__8dfe46c | codex | openai/gpt-5 | high | 1 | 0.000 | 0.875 | 0.000 |
+| nexusflow__1f4cbe0 | codex | openai/gpt-5 | high | 1 | 0.000 | 0.542 | 0.000 |
+| nexusflow__77dc75b | codex | openai/gpt-5 | high | 1 | 0.000 | 0.875 | 0.000 |
+| nexusflow__f7758b1 | codex | openai/gpt-5 | high | 1 | 0.000 | 0.875 | 0.000 |
 | swarmsync__24dc3ca | codex | openai/gpt-5 | high | 1 | 1.000 | 1.000 | 1.000 |
 | swarmsync__2d0560eaaa43 | codex | openai/gpt-5 | high | 1 | 1.000 | 1.000 | 1.000 |
 | swarmsync__5b08ac17d75f | codex | openai/gpt-5 | high | 1 | 1.000 | 1.000 | 1.000 |
-| swarmsync__9edad6f | codex | openai/gpt-5 | high | 1 | 0.000 | 0.000 | 0.000 |
+| swarmsync__9edad6f | codex | openai/gpt-5 | high | 1 | 0.000 | 0.875 | 0.000 |
 | swarmsync__c106db6 | codex | openai/gpt-5 | high | 1 | 1.000 | 1.000 | 1.000 |
 | swarmsync__ccf121c | codex | openai/gpt-5 | high | 1 | 1.000 | 1.000 | 1.000 |
 | swarmsync__f090d17 | codex | openai/gpt-5 | high | 1 | 1.000 | 1.000 | 1.000 |
@@ -42,31 +42,31 @@ Trial mode: each trial is one independent agent solve trajectory. The agent rece
 
 | Task | Agent | Model | Reasoning Effort | Submission | Pass | Criteria | Categories | Score | Blocker Failures |
 | --- | --- | --- | --- | --- | --- | ---: | --- | ---: | --- |
-| meridian__8dfe46c | codex | openai/gpt-5 | high | meridian__8dfe46c__62gkS5x | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | submitted_tests_fail_on_base |
-| nexusflow__1f4cbe0 | codex | openai/gpt-5 | high | nexusflow__1f4cbe0__d6Q562W | no | 18/20 | patch_specific 5/6, regular 13/14 | 0.000 | hidden_reference_tests_pass, visible_regression_tests_pass |
-| nexusflow__77dc75b | codex | openai/gpt-5 | high | nexusflow__77dc75b__ZYF8YFj | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
-| nexusflow__f7758b1 | codex | openai/gpt-5 | high | nexusflow__f7758b1__MjuWSSv | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
+| meridian__8dfe46c | codex | openai/gpt-5 | high | meridian__8dfe46c__62gkS5x | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | submitted_tests_fail_on_base |
+| nexusflow__1f4cbe0 | codex | openai/gpt-5 | high | nexusflow__1f4cbe0__d6Q562W | no | 18/20 | patch_specific 5/6, regular 13/14 | 0.542 | hidden_reference_tests_pass, visible_regression_tests_pass |
+| nexusflow__77dc75b | codex | openai/gpt-5 | high | nexusflow__77dc75b__ZYF8YFj | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | scope_matches_reference_intent |
+| nexusflow__f7758b1 | codex | openai/gpt-5 | high | nexusflow__f7758b1__MjuWSSv | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | scope_matches_reference_intent |
 | swarmsync__24dc3ca | codex | openai/gpt-5 | high | swarmsync__24dc3ca__k6D8Q89 | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
 | swarmsync__2d0560eaaa43 | codex | openai/gpt-5 | high | swarmsync__2d0560eaaa43__VqvEm9W | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
 | swarmsync__5b08ac17d75f | codex | openai/gpt-5 | high | swarmsync__5b08ac17d75f__cWPiGnx | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
-| swarmsync__9edad6f | codex | openai/gpt-5 | high | swarmsync__9edad6f__5K8Y54V | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
+| swarmsync__9edad6f | codex | openai/gpt-5 | high | swarmsync__9edad6f__5K8Y54V | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | scope_matches_reference_intent |
 | swarmsync__c106db6 | codex | openai/gpt-5 | high | swarmsync__c106db6__63YRbUv | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
 | swarmsync__ccf121c | codex | openai/gpt-5 | high | swarmsync__ccf121c__xUimHDB | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
 | swarmsync__f090d17 | codex | openai/gpt-5 | high | swarmsync__f090d17__P487uqY | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
 
 ## Grader Details
 
-Trial score is zero when any blocker criterion fails; otherwise it is the weighted average of criterion scores.
+Trial pass/fail is determined by blocker criteria. Trial score is the weighted average of criterion scores, including failed trials.
 
 <details>
-<summary>meridian__8dfe46c__62gkS5x: FAIL, score 0.000, criteria 19/20</summary>
+<summary>meridian__8dfe46c__62gkS5x: FAIL, score 0.875, criteria 19/20</summary>
 
 - Task: `meridian__8dfe46c`
 - Agent: `codex`
 - Model: `openai/gpt-5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.875
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14
@@ -255,14 +255,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>nexusflow__1f4cbe0__d6Q562W: FAIL, score 0.000, criteria 18/20</summary>
+<summary>nexusflow__1f4cbe0__d6Q562W: FAIL, score 0.542, criteria 18/20</summary>
 
 - Task: `nexusflow__1f4cbe0`
 - Agent: `codex`
 - Model: `openai/gpt-5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.542
 - Reward: 0.000
 - Criteria: 18/20
 - Categories: patch_specific 5/6, regular 13/14
@@ -538,14 +538,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>nexusflow__77dc75b__ZYF8YFj: FAIL, score 0.000, criteria 19/20</summary>
+<summary>nexusflow__77dc75b__ZYF8YFj: FAIL, score 0.875, criteria 19/20</summary>
 
 - Task: `nexusflow__77dc75b`
 - Agent: `codex`
 - Model: `openai/gpt-5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.875
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14
@@ -750,14 +750,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>nexusflow__f7758b1__MjuWSSv: FAIL, score 0.000, criteria 19/20</summary>
+<summary>nexusflow__f7758b1__MjuWSSv: FAIL, score 0.875, criteria 19/20</summary>
 
 - Task: `nexusflow__f7758b1`
 - Agent: `codex`
 - Model: `openai/gpt-5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.875
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14
@@ -1546,14 +1546,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>swarmsync__9edad6f__5K8Y54V: FAIL, score 0.000, criteria 19/20</summary>
+<summary>swarmsync__9edad6f__5K8Y54V: FAIL, score 0.875, criteria 19/20</summary>
 
 - Task: `swarmsync__9edad6f`
 - Agent: `codex`
 - Model: `openai/gpt-5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.875
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14

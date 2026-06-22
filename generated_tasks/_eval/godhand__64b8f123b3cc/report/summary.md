@@ -10,23 +10,23 @@ Trial mode: each trial is one independent agent solve trajectory. The agent rece
 
 | Task | Agent | Model | Best Reasoning Effort | Trials | Final Pass Rate | Final Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | 10 | 0.800 | 0.800 | 0.800 |
+| godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | 10 | 0.800 | 0.967 | 0.800 |
 
 ## Effort Results
 
 | Task | Agent | Model | Reasoning Effort | Trials | Pass Rate | Average Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | 10 | 0.800 | 0.800 | 0.800 |
+| godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | 10 | 0.800 | 0.967 | 0.800 |
 
 ## Trial Details
 
 | Task | Agent | Model | Reasoning Effort | Submission | Pass | Criteria | Categories | Score | Blocker Failures |
 | --- | --- | --- | --- | --- | --- | ---: | --- | ---: | --- |
 | godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | godhand__64b8f123b3cc__3LDDDtM | yes | 5/5 | patch_specific 1/1, regular 4/4 | 1.000 |  |
-| godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | godhand__64b8f123b3cc__48bhXzo | no | 4/5 | patch_specific 1/1, regular 3/4 | 0.000 | scope_matches_reference_intent |
+| godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | godhand__64b8f123b3cc__48bhXzo | no | 4/5 | patch_specific 1/1, regular 3/4 | 0.833 | scope_matches_reference_intent |
 | godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | godhand__64b8f123b3cc__7gFGwuK | yes | 5/5 | patch_specific 1/1, regular 4/4 | 1.000 |  |
 | godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | godhand__64b8f123b3cc__Kjf5QHN | yes | 5/5 | patch_specific 1/1, regular 4/4 | 1.000 |  |
-| godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | godhand__64b8f123b3cc__bvNLsMs | no | 4/5 | patch_specific 1/1, regular 3/4 | 0.000 | scope_matches_reference_intent |
+| godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | godhand__64b8f123b3cc__bvNLsMs | no | 4/5 | patch_specific 1/1, regular 3/4 | 0.833 | scope_matches_reference_intent |
 | godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | godhand__64b8f123b3cc__hy2qXfq | yes | 5/5 | patch_specific 1/1, regular 4/4 | 1.000 |  |
 | godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | godhand__64b8f123b3cc__kpM6ded | yes | 5/5 | patch_specific 1/1, regular 4/4 | 1.000 |  |
 | godhand__64b8f123b3cc | codex | openai/gpt-5.5 | high | godhand__64b8f123b3cc__nQxoLef | yes | 5/5 | patch_specific 1/1, regular 4/4 | 1.000 |  |
@@ -35,7 +35,7 @@ Trial mode: each trial is one independent agent solve trajectory. The agent rece
 
 ## Grader Details
 
-Trial score is zero when any blocker criterion fails; otherwise it is the weighted average of criterion scores.
+Trial pass/fail is determined by blocker criteria. Trial score is the weighted average of criterion scores, including failed trials.
 
 <details>
 <summary>godhand__64b8f123b3cc__3LDDDtM: PASS, score 1.000, criteria 5/5</summary>
@@ -200,14 +200,14 @@ No generated hidden asset names or fix commit identifiers were found in the agen
 </details>
 
 <details>
-<summary>godhand__64b8f123b3cc__48bhXzo: FAIL, score 0.000, criteria 4/5</summary>
+<summary>godhand__64b8f123b3cc__48bhXzo: FAIL, score 0.833, criteria 4/5</summary>
 
 - Task: `godhand__64b8f123b3cc`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.833
 - Reward: 0.000
 - Criteria: 4/5
 - Categories: patch_specific 1/1, regular 3/4
@@ -702,14 +702,14 @@ No generated hidden asset names or fix commit identifiers were found in the agen
 </details>
 
 <details>
-<summary>godhand__64b8f123b3cc__bvNLsMs: FAIL, score 0.000, criteria 4/5</summary>
+<summary>godhand__64b8f123b3cc__bvNLsMs: FAIL, score 0.833, criteria 4/5</summary>
 
 - Task: `godhand__64b8f123b3cc`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.833
 - Reward: 0.000
 - Criteria: 4/5
 - Categories: patch_specific 1/1, regular 3/4

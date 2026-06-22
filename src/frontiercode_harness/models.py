@@ -128,11 +128,12 @@ class FrontierCodeResult:
                     category=str(item.get("category", DEFAULT_CRITERION_CATEGORY)),
                 )
             )
+        raw_score = float(data.get("score", 0.0))
         return cls(
             task_id=str(data.get("task_id", "")),
             submission_id=str(data.get("submission_id", "")),
             passed=bool(data.get("pass", data.get("passed", False))),
-            score=float(data.get("score", 0.0)),
+            score=_weighted_score_from_criteria(tuple(criteria), raw_score),
             reward=float(data.get("reward", 1.0 if data.get("pass", False) else 0.0)),
             blocker_failures=tuple(str(item) for item in data.get("blocker_failures", [])),
             criteria_results=tuple(criteria),
@@ -158,3 +159,20 @@ class TaskQAReport:
             "warnings": list(self.warnings),
             "calibration_results": [item.to_dict() for item in self.calibration_results],
         }
+
+
+def _weighted_score_from_criteria(
+    criteria: tuple[CriterionResult, ...],
+    fallback: float,
+) -> float:
+    weight_total = sum(max(item.weight, 0.0) for item in criteria)
+    if weight_total <= 0:
+        return fallback
+    return (
+        sum(_clamp_score(item.score) * max(item.weight, 0.0) for item in criteria)
+        / weight_total
+    )
+
+
+def _clamp_score(value: float) -> float:
+    return max(0.0, min(1.0, value))

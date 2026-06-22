@@ -119,7 +119,7 @@ def build_result_doc(spec: dict, results: list[dict]) -> dict:
     score_total = sum(item["weight"] for item in results)
     score = (
         sum(item["score"] * item["weight"] for item in results) / score_total
-        if passed and score_total
+        if score_total
         else 0.0
     )
     category_counts: dict[str, dict[str, int]] = {}

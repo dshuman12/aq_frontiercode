@@ -421,7 +421,7 @@ def _frontiercode_progress_snapshot(
 ) -> dict[str, Any] | None:
     if "score" not in data and "pass" not in data and "passed" not in data:
         return None
-    score = _progress_float(data.get("score", 0.0))
+    score = _frontiercode_progress_score(data)
     return {
         "task_id": str(data.get("task_id") or trial_dir.parent.name or "unknown"),
         "submission_id": str(data.get("submission_id") or trial_dir.name),
@@ -429,6 +429,28 @@ def _frontiercode_progress_snapshot(
         "score": score,
         "exception_type": "",
     }
+
+
+def _frontiercode_progress_score(data: dict[str, Any]) -> float:
+    fallback = _progress_float(data.get("score", 0.0))
+    criteria = data.get("criteria_results")
+    if not isinstance(criteria, list):
+        return fallback
+
+    score_total = 0.0
+    weighted_score = 0.0
+    for item in criteria:
+        if not isinstance(item, dict):
+            continue
+        weight = max(_progress_float(item.get("weight", 1.0), default=1.0), 0.0)
+        score = _clamp_progress_score(
+            _progress_float(item.get("score", 1.0 if item.get("passed") else 0.0))
+        )
+        score_total += weight
+        weighted_score += score * weight
+    if score_total <= 0:
+        return fallback
+    return weighted_score / score_total
 
 
 def _harbor_progress_snapshot(
@@ -518,11 +540,15 @@ def _progress_task_id_from_config(config: dict[str, Any], trial_dir: Path) -> st
     return trial_dir.parent.name or "unknown"
 
 
-def _progress_float(value: Any) -> float:
+def _progress_float(value: Any, *, default: float = 0.0) -> float:
     try:
         return float(value)
     except (TypeError, ValueError):
-        return 0.0
+        return default
+
+
+def _clamp_progress_score(value: float) -> float:
+    return max(0.0, min(1.0, value))
 
 
 def _eval_manifest(

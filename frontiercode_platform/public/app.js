@@ -506,18 +506,61 @@ function renderTests() {
   `;
 }
 
-function renderRunCriteria(trial) {
-  const rows = (trial.criteria || []).map((criterion) => `
-    <div class="run-criterion ${criterion.passed ? "passed" : "failed"}">
-      <span class="badge ${criterion.passed ? "pass" : "fail"}">${criterion.passed ? "PASS" : "FAIL"}</span>
-      <div>
-        <div class="criterion-id">${escapeHtml(criterion.criterion_id)}</div>
-        <p class="criterion-details">${escapeHtml(criterion.details || "")}</p>
-        <p class="micro">${escapeHtml(criterion.category || "criterion")}${criterion.blocker ? " / BLOCKER" : ""} / ${escapeHtml(criterion.method || "n/a")} / ${escapeHtml(formatPercent(criterion.weight ?? null))}</p>
+function renderCriteriaCards(criteria, emptyMessage) {
+  const rows = (criteria || []).map((criterion) => {
+    const hasResult = criterion.passed === true || criterion.passed === false;
+    const statusClass = hasResult ? (criterion.passed ? "pass" : "fail") : "neutral";
+    const rowClass = hasResult ? (criterion.passed ? "passed" : "failed") : "pending";
+    const statusText = hasResult ? (criterion.passed ? "PASS" : "FAIL") : "TEST";
+    return `
+      <div class="run-criterion ${rowClass}">
+        <span class="badge ${statusClass}">${statusText}</span>
+        <div>
+          <div class="criterion-id">${escapeHtml(criterion.criterion_id || criterion.id || "")}</div>
+          <p class="criterion-details">${escapeHtml(criterion.details || criterion.description || "")}</p>
+          ${criterion.command ? `<p class="criterion-command">${escapeHtml(criterion.command)}</p>` : ""}
+          <p class="micro">${escapeHtml(criterion.category || "criterion")}${criterion.blocker ? " / BLOCKER" : ""} / ${escapeHtml(criterion.method || "n/a")} / ${escapeHtml(formatPercent(criterion.weight ?? null))}</p>
+        </div>
       </div>
-    </div>
-  `).join("");
-  return rows || `<div class="empty-state">No criteria recorded for this run.</div>`;
+    `;
+  }).join("");
+  return rows || `<div class="empty-state">${escapeHtml(emptyMessage)}</div>`;
+}
+
+function renderRunCriteria(trial) {
+  return renderCriteriaCards(trial.criteria || [], "No criteria recorded for this run.");
+}
+
+function instructionCriteria(task, selectedTrial) {
+  const trial = selectedTrial?.taskId === task.id ? selectedTrial : null;
+  const trialCriteria = trial?.criteria || [];
+  if (!task.criteria?.length) return trialCriteria;
+
+  const trialById = new Map(trialCriteria.map((criterion) => [criterion.criterion_id, criterion]));
+  return task.criteria.map((criterion) => {
+    const result = trialById.get(criterion.criterion_id);
+    if (!result) return criterion;
+    return {
+      ...criterion,
+      passed: result.passed,
+      category: result.category || criterion.category,
+      method: result.method || criterion.method,
+      blocker: result.blocker ?? criterion.blocker,
+      weight: result.weight ?? criterion.weight,
+      details: result.details || criterion.details
+    };
+  });
+}
+
+function renderInstructionCriteria(task, selectedTrial) {
+  return renderCriteriaCards(instructionCriteria(task, selectedTrial), "No verifier criteria found for this task.");
+}
+
+function instructionCriteriaLabel(task, selectedTrial) {
+  const trial = selectedTrial?.taskId === task.id ? selectedTrial : null;
+  if (trial?.criteriaTotal) return `${trial.criteriaPassed}/${trial.criteriaTotal} passed`;
+  const count = task.criteria?.length || 0;
+  return count ? `${count} criteria` : "No criteria";
 }
 
 function renderRunSummary(trial) {
@@ -866,30 +909,37 @@ async function renderTabPanel() {
     return;
   }
 
-  const artifactMap = {
-    instruction: "instruction"
-  };
-  const type = artifactMap[state.activeTab];
-  const id = state.selectedTaskId || state.selectedTrialId;
-  if (!id || !type) {
-    panel.innerHTML = `<div class="empty-state">No artifact selected.</div>`;
+  if (state.activeTab === "instruction") {
+    const id = task.id;
+    const trial = getSelectedTrial();
+    panel.innerHTML = `<div class="loading">Loading instruction...</div>`;
+    const instructionText = await fetchArtifact(id, "instruction");
+    const criteriaLabel = instructionCriteriaLabel(task, trial);
+    panel.innerHTML = `
+      <div class="artifact-toolbar">
+        <p class="artifact-title">${escapeHtml(task.instructionPath)}</p>
+        <p class="artifact-title">${escapeHtml(`${task.taskRootPath}/tests/grader/frontiercode.yaml`)}</p>
+      </div>
+      <div class="instruction-tests-layout">
+        <section class="instruction-column">
+          <div class="split-pane-header">
+            <p class="meta-label">Instruction</p>
+          </div>
+          <div class="markdown-pane">${markdownLite(instructionText)}</div>
+        </section>
+        <section class="task-tests-column">
+          <div class="split-pane-header">
+            <p class="meta-label">Verifier Criteria</p>
+            <span class="micro">${escapeHtml(criteriaLabel)}</span>
+          </div>
+          <div class="task-tests-pane">${renderInstructionCriteria(task, trial)}</div>
+        </section>
+      </div>
+    `;
     return;
   }
 
-  panel.innerHTML = `<div class="loading">Loading ${escapeHtml(type)}...</div>`;
-  const text = await fetchArtifact(id, type);
-  const label = task.instructionPath;
-  const toolbar = `
-    <div class="artifact-toolbar">
-      <p class="artifact-title">${escapeHtml(label)}</p>
-    </div>
-  `;
-
-  if (state.activeTab === "instruction") {
-    panel.innerHTML = `${toolbar}<div class="markdown-pane">${markdownLite(text)}</div>`;
-  } else {
-    panel.innerHTML = `${toolbar}<div class="empty-state">Unknown tab.</div>`;
-  }
+  panel.innerHTML = `<div class="empty-state">Unknown tab.</div>`;
 }
 
 function render() {

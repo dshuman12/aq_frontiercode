@@ -393,8 +393,9 @@ For a single trial:
 - **pass** — the trial passes if and only if it clears *every* blocker
   criterion; otherwise it fails.
 - **score** — the weighted aggregate of the rubric items the trial satisfies,
-  **gated by blockers**: any trial that fails a blocker scores `0`, regardless
-  of how many non-blockers it satisfies. Score is not a raw rubric sum.
+  including failed trials. A blocker failure still makes the trial fail, but it
+  does not zero out rubric credit from passed criteria. Score is not a raw
+  rubric sum.
 
 Score and pass-rate aggregation 
 

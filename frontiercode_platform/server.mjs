@@ -15,6 +15,11 @@ const GENERATED_EVALS_DIR = path.join(TASKS_DIR, "generated_tasks", "_eval");
 const RUN_ROOTS = [RUNS_DIR, GENERATED_EVALS_DIR];
 const PORT = Number(process.env.PORT || 3026);
 const HOST = process.env.HOST || "127.0.0.1";
+const TASK_TEST_FILES = [
+  "tests/grader/frontiercode.yaml",
+  "tests/test.sh",
+  "tests/hidden/run_criteria.py"
+];
 
 const TEXT_TYPES = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -224,6 +229,31 @@ function durationSeconds(startedAt, finishedAt) {
   return Math.max(0, Math.round((finish - start) / 1000));
 }
 
+function numberOr(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function clampScore(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function weightedCriterionScore(result) {
+  const fallback = typeof result.score === "number" ? result.score : null;
+  const criteria = Array.isArray(result.criteria_results) ? result.criteria_results : [];
+  if (!criteria.length) return fallback;
+
+  let scoreTotal = 0;
+  let weightedScore = 0;
+  for (const criterion of criteria) {
+    const weight = Math.max(0, numberOr(criterion.weight, 1));
+    const score = clampScore(numberOr(criterion.score, criterion.passed ? 1 : 0));
+    scoreTotal += weight;
+    weightedScore += score * weight;
+  }
+  return scoreTotal > 0 ? weightedScore / scoreTotal : fallback;
+}
+
 function compactInstruction(text) {
   return text
     .replace(/```[\s\S]*?```/g, " ")
@@ -231,6 +261,85 @@ function compactInstruction(text) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 240);
+}
+
+function parseYamlValue(rawValue) {
+  const value = String(rawValue || "").trim();
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (/^-?\d+(?:\.\d+)?$/.test(value)) return Number(value);
+  const quoted = value.match(/^["'](.*)["']$/);
+  return quoted ? quoted[1] : value;
+}
+
+function parseFrontierCodeCriteria(text) {
+  const criteria = [];
+  const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+  let inCriteria = false;
+  let current = null;
+  let foldedKey = "";
+  let foldedLines = [];
+
+  const finishFolded = () => {
+    if (current && foldedKey) {
+      current[foldedKey] = foldedLines.join(" ").replace(/\s+/g, " ").trim();
+    }
+    foldedKey = "";
+    foldedLines = [];
+  };
+
+  const setField = (key, value) => {
+    if (value.trim() === ">" || value.trim() === "|") {
+      foldedKey = key;
+      foldedLines = [];
+      return;
+    }
+    current[key] = parseYamlValue(value);
+  };
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!inCriteria) {
+      if (trimmed === "criteria:") inCriteria = true;
+      continue;
+    }
+
+    if (foldedKey) {
+      const startsNextField = /^\s{4}[A-Za-z0-9_-]+:\s*/.test(rawLine);
+      const startsNextItem = /^\s{2}-\s+/.test(rawLine);
+      const startsNextSection = /^\S/.test(rawLine) && /^[A-Za-z0-9_-]+:/.test(trimmed);
+      if (!startsNextField && !startsNextItem && !startsNextSection) {
+        if (trimmed) foldedLines.push(trimmed);
+        continue;
+      }
+      finishFolded();
+    }
+
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (/^\S/.test(rawLine) && trimmed !== "criteria:" && /^[A-Za-z0-9_-]+:/.test(trimmed)) break;
+
+    const itemMatch = rawLine.match(/^\s{2}-\s+([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (itemMatch) {
+      current = {};
+      criteria.push(current);
+      setField(itemMatch[1], itemMatch[2]);
+      continue;
+    }
+
+    const fieldMatch = rawLine.match(/^\s{4}([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (fieldMatch && current) setField(fieldMatch[1], fieldMatch[2]);
+  }
+
+  finishFolded();
+  return criteria.map((criterion) => ({
+    criterion_id: criterion.id || "",
+    category: criterion.category || "",
+    details: criterion.description || "",
+    method: criterion.method || "",
+    blocker: Boolean(criterion.blocker),
+    weight: typeof criterion.weight === "number" ? criterion.weight : null,
+    command: criterion.command || ""
+  })).filter((criterion) => criterion.criterion_id);
 }
 
 function modelFromRunPath(relPath) {
@@ -275,6 +384,8 @@ async function scanTasks() {
     const instruction = await fs.readFile(instructionPath, "utf8");
     const tomlPath = path.join(taskRoot, "task.toml");
     const toml = parseSimpleToml(await readTextIfExists(tomlPath));
+    const graderYamlPath = path.join(taskRoot, "tests", "grader", "frontiercode.yaml");
+    const criteria = parseFrontierCodeCriteria(await readTextIfExists(graderYamlPath));
     const slug = path.basename(taskRoot);
     const id = encodeId(`task:${taskRel}`);
     const task = {
@@ -289,6 +400,7 @@ async function scanTasks() {
       dockerImage: toml.docker_image || "",
       networkMode: toml.network_mode || "",
       hasTaskToml: Boolean(toml.name || toml.description),
+      criteria,
       trialIds: []
     };
 
@@ -379,7 +491,7 @@ async function buildTrial(resultPath, aliases) {
     agent: meta.agent || configAgent.name || "",
     reasoningEffort: meta.reasoning_effort || configAgent.kwargs?.reasoning_effort || effortFromRunPath(relTrialDir),
     pass: Boolean(result.pass),
-    score: typeof result.score === "number" ? result.score : null,
+    score: weightedCriterionScore(result),
     reward: typeof result.reward === "number" ? result.reward : null,
     criteriaTotal: criteria.length,
     criteriaPassed: passedCriteria,
@@ -495,14 +607,34 @@ function findOverviewItem(overview, id) {
   return null;
 }
 
+function taskForOverviewItem(overview, found) {
+  if (!found) return null;
+  if (found.kind === "task") return found.item;
+  return overview.tasks.find((candidate) => candidate.id === found.item.taskId) || null;
+}
+
+async function readTaskTestsArtifact(overview, id) {
+  const task = taskForOverviewItem(overview, findOverviewItem(overview, id));
+  if (!task) return "";
+
+  const taskRoot = path.join(ROOT_DIR, task.taskRootPath);
+  const sections = [];
+  for (const relPath of TASK_TEST_FILES) {
+    const filePath = path.join(taskRoot, ...relPath.split("/"));
+    const text = await readTextIfExists(filePath);
+    if (text.trim()) {
+      sections.push(`# ${relPath}\n\n${text.trimEnd()}`);
+    }
+  }
+  return sections.join("\n\n");
+}
+
 async function artifactPath(overview, id, type) {
   const found = findOverviewItem(overview, id);
   if (!found) return null;
 
   const trial = found.kind === "trial" ? found.item : null;
-  const task = found.kind === "task"
-    ? found.item
-    : overview.tasks.find((candidate) => candidate.id === trial.taskId);
+  const task = taskForOverviewItem(overview, found);
 
   if (type === "instruction" && task) return path.join(ROOT_DIR, task.instructionPath);
   if (!trial) return null;
@@ -575,6 +707,15 @@ const server = createServer(async (req, res) => {
       const id = url.searchParams.get("id") || "";
       const type = url.searchParams.get("type") || "";
       const overview = await scanOverview();
+      if (type === "tests") {
+        const text = await readTaskTestsArtifact(overview, id);
+        if (!text.trim()) {
+          sendText(res, "", 404);
+          return;
+        }
+        sendText(res, text);
+        return;
+      }
       const filePath = await artifactPath(overview, id, type);
       if (!filePath || !(await exists(filePath))) {
         sendText(res, "", 404);

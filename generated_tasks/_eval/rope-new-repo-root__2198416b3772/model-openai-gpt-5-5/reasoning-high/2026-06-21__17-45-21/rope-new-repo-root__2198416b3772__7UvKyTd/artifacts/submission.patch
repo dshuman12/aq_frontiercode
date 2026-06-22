@@ -1,0 +1,214 @@
+diff --git a/base/rope/contrib/codeassist.py b/repo/rope/contrib/codeassist.py
+index 6cd8aa2..edd3d6f 100644
+--- a/base/rope/contrib/codeassist.py
++++ b/repo/rope/contrib/codeassist.py
+@@ -4,9 +4,10 @@ import warnings
+ 
+ import rope.base.codeanalyze
+ import rope.base.evaluate
++import rope.base.project
+ from rope.base import libutils
+-from rope.base import (pyobjects, pyobjectsdef, pynames, builtins,
+-                       exceptions, worder)
++from rope.base import (pyobjects, pyobjectsdef, pynames, pynamesdef, builtins,
++                       exceptions, pyscopes, worder)
+ from rope.contrib import fixsyntax
+ from rope.refactor import functionutils
+ 
+@@ -124,6 +125,75 @@ def find_occurrences(*args, **kwds):
+     return rope.contrib.findit.find_occurrences(*args, **kwds)
+ 
+ 
++def get_canonical_path(project, resource, offset):
++    """Get the canonical path to an object.
++
++    Given the offset of the object, this returns a list of
++    (name, name_type) tuples representing the canonical path to the
++    object. For example, the 'x' in the following code:
++
++        class Foo(object):
++            def bar(self):
++                class Qux(object):
++                    def mux(self, x):
++                        pass
++
++    we will return:
++
++        [('Foo', 'CLASS'), ('bar', 'FUNCTION'), ('Qux', 'CLASS'),
++         ('mux', 'FUNCTION'), ('x', 'PARAMETER')]
++
++    `resource` is a `rope.base.resources.Resource` object.
++
++    `offset` is the offset of the pyname you want the path to.
++
++    """
++    pymod = project.get_pymodule(resource)
++    try:
++        pyname = rope.base.evaluate.eval_location(pymod, offset)
++    except exceptions.BadIdentifierError:
++        return None
++    if pyname is None:
++        return None
++
++    imported_name = None
++    while isinstance(pyname, pynames.ImportedName):
++        imported_name = pyname.imported_name
++        pyname = pyname._get_imported_pyname()
++
++    defmod, lineno = pyname.get_definition_location()
++    if defmod is None or lineno is None:
++        return None
++
++    scope = defmod.get_scope().get_inner_scope_for_line(lineno)
++
++    names = []
++    if isinstance(pyname, pynamesdef.ParameterName):
++        names = [(worder.get_name_at(resource, offset), 'PARAMETER')]
++    elif isinstance(pyname, pynamesdef.AssignedName):
++        if imported_name is None:
++            imported_name = worder.get_name_at(resource, offset)
++        names = [(imported_name, 'VARIABLE')]
++
++    while scope.parent:
++        if isinstance(scope, pyscopes.FunctionScope):
++            scope_type = 'FUNCTION'
++        elif isinstance(scope, pyscopes.ClassScope):
++            scope_type = 'CLASS'
++        else:
++            scope_type = None
++        names.append((scope.pyobject.get_name(), scope_type))
++        scope = scope.parent
++
++    module_resource = defmod.get_resource()
++    if module_resource is None:
++        return None
++    module_path = rope.base.project._realpath(module_resource.real_path)
++    names.append((module_path, 'MODULE'))
++    names.reverse()
++    return names
++
++
+ class CompletionProposal(object):
+     """A completion proposal
+ 
+diff --git a/base/ropetest/contrib/codeassisttest.py b/repo/ropetest/contrib/codeassisttest.py
+index b333814..55e59ae 100644
+--- a/base/ropetest/contrib/codeassisttest.py
++++ b/repo/ropetest/contrib/codeassisttest.py
+@@ -1,4 +1,5 @@
+ # coding: utf-8
++import os.path
+ try:
+     import unittest2 as unittest
+ except ImportError:
+@@ -8,7 +9,7 @@ from rope.base import exceptions
+ from rope.contrib.codeassist import (get_definition_location, get_doc,
+                                      starting_expression, code_assist,
+                                      sorted_proposals, starting_offset,
+-                                     get_calltip)
++                                     get_calltip, get_canonical_path)
+ from ropetest import testutils
+ 
+ 
+@@ -845,6 +846,101 @@ class CodeAssistTest(unittest.TestCase):
+             self.assert_completion_in_result(expected, 'parameter_keyword',
+                                              result, type=None)
+ 
++    def test_object_path_global(self):
++        code = 'GLOBAL_VARIABLE = 42\n'
++        resource = testutils.create_module(self.project, 'mod')
++        resource.write(code)
++        result = get_canonical_path(
++            self.project, resource, code.index('GLOBAL_VARIABLE'))
++        mod_path = os.path.join(self.project.address, 'mod.py')
++        self.assertEquals(
++            [(mod_path, 'MODULE'), ('GLOBAL_VARIABLE', 'VARIABLE')],
++            result)
++
++    def test_object_path_attribute(self):
++        code = 'class Foo(object):\n' \
++               '    attr = 42\n'
++        resource = testutils.create_module(self.project, 'mod')
++        resource.write(code)
++        result = get_canonical_path(
++            self.project, resource, code.index('attr'))
++        mod_path = os.path.join(self.project.address, 'mod.py')
++        self.assertEquals(
++            [(mod_path, 'MODULE'), ('Foo', 'CLASS'), ('attr', 'VARIABLE')],
++            result)
++
++    def test_object_path_subclass(self):
++        code = 'class Foo(object):\n' \
++               '    class Bar(object):\n' \
++               '        pass\n'
++        resource = testutils.create_module(self.project, 'mod')
++        resource.write(code)
++        result = get_canonical_path(
++            self.project, resource, code.index('Bar'))
++        mod_path = os.path.join(self.project.address, 'mod.py')
++        self.assertEquals(
++            [(mod_path, 'MODULE'), ('Foo', 'CLASS'), ('Bar', 'CLASS')],
++            result)
++
++    def test_object_path_method_parameter(self):
++        code = 'class Foo(object):\n' \
++               '    def bar(self, a, b, c):\n' \
++               '        pass\n'
++        resource = testutils.create_module(self.project, 'mod')
++        resource.write(code)
++        result = get_canonical_path(
++            self.project, resource, code.index('b, c'))
++        mod_path = os.path.join(self.project.address, 'mod.py')
++        self.assertEquals(
++            [(mod_path, 'MODULE'), ('Foo', 'CLASS'), ('bar', 'FUNCTION'),
++             ('b', 'PARAMETER')],
++            result)
++
++    def test_object_path_variable(self):
++        code = 'def bar(a):\n' \
++               '    x = a + 42\n'
++        resource = testutils.create_module(self.project, 'mod')
++        resource.write(code)
++        result = get_canonical_path(
++            self.project, resource, code.index('x ='))
++        mod_path = os.path.join(self.project.address, 'mod.py')
++        self.assertEquals(
++            [(mod_path, 'MODULE'), ('bar', 'FUNCTION'), ('x', 'VARIABLE')],
++            result)
++
++    def test_object_path_unknown_name(self):
++        code = 'unknown\n'
++        resource = testutils.create_module(self.project, 'mod')
++        resource.write(code)
++        self.assertEquals(
++            None, get_canonical_path(self.project, resource,
++                                     code.index('unknown')))
++
++    def test_object_path_imported_variable(self):
++        target = testutils.create_module(self.project, 'target')
++        target.write('value = 42\n')
++        code = 'from target import value\nvalue\n'
++        resource = testutils.create_module(self.project, 'mod')
++        resource.write(code)
++        result = get_canonical_path(
++            self.project, resource, code.rindex('value'))
++        target_path = os.path.join(self.project.address, 'target.py')
++        self.assertEquals(
++            [(target_path, 'MODULE'), ('value', 'VARIABLE')],
++            result)
++
++    @testutils.run_only_for_unix
++    def test_object_path_uses_canonical_module_path(self):
++        code = 'value = 42\n'
++        real = testutils.create_module(self.project, 'realmod')
++        real.write(code)
++        link_path = os.path.join(self.project.address, 'linkmod.py')
++        os.symlink(real.real_path, link_path)
++        resource = self.project.get_resource('linkmod.py')
++        result = get_canonical_path(
++            self.project, resource, code.index('value'))
++        self.assertEquals(os.path.realpath(real.real_path), result[0][0])
++
+ 
+ class CodeAssistInProjectsTest(unittest.TestCase):
+     def setUp(self):

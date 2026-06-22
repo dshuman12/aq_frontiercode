@@ -1,0 +1,199 @@
+diff --git a/base/rope/base/default_config.py b/repo/rope/base/default_config.py
+index 1398fac..fe63bcf 100644
+--- a/base/rope/base/default_config.py
++++ b/repo/rope/base/default_config.py
+@@ -35,6 +35,12 @@ def set_prefs(prefs):
+     # You can extend python path for looking up modules
+     #prefs.add('python_path', '~/python/')
+ 
++    # A hook for resolving a module name or PyName to its canonical
++    # filesystem path.  It receives (project, pyname, folder) and should
++    # return an absolute path, a project-relative path, a Resource, or
++    # None to use rope's default module lookup.
++    #prefs['pyname_to_path'] = None
++
+     # Should rope save object information or not.
+     prefs['save_objectdb'] = True
+     prefs['compress_objectdb'] = False
+diff --git a/base/rope/base/libutils.py b/repo/rope/base/libutils.py
+index aafe443..d305246 100644
+--- a/base/rope/base/libutils.py
++++ b/repo/rope/base/libutils.py
+@@ -31,9 +31,19 @@ def path_to_resource(project, path, type=None):
+     return None
+ 
+ 
++def pyname_to_path(project, pyname, folder=None):
++    """Return the canonical path for a module name or a `PyName`"""
++    return project.get_canonical_path(pyname, folder=folder)
++
++
++def get_canonical_path(project, pyname, folder=None):
++    """Return the canonical path for a module name or a `PyName`"""
++    return pyname_to_path(project, pyname, folder=folder)
++
++
+ def relative(root, path):
+-    root = rope.base.project._realpath(root).replace(os.path.sep, '/')
+-    path = rope.base.project._realpath(path).replace(os.path.sep, '/')
++    root = rope.base.project._canonical_path(root).replace(os.path.sep, '/')
++    path = rope.base.project._canonical_path(path).replace(os.path.sep, '/')
+     if path == root:
+         return ''
+     if path.startswith(root + '/'):
+diff --git a/base/rope/base/project.py b/repo/rope/base/project.py
+index e2be965..4ce5a89 100644
+--- a/base/rope/base/project.py
++++ b/repo/rope/base/project.py
+@@ -10,6 +10,11 @@ import rope.base.resourceobserver as resourceobserver
+ from rope.base.resources import File, Folder, _ResourceMatcher
+ from rope.base.exceptions import ModuleNotFoundError
+ 
++try:
++    basestring
++except NameError:
++    basestring = str
++
+ 
+ class _Project(object):
+ 
+@@ -130,6 +135,15 @@ class _Project(object):
+             raise ModuleNotFoundError('Module %s not found' % name)
+         return self.pycore.resource_to_pyobject(module)
+ 
++    def get_canonical_path(self, pyname, folder=None):
++        """Return the canonical filesystem path for a module name or pyname"""
++        path = self._custom_canonical_path(pyname, folder)
++        if path is not None:
++            return _canonical_path(path)
++        resource = self._resource_for_pyname(pyname, folder)
++        if resource is not None:
++            return _canonical_resource_path(resource)
++
+     def find_module(self, modname, folder=None):
+         """Returns a resource corresponding to the given module
+ 
+@@ -157,6 +171,36 @@ class _Project(object):
+         else:
+             return _find_module_in_folder(folder, modname)
+ 
++    def _custom_canonical_path(self, pyname, folder):
++        resolver = self.prefs.get('pyname_to_path', None)
++        if resolver is None:
++            return None
++        path = resolver(self, pyname, folder)
++        if hasattr(path, 'real_path'):
++            path = path.real_path
++        elif path is not None and not os.path.isabs(path) and \
++                hasattr(self, 'address'):
++            path = os.path.join(self.address, path)
++        return path
++
++    def _resource_for_pyname(self, pyname, folder=None):
++        if isinstance(pyname, str):
++            return self.find_module(pyname, folder=folder)
++        try:
++            pyobject = pyname.get_object()
++        except AttributeError:
++            return None
++        if hasattr(pyobject, 'get_resource'):
++            resource = pyobject.get_resource()
++            if resource is not None:
++                return resource
++        try:
++            pymodule = pyname.get_definition_location()[0]
++        except AttributeError:
++            return None
++        if pymodule is not None and hasattr(pymodule, 'get_resource'):
++            return pymodule.get_resource()
++
+     def is_ignored(self, resource):
+         return False
+ 
+@@ -461,6 +505,14 @@ def _realpath(path):
+     return os.path.realpath(os.path.abspath(os.path.expanduser(path)))
+ 
+ 
++def _canonical_path(path):
++    return os.path.normcase(_realpath(path))
++
++
++def _canonical_resource_path(resource):
++    return _canonical_path(resource.real_path)
++
++
+ def _find_module_in_folder(folder, modname):
+     module = folder
+     packages = modname.split('.')
+diff --git a/base/ropetest/projecttest.py b/repo/ropetest/projecttest.py
+index 892d2d7..9e07b34 100644
+--- a/base/ropetest/projecttest.py
++++ b/repo/ropetest/projecttest.py
+@@ -6,7 +6,7 @@ except ImportError:
+ 
+ from rope.base.exceptions import RopeError, ResourceNotFoundError
+ from rope.base.fscommands import FileSystemCommands
+-from rope.base.libutils import path_to_resource
++from rope.base.libutils import path_to_resource, pyname_to_path
+ from rope.base.project import Project, NoProject, _realpath
+ from ropetest import testutils
+ from rope.base.resourceobserver import FilteredResourceObserver
+@@ -411,7 +411,7 @@ class ProjectTest(unittest.TestCase):
+     # TODO: Detecting utf-16 encoding
+     def xxx_test_using_utf16(self):
+         sample_file = self.project.root.create_file('my_file.txt')
+-        contents = '# -*- coding: utf-16 -*-\n# This is a sample file ...\n'
++        contents = u'# -*- coding: utf-16 -*-\n# This is a sample file ...\n'
+         file = open(sample_file.real_path, 'w')
+         file.write(contents.encode('utf-16'))
+         file.close()
+@@ -469,6 +469,49 @@ class ProjectTest(unittest.TestCase):
+         self.assertEquals(myfolder, path_to_resource(
+                           self.project, myfolder.real_path, type='folder'))
+ 
++    def test_pyname_to_path_for_project_module(self):
++        mod = self.project.root.create_file('mod.py')
++        self.assertEquals(_realpath(mod.real_path),
++                          pyname_to_path(self.project, 'mod'))
++        self.assertEquals(_realpath(mod.real_path),
++                          self.project.get_canonical_path('mod'))
++
++    def test_pyname_to_path_for_project_package(self):
++        pkg = self.project.root.create_folder('pkg')
++        pkg.create_file('__init__.py')
++        self.assertEquals(_realpath(pkg.real_path),
++                          pyname_to_path(self.project, 'pkg'))
++
++    def test_pyname_to_path_for_imported_module_pyname(self):
++        mod = self.project.root.create_file('mod.py')
++        main = self.project.root.create_file('main.py')
++        main.write('import mod\n')
++        pymodule = self.project.get_pymodule(main)
++        self.assertEquals(_realpath(mod.real_path),
++                          pyname_to_path(self.project, pymodule['mod']))
++
++    def test_pyname_to_path_with_custom_project_relative_path(self):
++        mod = self.project.root.create_file('mod.py')
++
++        def resolver(project, pyname, folder):
++            return 'mod.py'
++
++        self.project.prefs['pyname_to_path'] = resolver
++        self.assertEquals(_realpath(mod.real_path),
++                          pyname_to_path(self.project, 'doesnotmatter'))
++
++    @testutils.run_only_for_unix
++    def test_pyname_to_path_resolving_symlinked_source_folder(self):
++        src = self.project.root.create_folder('src')
++        mod = src.create_file('mod.py')
++        linked = os.path.join(self.project.address, 'linkedsrc')
++        os.symlink(src.real_path, linked)
++        self.project.close()
++        self.project = Project(self.project.address, ropefolder=None,
++                               source_folders=['linkedsrc'])
++        self.assertEquals(_realpath(mod.real_path),
++                          pyname_to_path(self.project, 'mod'))
++
+     @testutils.run_only_for_unix
+     def test_ignoring_symlinks_inside_project(self):
+         project2 = testutils.sample_project(folder_name='sampleproject2')

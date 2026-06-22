@@ -10,28 +10,28 @@ Trial mode: each trial is one independent agent solve trajectory. The agent rece
 
 | Task | Agent | Model | Best Reasoning Effort | Trials | Final Pass Rate | Final Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | 10 | 0.300 | 0.300 | 0.300 |
+| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | 10 | 0.300 | 0.912 | 0.300 |
 
 ## Effort Results
 
 | Task | Agent | Model | Reasoning Effort | Trials | Pass Rate | Average Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | 10 | 0.300 | 0.300 | 0.300 |
+| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | 10 | 0.300 | 0.912 | 0.300 |
 
 ## Trial Details
 
 | Task | Agent | Model | Reasoning Effort | Submission | Pass | Criteria | Categories | Score | Blocker Failures |
 | --- | --- | --- | --- | --- | --- | ---: | --- | ---: | --- |
 | healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__Bgg2HqR | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
-| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__LEj2AeK | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
+| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__LEj2AeK | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | scope_matches_reference_intent |
 | healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__V3XMLnV | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
-| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__XbiAyxU | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
-| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__YeDbCWJ | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
-| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__bG3eDzP | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
+| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__XbiAyxU | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | scope_matches_reference_intent |
+| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__YeDbCWJ | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | scope_matches_reference_intent |
+| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__bG3eDzP | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | scope_matches_reference_intent |
 | healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__inzGnJC | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
-| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__mE5vTRU | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
-| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__ugEaW3d | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
-| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__xh5bL3E | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
+| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__mE5vTRU | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | scope_matches_reference_intent |
+| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__ugEaW3d | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | scope_matches_reference_intent |
+| healthcare-integration-platform__0cca2340f9ad | codex | openai/gpt-5.5 | high | healthcare-integration-platform__xh5bL3E | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | scope_matches_reference_intent |
 
 ## Grader Details
 
@@ -362,14 +362,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>healthcare-integration-platform__LEj2AeK: FAIL, score 0.000, criteria 19/20</summary>
+<summary>healthcare-integration-platform__LEj2AeK: FAIL, score 0.875, criteria 19/20</summary>
 
 - Task: `healthcare-integration-platform__0cca2340f9ad`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.875
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14
@@ -1010,14 +1010,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>healthcare-integration-platform__XbiAyxU: FAIL, score 0.000, criteria 19/20</summary>
+<summary>healthcare-integration-platform__XbiAyxU: FAIL, score 0.875, criteria 19/20</summary>
 
 - Task: `healthcare-integration-platform__0cca2340f9ad`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.875
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14
@@ -1334,14 +1334,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>healthcare-integration-platform__YeDbCWJ: FAIL, score 0.000, criteria 19/20</summary>
+<summary>healthcare-integration-platform__YeDbCWJ: FAIL, score 0.875, criteria 19/20</summary>
 
 - Task: `healthcare-integration-platform__0cca2340f9ad`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.875
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14
@@ -1666,14 +1666,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>healthcare-integration-platform__bG3eDzP: FAIL, score 0.000, criteria 19/20</summary>
+<summary>healthcare-integration-platform__bG3eDzP: FAIL, score 0.875, criteria 19/20</summary>
 
 - Task: `healthcare-integration-platform__0cca2340f9ad`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.875
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14
@@ -2314,14 +2314,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>healthcare-integration-platform__mE5vTRU: FAIL, score 0.000, criteria 19/20</summary>
+<summary>healthcare-integration-platform__mE5vTRU: FAIL, score 0.875, criteria 19/20</summary>
 
 - Task: `healthcare-integration-platform__0cca2340f9ad`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.875
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14
@@ -2638,14 +2638,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>healthcare-integration-platform__ugEaW3d: FAIL, score 0.000, criteria 19/20</summary>
+<summary>healthcare-integration-platform__ugEaW3d: FAIL, score 0.875, criteria 19/20</summary>
 
 - Task: `healthcare-integration-platform__0cca2340f9ad`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.875
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14
@@ -2962,14 +2962,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>healthcare-integration-platform__xh5bL3E: FAIL, score 0.000, criteria 19/20</summary>
+<summary>healthcare-integration-platform__xh5bL3E: FAIL, score 0.875, criteria 19/20</summary>
 
 - Task: `healthcare-integration-platform__0cca2340f9ad`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.000
+- Score: 0.875
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14
