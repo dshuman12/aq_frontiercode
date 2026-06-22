@@ -204,8 +204,8 @@ Aggregation rules:
     - *Non-blockers* are quality signals — style, type safety, readability —
       that shape the score but wouldn't by themselves block a merge.
 - Criterion **weights** combine into the final score.
-- **Score-zeroing:** if any blocker fails, the total score is 0. Otherwise the
-  score is the weighted aggregate of the criteria the patch passes.
+- **Score aggregation:** pass/fail remains blocker-gated, while score is the
+  weighted aggregate of all criterion scores, including failed trials.
 - **Per-criterion output:** pass/fail, score, logs, and rationale or evidence.
 
 Score an existing Harbor job directory:
@@ -393,8 +393,9 @@ For a single trial:
 - **pass** — the trial passes if and only if it clears *every* blocker
   criterion; otherwise it fails.
 - **score** — the weighted aggregate of the rubric items the trial satisfies,
-  **gated by blockers**: any trial that fails a blocker scores `0`, regardless
-  of how many non-blockers it satisfies. Score is not a raw rubric sum.
+  including failed trials. A blocker failure still makes the trial fail, but it
+  does not zero out rubric credit from passed criteria. Score is not a raw
+  rubric sum.
 
 Score and pass-rate aggregation 
 
@@ -406,4 +407,3 @@ A model's reported score is its best performing effort level:
 best_effort(task, model) = argmax over efforts of effort_score(task, model, effort)
 final_score(task, model)     = effort_score(task, model, best_effort)
 final_pass_rate(task, model) = effort_pass_rate(task, model, best_effort)
-

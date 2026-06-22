@@ -1,0 +1,25 @@
+diff --git a/base/meridian/analysis/bipartite.py b/repo/meridian/analysis/bipartite.py
+index 0537b11..4108d7b 100644
+--- a/base/meridian/analysis/bipartite.py
++++ b/repo/meridian/analysis/bipartite.py
+@@ -32,7 +32,9 @@ def bipartite_sets(G) -> Tuple[Set, Set]:
+                 if nbr not in color:
+                     color[nbr] = 1 - color[v]
+                     queue.append(nbr)
+-                elif color[nbr] != color[v]:
++                # If a neighbour is already colored the same as v, we found
++                # an odd cycle, so the graph is not bipartite.
++                elif color[nbr] == color[v]:
+                     raise ValueError(f"Graph is not bipartite; odd cycle found near {v!r}")
+     top = {v for v, c in color.items() if c == 0}
+     bottom = {v for v, c in color.items() if c == 1}
+@@ -53,7 +55,8 @@ def two_color(G) -> Dict[Any, int]:
+                 if nbr not in color:
+                     color[nbr] = 1 - color[v]
+                     queue.append(nbr)
+-                elif color[nbr] != color[v]:
++                # Conflict when two adjacent nodes share the same color.
++                elif color[nbr] == color[v]:
+                     raise ValueError("Graph is not bipartite")
+     return color
+ 

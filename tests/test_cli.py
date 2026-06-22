@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from frontiercode_harness.cli import build_parser, main
+from frontiercode_harness.cli import build_parser, main, _frontiercode_progress_snapshot
 
 
 class CliTests(unittest.TestCase):
@@ -206,6 +206,26 @@ class CliTests(unittest.TestCase):
                 job_dir / "godhand__64b8f123b3cc__trialB",
             ],
         )
+
+    def test_frontiercode_progress_recomputes_stale_blocker_gated_score(self) -> None:
+        snapshot = _frontiercode_progress_snapshot(
+            {
+                "task_id": "demo",
+                "submission_id": "demo__trial",
+                "pass": False,
+                "score": 0,
+                "criteria_results": [
+                    {"criterion_id": "behavior", "passed": False, "score": 0, "weight": 0.5},
+                    {"criterion_id": "quality", "passed": True, "score": 1, "weight": 0.5},
+                ],
+            },
+            Path("demo__trial"),
+        )
+
+        self.assertIsNotNone(snapshot)
+        assert snapshot is not None
+        self.assertFalse(snapshot["passed"])
+        self.assertAlmostEqual(snapshot["score"], 0.5)
 
     def test_eval_prints_trial_error_summary(self) -> None:
         completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")

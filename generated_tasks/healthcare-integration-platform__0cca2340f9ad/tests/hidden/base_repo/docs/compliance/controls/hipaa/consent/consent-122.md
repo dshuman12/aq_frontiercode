@@ -1,0 +1,3 @@
+# consent-122
+
+Operational evidence and validation notes for consent control 122.

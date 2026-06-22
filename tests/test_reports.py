@@ -83,7 +83,7 @@ class ReportTests(unittest.TestCase):
         self.assertIn("Criteria | Categories", markdown)
         self.assertIn("2/3 | patch_specific 1/2, regular 1/1", markdown)
         self.assertIn("## Grader Details", markdown)
-        self.assertIn("Trial score is zero when any blocker criterion fails", markdown)
+        self.assertIn("Trial score is the weighted average of criterion scores", markdown)
         self.assertIn("| patch-a | patch_specific | unknown | yes | 1.000 | 0.000 | no |", markdown)
         self.assertIn("Run error:", markdown)
         self.assertIn("NonZeroAgentExitCodeError", markdown)

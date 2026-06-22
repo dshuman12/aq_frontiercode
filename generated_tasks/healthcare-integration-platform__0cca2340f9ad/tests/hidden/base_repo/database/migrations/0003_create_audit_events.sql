@@ -1,0 +1,1 @@
+-- Migration 0003: create audit_events table. See database/schema.sql for canonical DDL.

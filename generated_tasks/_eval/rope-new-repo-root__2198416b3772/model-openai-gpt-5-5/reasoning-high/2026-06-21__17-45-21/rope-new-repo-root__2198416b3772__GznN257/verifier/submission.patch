@@ -1,0 +1,250 @@
+diff --git a/base/rope/base/default_config.py b/repo/rope/base/default_config.py
+index 1398fac..46a701d 100644
+--- a/base/rope/base/default_config.py
++++ b/repo/rope/base/default_config.py
+@@ -33,6 +33,8 @@ def set_prefs(prefs):
+     #prefs.add('source_folders', 'src')
+ 
+     # You can extend python path for looking up modules
++    # Rope canonicalizes resolved module paths, so symbolic links and
++    # relative entries in this list point to a stable filesystem path.
+     #prefs.add('python_path', '~/python/')
+ 
+     # Should rope save object information or not.
+diff --git a/base/rope/base/libutils.py b/repo/rope/base/libutils.py
+index aafe443..3f00e63 100644
+--- a/base/rope/base/libutils.py
++++ b/repo/rope/base/libutils.py
+@@ -86,6 +86,73 @@ def get_string_scope(project, code, resource=None):
+     return get_string_module(project, code, resource).get_scope()
+ 
+ 
++def get_canonical_module_path(project, modname, folder=None):
++    """Return the canonical filesystem path for `modname`.
++
++    The result is absolute, normalized and has symlinks resolved.  If the
++    module cannot be found, ``None`` is returned.
++    """
++    if hasattr(project, 'get_canonical_module_path'):
++        return project.get_canonical_module_path(modname, folder)
++    module = project.find_module(modname, folder)
++    if module is None:
++        return None
++    return rope.base.project._realpath(module.real_path)
++
++
++def get_canonical_path(project, resource, offset=None, folder=None):
++    """Get the canonical path to a Python object or module.
++
++    When `resource` is a module name and `offset` is ``None``, this returns
++    the canonical filesystem path for that module.  Otherwise `resource`
++    should be a `Resource` and `offset` should point at a name in that file;
++    the result is a list of ``(name, kind)`` tuples from module to object.
++    """
++    try:
++        string_type = basestring
++    except NameError:
++        string_type = str
++    if offset is None and isinstance(resource, string_type):
++        return get_canonical_module_path(project, resource, folder)
++    if offset is None:
++        raise TypeError('offset is required when resource is not a module name')
++
++    import rope.base.evaluate
++    from rope.base import pynamesdef, pyscopes, worder
++
++    pymod = project.get_pymodule(resource)
++    pyname = rope.base.evaluate.eval_location(pymod, offset)
++    if pyname is None:
++        return None
++
++    defmod, lineno = pyname.get_definition_location()
++    if defmod is None or lineno is None:
++        return None
++    scope = defmod.get_scope().get_inner_scope_for_line(lineno)
++
++    names = []
++    if isinstance(pyname, pynamesdef.ParameterName):
++        names = [(worder.get_name_at(pymod.get_resource(), offset),
++                  'PARAMETER')]
++    elif isinstance(pyname, pynamesdef.AssignedName):
++        names = [(worder.get_name_at(pymod.get_resource(), offset),
++                  'VARIABLE')]
++
++    while scope.parent:
++        scope_type = None
++        if isinstance(scope, pyscopes.FunctionScope):
++            scope_type = 'FUNCTION'
++        elif isinstance(scope, pyscopes.ClassScope):
++            scope_type = 'CLASS'
++        names.append((scope.pyobject.get_name(), scope_type))
++        scope = scope.parent
++
++    module = defmod.get_resource()
++    names.append((rope.base.project._realpath(module.real_path), 'MODULE'))
++    names.reverse()
++    return names
++
++
+ def modname(resource):
+     if resource.is_folder():
+         module_name = resource.name
+diff --git a/base/rope/base/project.py b/repo/rope/base/project.py
+index e2be965..961f73d 100644
+--- a/base/rope/base/project.py
++++ b/repo/rope/base/project.py
+@@ -19,6 +19,14 @@ class _Project(object):
+         self.prefs = prefs.Prefs()
+         self.data_files = _DataFiles(self)
+         self._custom_source_folders = []
++        self._canonical_path_cache = {}
++        observer = resourceobserver.ResourceObserver(
++            changed=self._invalidate_canonical_path_cache,
++            moved=self._invalidate_canonical_path_cache,
++            created=self._invalidate_canonical_path_cache,
++            removed=self._invalidate_canonical_path_cache,
++            validate=self._invalidate_canonical_path_cache)
++        self.add_observer(observer)
+ 
+     def get_resource(self, resource_name):
+         """Get a resource in a project.
+@@ -149,6 +157,25 @@ class _Project(object):
+                 return module
+         return None
+ 
++    def get_canonical_module_path(self, modname, folder=None):
++        """Return the canonical filesystem path for `modname`.
++
++        The returned path is absolute and has symlinks resolved.  If the
++        module cannot be found, ``None`` is returned.
++        """
++        folder_path = None
++        if folder is not None:
++            folder_path = _realpath(folder.real_path)
++        cache_key = (modname, folder_path)
++        if cache_key in self._canonical_path_cache:
++            return self._canonical_path_cache[cache_key]
++        module = self.find_module(modname, folder)
++        if module is None:
++            return None
++        result = _realpath(module.real_path)
++        self._canonical_path_cache[cache_key] = result
++        return result
++
+     def find_relative_module(self, modname, folder, level):
+         for i in range(level - 1):
+             folder = folder.parent
+@@ -163,6 +190,9 @@ class _Project(object):
+     def _get_resource_path(self, name):
+         pass
+ 
++    def _invalidate_canonical_path_cache(self, resource, new_resource=None):
++        self._canonical_path_cache = {}
++
+     @property
+     @utils.saveit
+     def history(self):
+diff --git a/base/rope/contrib/codeassist.py b/repo/rope/contrib/codeassist.py
+index 6cd8aa2..df57938 100644
+--- a/base/rope/contrib/codeassist.py
++++ b/repo/rope/contrib/codeassist.py
+@@ -124,6 +124,10 @@ def find_occurrences(*args, **kwds):
+     return rope.contrib.findit.find_occurrences(*args, **kwds)
+ 
+ 
++def get_canonical_path(project, resource, offset):
++    return libutils.get_canonical_path(project, resource, offset)
++
++
+ class CompletionProposal(object):
+     """A completion proposal
+ 
+diff --git a/base/ropetest/contrib/codeassisttest.py b/repo/ropetest/contrib/codeassisttest.py
+index b333814..7be4864 100644
+--- a/base/ropetest/contrib/codeassisttest.py
++++ b/repo/ropetest/contrib/codeassisttest.py
+@@ -5,10 +5,11 @@ except ImportError:
+     import unittest
+ 
+ from rope.base import exceptions
++from rope.base.project import _realpath
+ from rope.contrib.codeassist import (get_definition_location, get_doc,
+                                      starting_expression, code_assist,
+                                      sorted_proposals, starting_offset,
+-                                     get_calltip)
++                                     get_calltip, get_canonical_path)
+ from ropetest import testutils
+ 
+ 
+@@ -845,6 +846,16 @@ class CodeAssistTest(unittest.TestCase):
+             self.assert_completion_in_result(expected, 'parameter_keyword',
+                                              result, type=None)
+ 
++    def test_get_canonical_path_for_global_variable(self):
++        code = 'GLOBAL_VARIABLE = 42\n'
++        resource = testutils.create_module(self.project, 'mod')
++        resource.write(code)
++        result = get_canonical_path(self.project, resource, 1)
++        self.assertEquals(
++            [(_realpath(resource.real_path), 'MODULE'),
++             ('GLOBAL_VARIABLE', 'VARIABLE')],
++            result)
++
+ 
+ class CodeAssistInProjectsTest(unittest.TestCase):
+     def setUp(self):
+diff --git a/base/ropetest/projecttest.py b/repo/ropetest/projecttest.py
+index 892d2d7..2969358 100644
+--- a/base/ropetest/projecttest.py
++++ b/repo/ropetest/projecttest.py
+@@ -6,7 +6,7 @@ except ImportError:
+ 
+ from rope.base.exceptions import RopeError, ResourceNotFoundError
+ from rope.base.fscommands import FileSystemCommands
+-from rope.base.libutils import path_to_resource
++from rope.base.libutils import path_to_resource, get_canonical_module_path
+ from rope.base.project import Project, NoProject, _realpath
+ from ropetest import testutils
+ from rope.base.resourceobserver import FilteredResourceObserver
+@@ -469,6 +469,41 @@ class ProjectTest(unittest.TestCase):
+         self.assertEquals(myfolder, path_to_resource(
+                           self.project, myfolder.real_path, type='folder'))
+ 
++    def test_getting_canonical_module_path(self):
++        src = self.project.root.create_folder('src')
++        mod = testutils.create_module(self.project, 'mod', src)
++        self.assertEquals(_realpath(mod.real_path),
++                          self.project.get_canonical_module_path('mod'))
++        self.assertEquals(_realpath(mod.real_path),
++                          get_canonical_module_path(self.project, 'mod'))
++
++    def test_getting_canonical_package_path(self):
++        src = self.project.root.create_folder('src')
++        pkg = testutils.create_package(self.project, 'pkg', src)
++        self.assertEquals(_realpath(pkg.real_path),
++                          self.project.get_canonical_module_path('pkg'))
++
++    @testutils.run_only_for_unix
++    def test_getting_canonical_module_path_for_symlinked_source_folder(self):
++        project2 = testutils.sample_project(foldername='sampleproject2')
++        src = project2.root.create_folder('src')
++        mod = testutils.create_module(project2, 'mod', src)
++        linked = os.path.join(self.project.address, 'linkedsrc')
++        try:
++            os.symlink(src.real_path, linked)
++            self.project.close()
++            self.project = Project(
++                self.project.address, ropefolder=None,
++                save_objectdb=False, save_history=False,
++                validate_objectdb=False, automatic_soa=False,
++                ignored_resources=['.ropeproject'],
++                import_dynload_stdmods=False,
++                source_folders=['linkedsrc'])
++            self.assertEquals(_realpath(mod.real_path),
++                              self.project.get_canonical_module_path('mod'))
++        finally:
++            testutils.remove_project(project2)
++
+     @testutils.run_only_for_unix
+     def test_ignoring_symlinks_inside_project(self):
+         project2 = testutils.sample_project(folder_name='sampleproject2')

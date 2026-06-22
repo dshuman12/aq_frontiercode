@@ -1,0 +1,198 @@
+task_id: preplane__bd5ac18268ad
+subset: extended
+repo_workdir: environment/repo
+base_commit: fa81b68f7876ee70a4b209fa9a39f99e7b413c8b
+low_quality_threshold: 0.5
+source:
+  repo: PrepLane
+  task_row_id: preplane__bd5ac18268ad
+  source_archive: project_silver_repos/oesYoDA55oqhzoGdQcnG__PrepLane.zip
+  fix_commit: bd5ac18268ad32cb24b4ddcb1396fd544a5a55f3
+  commit_subject: "add AI-powered vocabulary feedback via OpenRouter"
+  reference_test_files: ["tests/aiFeedbackContract.test.mjs"]
+criteria:
+  - id: hidden_reference_tests_pass
+    category: patch_specific
+    description: >
+      Hidden behavioral contract tests for the chat API and form-a-sentence practice
+      component pass after the submitted patch.
+    method: classical
+    blocker: true
+    weight: 0.35
+    command: python3 tests/hidden/run_criteria.py --criterion hidden_reference_tests_pass environment/repo
+    timeout_seconds: 600
+  - id: visible_regression_tests_pass
+    category: regular
+    description: >
+      The repository's visible Next.js build workflow passes after the missing component
+      and server route are restored.
+    method: command
+    blocker: true
+    weight: 0.25
+    command: python3 tests/hidden/run_criteria.py --criterion visible_regression_tests_pass environment/repo
+    timeout_seconds: 600
+  - id: scope_matches_reference_intent
+    category: regular
+    description: >
+      The patch stays within the sentence-practice feature, chat API, and directly
+      relevant tests, avoiding unrelated rewrites or dependency churn.
+    method: scope
+    blocker: true
+    weight: 0.20
+    scope:
+      allowed_paths: ["src/app/api/chat/route.ts", "src/components/dashboard/vocabs/practice/form-a-sentence.tsx", "tests/"]
+      denied_paths: []
+      max_files: 5
+      max_changed_lines: 2600
+  - id: no_hidden_asset_leak
+    category: regular
+    description: >
+      The agent-visible repository does not contain hidden tests, grader assets,
+      reference patches, task specs, or the source fix commit identifier.
+    method: command
+    blocker: true
+    weight: 0.05
+    command: python3 tests/hidden/run_criteria.py --criterion no_hidden_asset_leak environment/repo
+  - id: behavior_core_requirement
+    category: patch_specific
+    description: >
+      The submitted patch restores the missing form-a-sentence practice mode and not only
+      the narrow build error.
+    method: llm_prompt
+    blocker: false
+    weight: 0.03
+    threshold: 0.6
+    prompt: >
+      Score whether the diff fully restores PrepLane's AI-assisted form-a-sentence
+      vocabulary practice: a learner can submit a sentence for the current word, receive
+      feedback, and continue the session.
+  - id: api_contract_and_secret_handling
+    category: patch_specific
+    description: >
+      The chat API keeps provider credentials server-side and returns a structured response
+      contract.
+    method: llm_prompt
+    blocker: false
+    weight: 0.03
+    threshold: 0.6
+    prompt: >
+      Score whether src/app/api/chat/route.ts validates supported task names, keeps
+      OPENROUTER_KEY server-side, calls the AI provider from the server route, and returns
+      structured JSON for the client.
+  - id: client_error_handling
+    category: patch_specific
+    description: >
+      The client handles loading and AI failure states without trapping the user.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the sentence-practice component clears submitting state, shows feedback,
+      and falls back to a local sentence check when the AI API fails.
+  - id: backward_compatibility
+    category: regular
+    description: >
+      Existing vocabulary practice behavior and local-storage contracts remain intact
+      outside the requested feature.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the patch avoids breaking other vocabulary modes, the vocabulary
+      dataset, dashboard routing, package scripts, and existing local-storage shapes.
+  - id: scope_minimal_patch
+    category: regular
+    description: >
+      The patch stays focused and avoids unrelated rewrites or dependency churn.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the diff is appropriately scoped to src/app/api/chat/route.ts,
+      src/components/dashboard/vocabs/practice/form-a-sentence.tsx, and any directly
+      relevant tests.
+  - id: maintainability_idiomatic_design
+    category: regular
+    description: >
+      The implementation follows the surrounding React, reducer, and local-storage
+      patterns.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the implementation is idiomatic for PrepLane and matches nearby
+      vocabulary practice components.
+calibrations:
+  - id: no-op-base
+    type: hack
+    description: Leaves the base repository unchanged, so the build still cannot resolve the missing component and the chat API is absent.
+    criteria_results:
+      - criterion_id: hidden_reference_tests_pass
+        passed: false
+        score: 0
+      - criterion_id: visible_regression_tests_pass
+        passed: false
+        score: 0
+      - criterion_id: scope_matches_reference_intent
+        passed: false
+        score: 0
+      - criterion_id: no_hidden_asset_leak
+        passed: true
+        score: 1
+      - criterion_id: behavior_core_requirement
+        passed: false
+        score: 0
+      - criterion_id: api_contract_and_secret_handling
+        passed: false
+        score: 0
+      - criterion_id: client_error_handling
+        passed: false
+        score: 0
+      - criterion_id: backward_compatibility
+        passed: true
+        score: 0.6
+      - criterion_id: scope_minimal_patch
+        passed: true
+        score: 1
+      - criterion_id: maintainability_idiomatic_design
+        passed: false
+        score: 0
+  - id: reference-fix
+    type: alternative_valid
+    description: The source fix commit's implementation, stored privately under tests/grader/calibration/reference.patch.
+    patch: calibration/reference.patch
+    criteria_results:
+      - criterion_id: hidden_reference_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: visible_regression_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: scope_matches_reference_intent
+        passed: true
+        score: 1
+      - criterion_id: no_hidden_asset_leak
+        passed: true
+        score: 1
+      - criterion_id: behavior_core_requirement
+        passed: true
+        score: 0.85
+      - criterion_id: api_contract_and_secret_handling
+        passed: true
+        score: 0.85
+      - criterion_id: client_error_handling
+        passed: true
+        score: 0.8
+      - criterion_id: backward_compatibility
+        passed: true
+        score: 0.85
+      - criterion_id: scope_minimal_patch
+        passed: true
+        score: 0.9
+      - criterion_id: maintainability_idiomatic_design
+        passed: true
+        score: 0.85

@@ -1,0 +1,57 @@
+Traceback (most recent call last):
+  File "/Users/daniela/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/trial/trial.py", line 961, in run
+    await self._execute_agent()
+  File "/Users/daniela/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/trial/trial.py", line 370, in _execute_agent
+    await asyncio.wait_for(
+    ...<6 lines>...
+    )
+  File "/Users/daniela/.local/share/uv/python/cpython-3.13.13-macos-aarch64-none/lib/python3.13/asyncio/tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/Users/daniela/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 42, in wrapper
+    return await fn(self, instruction, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/daniela/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/codex.py", line 796, in run
+    await self.exec_as_agent(
+    ...<17 lines>...
+    )
+  File "/Users/daniela/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 366, in exec_as_agent
+    return await self._exec(
+           ^^^^^^^^^^^^^^^^^
+        environment, command, env=env, cwd=cwd, timeout_sec=timeout_sec
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/daniela/.local/share/uv/tools/harbor/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 329, in _exec
+    raise NonZeroAgentExitCodeError(
+    ...<3 lines>...
+    )
+harbor.agents.installed.base.NonZeroAgentExitCodeError: Command failed (exit 1): if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-5 --json --enable unified_exec -c model_reasoning_effort=high -- '# Task description
+
+`CircuitBreaker` and `RetryPolicy` in `nexusflow/utils/retry.py` decide whether an exception is "expected" by comparing it against a configured set of exception classes. Both currently use exact `type()` identity checks, so only the precise registered class matches. When application code raises a subclass of a configured exception, the circuit breaker fails to record it and the retry policy fails to retry it — the exception slips through both safety mechanisms.
+
+Update the comparison logic so exception-hierarchy matching works: an exception that is an instance of (or subclass of) any configured exception type must be recognised. Concretely, `CircuitBreaker.record_failure` should count subclass instances toward its failure threshold and state transitions, and `RetryPolicy.should_retry` should return `True` for subclass instances of its retryable exceptions (and continue to respect its non-retryable/excluded set with the same subclass semantics).
+
+Apply the fix consistently wherever this matching occurs in the retry/circuit-breaking stack, including the worker integration in `nexusflow/tasks/worker.py` if it performs its own exception-set comparisons. Keep all existing public signatures, return types, and state-machine behaviour for exactly-matching exceptions unchanged; only broaden matching to include subclasses.
+
+# Test guidelines
+
+Run `python -m pytest tests/ -x -q` and ensure all tests pass. Add or extend tests under `tests/test_utils/test_retry.py` and `tests/test_tasks/test_worker.py` to cover subclass exceptions: a subclass of a retryable error should be retried, a subclass of a configured circuit-breaker exception should advance the breaker toward opening, and exact-match plus excluded-exception behaviour must remain correct. Avoid weakening existing assertions.
+
+# Lint guidelines
+
+No separate linter is configured; keep imports ordered and remove unused names. Ensure `from __future__ import annotations` style and existing type hints stay intact.
+
+# Style guidelines
+
+You are already on the correct starting snapshot. Create your branch from this state. Do not rebase or start from master, main, or any other branch. Match the surrounding code conventions and avoid unrelated refactors.
+' 2>&1 </dev/null | tee /logs/agent/codex.txt
+stdout: WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "/tmp" (codex_home: AbsolutePathBuf("/tmp/codex-home"))
+Reading additional input from stdin...
+{"type":"thread.started","thread_id":"019eeb5e-b70e-7f50-a02e-05accfec1cd9"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `gpt-5` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
+{"type":"turn.started"}
+2026-06-21T18:08:33.916470Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses
+2026-06-21T18:08:34.138282Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses
+2026-06-21T18:08:34.533541Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthoriz ... [truncated]
+stderr: None

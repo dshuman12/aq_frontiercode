@@ -1,0 +1,120 @@
+diff --git a/base/rope/base/libutils.py b/repo/rope/base/libutils.py
+index aafe443..f57b47f 100644
+--- a/base/rope/base/libutils.py
++++ b/repo/rope/base/libutils.py
+@@ -31,13 +31,23 @@ def path_to_resource(project, path, type=None):
+     return None
+ 
+ 
++def get_canonical_path(project, modname, folder=None):
++    """Return the canonical filesystem path for a module name."""
++    return project.get_canonical_path(modname, folder)
++
++
+ def relative(root, path):
+-    root = rope.base.project._realpath(root).replace(os.path.sep, '/')
+-    path = rope.base.project._realpath(path).replace(os.path.sep, '/')
+-    if path == root:
++    root = rope.base.project._realpath(root)
++    path = rope.base.project._realpath(path)
++    compared_root = os.path.normcase(os.path.normpath(root))
++    compared_path = os.path.normcase(os.path.normpath(path))
++    if compared_path == compared_root:
+         return ''
+-    if path.startswith(root + '/'):
+-        return path[len(root) + 1:]
++    prefix = compared_root
++    if not prefix.endswith(os.path.sep):
++        prefix += os.path.sep
++    if compared_path.startswith(prefix):
++        return path[len(root):].lstrip('/\\').replace(os.path.sep, '/')
+ 
+ 
+ def report_change(project, path, old_content):
+diff --git a/base/rope/base/project.py b/repo/rope/base/project.py
+index e2be965..841f475 100644
+--- a/base/rope/base/project.py
++++ b/repo/rope/base/project.py
+@@ -1,4 +1,3 @@
+-import cPickle as pickle
+ import os
+ import shutil
+ import sys
+@@ -10,6 +9,11 @@ import rope.base.resourceobserver as resourceobserver
+ from rope.base.resources import File, Folder, _ResourceMatcher
+ from rope.base.exceptions import ModuleNotFoundError
+ 
++try:
++    import cPickle as pickle
++except ImportError:
++    import pickle
++
+ 
+ class _Project(object):
+ 
+@@ -149,6 +153,13 @@ class _Project(object):
+                 return module
+         return None
+ 
++    def get_canonical_path(self, modname, folder=None):
++        """Return the canonical filesystem path for a module name."""
++        module = self.find_module(modname, folder)
++        if module is None:
++            raise ModuleNotFoundError('Module %s not found' % modname)
++        return _realpath(module.real_path)
++
+     def find_relative_module(self, modname, folder, level):
+         for i in range(level - 1):
+             folder = folder.parent
+@@ -178,6 +189,7 @@ class _Project(object):
+                       DeprecationWarning, stacklevel=2)
+ 
+     ropefolder = None
++    root = None
+ 
+ 
+ class Project(_Project):
+diff --git a/base/ropetest/projecttest.py b/repo/ropetest/projecttest.py
+index 892d2d7..e82f56e 100644
+--- a/base/ropetest/projecttest.py
++++ b/repo/ropetest/projecttest.py
+@@ -6,7 +6,7 @@ except ImportError:
+ 
+ from rope.base.exceptions import RopeError, ResourceNotFoundError
+ from rope.base.fscommands import FileSystemCommands
+-from rope.base.libutils import path_to_resource
++from rope.base.libutils import get_canonical_path, path_to_resource
+ from rope.base.project import Project, NoProject, _realpath
+ from ropetest import testutils
+ from rope.base.resourceobserver import FilteredResourceObserver
+@@ -469,6 +469,30 @@ class ProjectTest(unittest.TestCase):
+         self.assertEquals(myfolder, path_to_resource(
+                           self.project, myfolder.real_path, type='folder'))
+ 
++    def test_getting_canonical_path_for_modules(self):
++        mod = self.project.root.create_file('mod.py')
++        pkg = testutils.create_package(self.project, 'pkg')
++        self.assertEquals(_realpath(mod.real_path),
++                          self.project.get_canonical_path('mod'))
++        self.assertEquals(_realpath(pkg.real_path),
++                          self.project.get_canonical_path('pkg'))
++        self.assertEquals(_realpath(mod.real_path),
++                          get_canonical_path(self.project, 'mod'))
++
++    @testutils.run_only_for_unix
++    def test_getting_canonical_path_for_symlinked_source_folder(self):
++        real_src = self.project.root.create_folder('real_src')
++        mod = real_src.create_file('mod.py')
++        linked_src = os.path.join(self.project.address, 'linked_src')
++        os.symlink(real_src.real_path, linked_src)
++
++        self.project.close()
++        self.project = Project(self.project.address, ropefolder=None,
++                               source_folders=['linked_src'])
++
++        self.assertEquals(_realpath(mod.real_path),
++                          self.project.get_canonical_path('mod'))
++
+     @testutils.run_only_for_unix
+     def test_ignoring_symlinks_inside_project(self):
+         project2 = testutils.sample_project(folder_name='sampleproject2')

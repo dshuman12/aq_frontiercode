@@ -1,0 +1,161 @@
+diff --git a/src/queryweave/parser/parser.py b/src/queryweave/parser/parser.py
+new file mode 100644
+index 0000000..5bb2b850
+--- /dev/null
++++ b/src/queryweave/parser/parser.py
+@@ -0,111 +1,111 @@
++"""Recursive descent parser for QueryWeave SQL dialect, simplified and incomplete."""
++from __future__ import annotations
++
++from queryweave.parser.lexer import Lexer, TokenStream, TokenType
++from queryweave.parser.ast_nodes import (
++    SelectStmt,
++    Expression,
++    TableRef,
++    JoinClause,
++    WhereClause,
++    GroupByClause,
++    HavingClause,
++    OrderByClause,
++    OrderByItem,
++    LimitClause,
++    BinaryExpr,
++    UnaryExpr,
++    LiteralExpr,
++    ColumnRef,
++    StarExpr,
++    AliasExpr,
++)
++
++
++class ParseError(Exception):
++    def __init__(self, message: str, token=None) -> None:
++        loc = f" at L{token.line}:{token.col}" if token else ""
++        super().__init__(f"Parse error{loc}: {message}")
++
++
++class Parser:
++    def __init__(self, lexer_or_stream: Lexer | TokenStream) -> None:
++        if isinstance(lexer_or_stream, Lexer):
++            tokens = lexer_or_stream.tokenize()
++            self._stream = TokenStream(tokens)
++        else:
++            self._stream = lexer_or_stream
++
++    def parse_statement(self) -> SelectStmt:
++        tok = self._stream.current()
++        if tok.type != TokenType.SELECT:
++            raise ParseError(f"Only SELECT statements supported in stub", tok)
++        return self._parse_select()
++
++    def _parse_select(self) -> SelectStmt:
++        self._stream.expect(TokenType.SELECT)
++        distinct = self._stream.match(TokenType.DISTINCT) is not None
++        columns = self._parse_select_list()
++        from_table = None
++        joins = []
++        where = None
++        group_by = None
++        having = None
++        order_by = None
++        limit = None
++
++        if self._stream.match(TokenType.FROM):
++            from_table = self._parse_table_ref()
++            # Shortcut: no joins parsing
++
++        if self._stream.match(TokenType.WHERE):
++            where = WhereClause(condition=self._parse_expression())
++
++        # Skip GROUP BY, HAVING, ORDER BY, LIMIT parsing for simplicity
++
++        # Skip semicolon
++        self._stream.match(TokenType.SEMICOLON)
++
++        return SelectStmt(
++            columns=columns,
++            from_table=from_table,
++            joins=joins,
++            where=where,
++            group_by=group_by,
++            having=having,
++            order_by=order_by,
++            limit=limit,
++            distinct=distinct,
++        )
++
++    def _parse_select_list(self) -> list[Expression]:
++        items = [self._parse_select_item()]
++        while self._stream.match(TokenType.COMMA):
++            items.append(self._parse_select_item())
++        return items
++
++    def _parse_select_item(self) -> Expression:
++        if self._stream.check(TokenType.STAR):
++            self._stream.advance()
++            return StarExpr()
++        expr = self._parse_expression()
++        if self._stream.match(TokenType.AS):
++            alias_tok = self._stream.expect(TokenType.IDENTIFIER)
++            return AliasExpr(expr=expr, alias=alias_tok.value)
++        if self._stream.check(TokenType.IDENTIFIER):
++            alias_tok = self._stream.advance()
++            return AliasExpr(expr=expr, alias=alias_tok.value)
++        return expr
++
++    def _parse_table_ref(self) -> TableRef:
++        name_tok = self._stream.expect(TokenType.IDENTIFIER)
++        name = name_tok.value
++        alias = None
++        if self._stream.match(TokenType.AS):
++            alias_tok = self._stream.expect(TokenType.IDENTIFIER)
++            alias = alias_tok.value
++        elif self._stream.check(TokenType.IDENTIFIER):
++            alias = self._stream.advance().value
++        return TableRef(name=name, alias=alias)
++
++    def _parse_expression(self) -> Expression:
++        return self._parse_binary()
++
++    def _parse_binary(self, prec=0) -> Expression:
++        # Only parse literals, columns, + and * binary operators
++        left = self._parse_primary()
++        while self._stream.check(TokenType.OPERATOR):
++            op = self._stream.current().value
++            op_prec = self._precedence(op)
++            if op_prec < prec:
++                break
++            self._stream.advance()
++            right = self._parse_binary(op_prec + 1)
++            left = BinaryExpr(left=left, operator=op, right=right)
++        return left
++
++    def _precedence(self, op: str) -> int:
++        if op in ('*','/','%'):
++            return 3
++        if op in ('+','-'):
++            return 2
++        if op in ('=', '!=', '<>', '<', '>', '<=', '>='):
++            return 1
++        return 0
++
++    def _parse_primary(self) -> Expression:
++        tok = self._stream.current()
++        if tok.type == TokenType.NUMBER:
++            self._stream.advance()
++            return LiteralExpr(value=int(tok.value), literal_type='integer')
++        if tok.type == TokenType.IDENTIFIER:
++            self._stream.advance()
++            return ColumnRef(name=tok.value)
++        if tok.type == TokenType.LPAREN:
++            self._stream.advance()
++            expr = self._parse_expression()
++            self._stream.expect(TokenType.RPAREN)
++            return expr
++        raise ParseError(f"Unexpected token {tok.value!r}", tok)
++
++
+def parse(query: str) -> SelectStmt:
++    """Convenience function to parse a query string to AST."""
++    p = Parser(Lexer(query))
++    return p.parse_statement()

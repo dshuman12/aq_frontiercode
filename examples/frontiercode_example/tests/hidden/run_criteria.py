@@ -138,11 +138,17 @@ def build_result_doc(results: list[dict]) -> dict:
         counts["total"] += 1
         if result["passed"]:
             counts["passed"] += 1
+    score_total = sum(item["weight"] for item in results)
+    score = (
+        sum(item["score"] * item["weight"] for item in results) / score_total
+        if score_total
+        else 0.0
+    )
     return {
         "task_id": TASK_ID,
         "submission_id": "",
         "pass": passed,
-        "score": 1.0 if passed else 0.0,
+        "score": score,
         "reward": 1.0 if passed else 0.0,
         "blocker_failures": [
             item["criterion_id"] for item in results if item["blocker"] and not item["passed"]

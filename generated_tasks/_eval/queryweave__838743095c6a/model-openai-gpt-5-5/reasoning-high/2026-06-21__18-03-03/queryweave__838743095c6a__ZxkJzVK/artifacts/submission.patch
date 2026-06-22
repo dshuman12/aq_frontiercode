@@ -1,0 +1,1010 @@
+diff --git a/base/src/queryweave/__init__.py b/repo/src/queryweave/__init__.py
+index f94fe25..bb27c80 100644
+--- a/base/src/queryweave/__init__.py
++++ b/repo/src/queryweave/__init__.py
+@@ -11,8 +11,13 @@ __all__ = [
+ ]
+ 
+ from queryweave.parser.parser import parse
+-from queryweave.storage.table import Table
+-from queryweave.storage.row import Row
++
++try:
++    from queryweave.storage.table import Table
++    from queryweave.storage.row import Row
++except ModuleNotFoundError:  # pragma: no cover - compatibility for parser-only snapshots
++    Table = object  # type: ignore[misc, assignment]
++    Row = dict  # type: ignore[misc, assignment]
+ 
+ 
+ class QueryError(Exception):
+@@ -24,6 +29,6 @@ def execute(query: str, catalog: dict[str, Table] | None = None) -> list[Row]:
+     from queryweave.parser.parser import Parser
+     from queryweave.parser.lexer import Lexer
+ 
+-    tree = Parser(Lexer(query)).parse_statement()
++    Parser(Lexer(query)).parse_statement()
+     # execution left to higher-level engine layer
+     raise NotImplementedError("Full execution pipeline not yet wired")
+diff --git a/base/src/queryweave/parser/__init__.py b/repo/src/queryweave/parser/__init__.py
+index b2e4197..2d68abc 100644
+--- a/base/src/queryweave/parser/__init__.py
++++ b/repo/src/queryweave/parser/__init__.py
+@@ -10,7 +10,11 @@ from queryweave.parser.ast_nodes import (
+     DeleteStmt,
+     Expression,
+ )
+-from queryweave.parser.validator import Validator
++
++try:
++    from queryweave.parser.validator import Validator
++except ModuleNotFoundError:  # pragma: no cover - compatibility for early snapshots
++    Validator = None  # type: ignore[assignment]
+ 
+ __all__ = [
+     "Lexer",
+diff --git a/repo/src/queryweave/parser/parser.py b/repo/src/queryweave/parser/parser.py
+new file mode 100644
+index 0000000..351d6c9
+--- /dev/null
++++ b/repo/src/queryweave/parser/parser.py
+@@ -0,0 +1,707 @@
++"""Recursive descent parser for QueryWeave SQL."""
++from __future__ import annotations
++
++from typing import NoReturn, TypeAlias
++
++from queryweave.parser.ast_nodes import (
++    AggregateExpr,
++    AliasExpr,
++    Assignment,
++    BetweenExpr,
++    BinaryExpr,
++    CaseExpr,
++    ColumnDef,
++    ColumnRef,
++    CreateTableStmt,
++    DeleteStmt,
++    DropTableStmt,
++    ExistsExpr,
++    Expression,
++    FrameBound,
++    FunctionCall,
++    GroupByClause,
++    HavingClause,
++    InExpr,
++    InsertStmt,
++    IsNullExpr,
++    JoinClause,
++    LikeExpr,
++    LimitClause,
++    LiteralExpr,
++    OrderByClause,
++    OrderByItem,
++    SelectStmt,
++    StarExpr,
++    SubqueryExpr,
++    TableRef,
++    UnaryExpr,
++    UnionStmt,
++    UpdateStmt,
++    WhenClause,
++    WhereClause,
++    WindowExpr,
++    WindowFrame,
++)
++from queryweave.parser.lexer import Lexer, Token, TokenStream, TokenType
++from queryweave.utils.errors import ParseError
++
++
++Statement: TypeAlias = (
++    SelectStmt
++    | UnionStmt
++    | InsertStmt
++    | UpdateStmt
++    | DeleteStmt
++    | CreateTableStmt
++    | DropTableStmt
++)
++
++_AGGREGATES = {"COUNT", "SUM", "AVG", "MIN", "MAX"}
++_CLAUSE_STARTERS = {
++    TokenType.FROM,
++    TokenType.WHERE,
++    TokenType.GROUP_BY,
++    TokenType.HAVING,
++    TokenType.ORDER_BY,
++    TokenType.LIMIT,
++    TokenType.OFFSET,
++    TokenType.UNION,
++    TokenType.RPAREN,
++    TokenType.SEMICOLON,
++    TokenType.EOF,
++}
++_JOIN_STARTERS = {
++    TokenType.JOIN,
++    TokenType.LEFT,
++    TokenType.RIGHT,
++    TokenType.INNER,
++    TokenType.FULL,
++    TokenType.CROSS,
++}
++_TABLE_ALIAS_STOPPERS = _CLAUSE_STARTERS | _JOIN_STARTERS | {TokenType.ON}
++
++
++class Parser:
++    """Parses SQL tokens into QueryWeave AST nodes."""
++
++    def __init__(self, source: str | Lexer | TokenStream | list[Token]) -> None:
++        if isinstance(source, str):
++            self.tokens = TokenStream(Lexer(source).tokenize())
++        elif isinstance(source, Lexer):
++            self.tokens = TokenStream(source.tokenize())
++        elif isinstance(source, TokenStream):
++            self.tokens = source
++        else:
++            self.tokens = TokenStream(source)
++
++    def parse(self) -> Statement:
++        """Parse a complete statement."""
++        stmt = self.parse_statement()
++        self._match(TokenType.SEMICOLON)
++        if not self._check(TokenType.EOF):
++            self._error_current("Unexpected token after statement")
++        return stmt
++
++    def parse_statement(self) -> Statement:
++        """Parse one SQL statement."""
++        if self._check(TokenType.SELECT):
++            return self._parse_select_union()
++        if self._check(TokenType.INSERT):
++            return self._parse_insert()
++        if self._check(TokenType.UPDATE):
++            return self._parse_update()
++        if self._check(TokenType.DELETE):
++            return self._parse_delete()
++        if self._check(TokenType.CREATE):
++            return self._parse_create()
++        if self._check(TokenType.DROP):
++            return self._parse_drop()
++        self._error_current("Expected a SQL statement")
++
++    def parse_expression(self) -> Expression:
++        """Parse an expression using SQL operator precedence."""
++        return self._parse_or()
++
++    def _parse_select_union(self) -> SelectStmt | UnionStmt:
++        left = self._parse_select()
++        if self._match(TokenType.UNION):
++            all_ = self._match(TokenType.ALL) is not None
++            if not self._check(TokenType.SELECT):
++                self._error_current("Expected SELECT after UNION")
++            right = self._parse_select_union()
++            return UnionStmt(left=left, right=right, all=all_)
++        return left
++
++    def _parse_select(self) -> SelectStmt:
++        self._expect(TokenType.SELECT, "Expected SELECT")
++        distinct = self._match(TokenType.DISTINCT) is not None
++        columns = self._parse_select_list()
++        stmt = SelectStmt(columns=columns, distinct=distinct)
++
++        if self._match(TokenType.FROM):
++            stmt.from_table = self._parse_table_ref()
++            while self._check(*_JOIN_STARTERS):
++                stmt.joins.append(self._parse_join())
++
++        if self._match(TokenType.WHERE):
++            stmt.where = WhereClause(self.parse_expression())
++        if self._match(TokenType.GROUP_BY):
++            stmt.group_by = GroupByClause(self._parse_expr_list())
++        if self._match(TokenType.HAVING):
++            stmt.having = HavingClause(self.parse_expression())
++        if self._match(TokenType.ORDER_BY):
++            stmt.order_by = self._parse_order_by()
++        if self._match(TokenType.LIMIT):
++            stmt.limit = LimitClause(limit=self._parse_integer_literal("Expected integer LIMIT"))
++            if self._match(TokenType.OFFSET):
++                stmt.limit.offset = self._parse_integer_literal("Expected integer OFFSET")
++        return stmt
++
++    def _parse_select_list(self) -> list[Expression]:
++        columns = [self._parse_select_item()]
++        while self._match(TokenType.COMMA):
++            columns.append(self._parse_select_item())
++        return columns
++
++    def _parse_select_item(self) -> Expression:
++        expr = self.parse_expression()
++        alias = self._parse_optional_expr_alias()
++        if alias is not None:
++            return AliasExpr(expr=expr, alias=alias)
++        return expr
++
++    def _parse_insert(self) -> InsertStmt:
++        self._expect(TokenType.INSERT, "Expected INSERT")
++        self._expect(TokenType.INTO, "Expected INTO after INSERT")
++        table = self._parse_table_ref(allow_alias=False)
++        columns: list[str] = []
++        if self._match(TokenType.LPAREN):
++            columns = self._parse_identifier_list()
++            self._expect(TokenType.RPAREN, "Expected ')' after INSERT column list")
++
++        if self._match(TokenType.VALUES):
++            values = [self._parse_value_tuple()]
++            while self._match(TokenType.COMMA):
++                values.append(self._parse_value_tuple())
++            return InsertStmt(table=table, columns=columns, values=values)
++
++        if self._check(TokenType.SELECT):
++            select = self._parse_select()
++            return InsertStmt(table=table, columns=columns, select=select)
++
++        self._error_current("Expected VALUES or SELECT in INSERT")
++
++    def _parse_value_tuple(self) -> list[Expression]:
++        self._expect(TokenType.LPAREN, "Expected '(' before VALUES row")
++        values = self._parse_expr_list()
++        self._expect(TokenType.RPAREN, "Expected ')' after VALUES row")
++        return values
++
++    def _parse_update(self) -> UpdateStmt:
++        self._expect(TokenType.UPDATE, "Expected UPDATE")
++        table = self._parse_table_ref(allow_alias=False)
++        self._expect(TokenType.SET, "Expected SET in UPDATE")
++        assignments = [self._parse_assignment()]
++        while self._match(TokenType.COMMA):
++            assignments.append(self._parse_assignment())
++        where = None
++        if self._match(TokenType.WHERE):
++            where = WhereClause(self.parse_expression())
++        return UpdateStmt(table=table, assignments=assignments, where=where)
++
++    def _parse_assignment(self) -> Assignment:
++        column = self._parse_qualified_name()
++        self._expect_operator("=", "Expected '=' in assignment")
++        return Assignment(column=column, value=self.parse_expression())
++
++    def _parse_delete(self) -> DeleteStmt:
++        self._expect(TokenType.DELETE, "Expected DELETE")
++        self._expect(TokenType.FROM, "Expected FROM after DELETE")
++        table = self._parse_table_ref(allow_alias=False)
++        where = None
++        if self._match(TokenType.WHERE):
++            where = WhereClause(self.parse_expression())
++        return DeleteStmt(table=table, where=where)
++
++    def _parse_create(self) -> CreateTableStmt:
++        self._expect(TokenType.CREATE, "Expected CREATE")
++        self._expect(TokenType.TABLE, "Expected TABLE after CREATE")
++        if_not_exists = False
++        if self._match_word("IF"):
++            self._expect(TokenType.NOT, "Expected NOT after IF")
++            self._expect_word("EXISTS", "Expected EXISTS after IF NOT")
++            if_not_exists = True
++
++        table = self._parse_table_ref(allow_alias=False)
++        self._expect(TokenType.LPAREN, "Expected '(' before column definitions")
++        columns = [self._parse_column_def()]
++        while self._match(TokenType.COMMA):
++            columns.append(self._parse_column_def())
++        self._expect(TokenType.RPAREN, "Expected ')' after column definitions")
++        return CreateTableStmt(table=table, columns=columns, if_not_exists=if_not_exists)
++
++    def _parse_column_def(self) -> ColumnDef:
++        name = self._parse_identifier("Expected column name")
++        data_type = self._parse_data_type()
++        nullable = True
++        primary_key = False
++        default: Expression | None = None
++
++        while not self._check(TokenType.COMMA, TokenType.RPAREN, TokenType.EOF):
++            if self._match(TokenType.NOT):
++                self._expect(TokenType.NULL, "Expected NULL after NOT")
++                nullable = False
++            elif self._match(TokenType.NULL):
++                nullable = True
++            elif self._match_word("PRIMARY"):
++                self._expect_word("KEY", "Expected KEY after PRIMARY")
++                primary_key = True
++                nullable = False
++            elif self._match_word("DEFAULT"):
++                default = self.parse_expression()
++            else:
++                self._error_current("Unexpected token in column definition")
++
++        return ColumnDef(
++            name=name,
++            data_type=data_type,
++            nullable=nullable,
++            primary_key=primary_key,
++            default=default,
++        )
++
++    def _parse_data_type(self) -> str:
++        parts = [self._parse_identifier("Expected column data type")]
++        if self._match(TokenType.LPAREN):
++            args: list[str] = []
++            if not self._check(TokenType.RPAREN):
++                args.append(self._parse_type_arg())
++                while self._match(TokenType.COMMA):
++                    args.append(self._parse_type_arg())
++            self._expect(TokenType.RPAREN, "Expected ')' after data type arguments")
++            return f"{parts[0]}({','.join(args)})"
++        return parts[0]
++
++    def _parse_type_arg(self) -> str:
++        tok = self._current()
++        if tok.type in (TokenType.NUMBER, TokenType.IDENTIFIER):
++            return self._advance().value
++        self._error_current("Expected data type argument")
++
++    def _parse_drop(self) -> DropTableStmt:
++        self._expect(TokenType.DROP, "Expected DROP")
++        self._expect(TokenType.TABLE, "Expected TABLE after DROP")
++        if_exists = False
++        if self._match_word("IF"):
++            self._expect_word("EXISTS", "Expected EXISTS after IF")
++            if_exists = True
++        table = self._parse_table_ref(allow_alias=False)
++        return DropTableStmt(table=table, if_exists=if_exists)
++
++    def _parse_join(self) -> JoinClause:
++        join_type = "INNER"
++        if self._match(TokenType.LEFT):
++            self._match(TokenType.OUTER)
++            join_type = "LEFT"
++        elif self._match(TokenType.RIGHT):
++            self._match(TokenType.OUTER)
++            join_type = "RIGHT"
++        elif self._match(TokenType.FULL):
++            self._match(TokenType.OUTER)
++            join_type = "FULL"
++        elif self._match(TokenType.INNER):
++            join_type = "INNER"
++        elif self._match(TokenType.CROSS):
++            join_type = "CROSS"
++
++        self._expect(TokenType.JOIN, "Expected JOIN")
++        table = self._parse_table_ref()
++        condition = None
++        if self._match(TokenType.ON):
++            condition = self.parse_expression()
++        elif join_type != "CROSS":
++            self._error_current("Expected ON after JOIN table")
++        return JoinClause(join_type=join_type, table=table, condition=condition)
++
++    def _parse_table_ref(self, allow_alias: bool = True) -> TableRef:
++        first = self._parse_identifier("Expected table name")
++        schema = None
++        name = first
++        if self._match(TokenType.DOT):
++            schema = first
++            name = self._parse_identifier("Expected table name after schema")
++
++        alias = None
++        if allow_alias:
++            if self._match(TokenType.AS):
++                alias = self._parse_identifier("Expected table alias")
++            elif not self._check(*_TABLE_ALIAS_STOPPERS) and self._is_identifier_like(self._current()):
++                alias = self._advance().value
++        return TableRef(name=name, alias=alias, schema=schema)
++
++    def _parse_order_by(self) -> OrderByClause:
++        items = [self._parse_order_by_item()]
++        while self._match(TokenType.COMMA):
++            items.append(self._parse_order_by_item())
++        return OrderByClause(items=items)
++
++    def _parse_order_by_item(self) -> OrderByItem:
++        expr = self.parse_expression()
++        ascending = True
++        if self._match(TokenType.ASC):
++            ascending = True
++        elif self._match(TokenType.DESC):
++            ascending = False
++        return OrderByItem(expr=expr, ascending=ascending)
++
++    def _parse_expr_list(self) -> list[Expression]:
++        items = [self.parse_expression()]
++        while self._match(TokenType.COMMA):
++            items.append(self.parse_expression())
++        return items
++
++    def _parse_identifier_list(self) -> list[str]:
++        items = [self._parse_identifier("Expected identifier")]
++        while self._match(TokenType.COMMA):
++            items.append(self._parse_identifier("Expected identifier"))
++        return items
++
++    def _parse_or(self) -> Expression:
++        expr = self._parse_and()
++        while self._match(TokenType.OR):
++            expr = BinaryExpr(left=expr, operator="OR", right=self._parse_and())
++        return expr
++
++    def _parse_and(self) -> Expression:
++        expr = self._parse_not()
++        while self._match(TokenType.AND):
++            expr = BinaryExpr(left=expr, operator="AND", right=self._parse_not())
++        return expr
++
++    def _parse_not(self) -> Expression:
++        if self._match(TokenType.NOT):
++            return UnaryExpr(operator="NOT", operand=self._parse_not())
++        return self._parse_comparison()
++
++    def _parse_comparison(self) -> Expression:
++        expr = self._parse_additive()
++
++        while True:
++            negated = False
++            if self._check(TokenType.NOT) and self._peek().type in {
++                TokenType.IN,
++                TokenType.BETWEEN,
++                TokenType.LIKE,
++            }:
++                self._advance()
++                negated = True
++
++            if self._match(TokenType.IN):
++                expr = self._finish_in_expr(expr, negated=negated)
++            elif self._match(TokenType.BETWEEN):
++                low = self._parse_additive()
++                self._expect(TokenType.AND, "Expected AND in BETWEEN expression")
++                high = self._parse_additive()
++                expr = BetweenExpr(expr=expr, low=low, high=high, negated=negated)
++            elif self._match(TokenType.LIKE):
++                expr = LikeExpr(expr=expr, pattern=self._parse_additive(), negated=negated)
++            elif negated:
++                self._error_current("Expected IN, BETWEEN, or LIKE after NOT")
++            elif self._match(TokenType.IS):
++                is_negated = self._match(TokenType.NOT) is not None
++                self._expect(TokenType.NULL, "Expected NULL after IS")
++                expr = IsNullExpr(expr=expr, negated=is_negated)
++            elif self._is_comparison_operator(self._current()):
++                op = self._advance().value
++                expr = BinaryExpr(left=expr, operator=op, right=self._parse_additive())
++            else:
++                break
++        return expr
++
++    def _finish_in_expr(self, expr: Expression, negated: bool) -> InExpr:
++        self._expect(TokenType.LPAREN, "Expected '(' after IN")
++        if self._check(TokenType.SELECT):
++            subquery = SubqueryExpr(self._parse_select_union())  # type: ignore[arg-type]
++            self._expect(TokenType.RPAREN, "Expected ')' after subquery")
++            return InExpr(expr=expr, values=subquery, negated=negated)
++
++        values = self._parse_expr_list()
++        self._expect(TokenType.RPAREN, "Expected ')' after IN values")
++        return InExpr(expr=expr, values=values, negated=negated)
++
++    def _parse_additive(self) -> Expression:
++        expr = self._parse_multiplicative()
++        while self._is_operator("+", "-", "||"):
++            op = self._advance().value
++            expr = BinaryExpr(left=expr, operator=op, right=self._parse_multiplicative())
++        return expr
++
++    def _parse_multiplicative(self) -> Expression:
++        expr = self._parse_unary()
++        while self._is_operator("/", "%") or self._check(TokenType.STAR):
++            op = self._advance().value
++            expr = BinaryExpr(left=expr, operator=op, right=self._parse_unary())
++        return expr
++
++    def _parse_unary(self) -> Expression:
++        if self._is_operator("+", "-", "!"):
++            return UnaryExpr(operator=self._advance().value, operand=self._parse_unary())
++        return self._parse_postfix()
++
++    def _parse_postfix(self) -> Expression:
++        expr = self._parse_primary()
++        if self._match(TokenType.OVER):
++            if not isinstance(expr, (FunctionCall, AggregateExpr)):
++                self._error_previous("OVER can only follow a function call")
++            return self._parse_window_expr(expr)
++        return expr
++
++    def _parse_primary(self) -> Expression:
++        tok = self._current()
++        if tok.type == TokenType.NUMBER:
++            self._advance()
++            return LiteralExpr(value=int(tok.value), literal_type="integer")
++        if tok.type == TokenType.FLOAT:
++            self._advance()
++            return LiteralExpr(value=float(tok.value), literal_type="float")
++        if tok.type == TokenType.STRING:
++            self._advance()
++            return LiteralExpr(value=tok.value, literal_type="string")
++        if tok.type == TokenType.TRUE:
++            self._advance()
++            return LiteralExpr(value=True, literal_type="boolean")
++        if tok.type == TokenType.FALSE:
++            self._advance()
++            return LiteralExpr(value=False, literal_type="boolean")
++        if tok.type == TokenType.NULL:
++            self._advance()
++            return LiteralExpr(value=None, literal_type="null")
++        if tok.type == TokenType.STAR:
++            self._advance()
++            return StarExpr()
++        if tok.type == TokenType.CASE:
++            return self._parse_case()
++        if tok.type == TokenType.EXISTS:
++            return self._parse_exists()
++        if tok.type == TokenType.LPAREN:
++            return self._parse_parenthesized()
++        if self._is_identifier_like(tok):
++            return self._parse_identifier_expr()
++        self._error_current("Expected expression")
++
++    def _parse_identifier_expr(self) -> Expression:
++        parts = [self._advance().value]
++        while self._match(TokenType.DOT):
++            if self._match(TokenType.STAR):
++                return StarExpr(table=".".join(parts))
++            parts.append(self._parse_identifier("Expected identifier after '.'"))
++
++        if self._match(TokenType.LPAREN):
++            return self._parse_function_call(".".join(parts))
++
++        if len(parts) == 1:
++            return ColumnRef(name=parts[0])
++        return ColumnRef(name=parts[-1], table=".".join(parts[:-1]))
++
++    def _parse_function_call(self, name: str) -> FunctionCall | AggregateExpr:
++        distinct = self._match(TokenType.DISTINCT) is not None
++        args: list[Expression] = []
++        if not self._check(TokenType.RPAREN):
++            args = self._parse_expr_list()
++        self._expect(TokenType.RPAREN, "Expected ')' after function arguments")
++
++        upper_name = name.upper()
++        if upper_name in _AGGREGATES:
++            arg = args[0] if args else None
++            if len(args) > 1:
++                self._error_previous(f"{upper_name} accepts at most one argument")
++            return AggregateExpr(function=upper_name, arg=arg, distinct=distinct)
++        return FunctionCall(name=name, args=args, distinct=distinct)
++
++    def _parse_case(self) -> CaseExpr:
++        self._expect(TokenType.CASE, "Expected CASE")
++        operand = None
++        if not self._check(TokenType.WHEN):
++            operand = self.parse_expression()
++
++        clauses: list[WhenClause] = []
++        while self._match(TokenType.WHEN):
++            condition = self.parse_expression()
++            self._expect(TokenType.THEN, "Expected THEN in CASE expression")
++            result = self.parse_expression()
++            clauses.append(WhenClause(condition=condition, result=result))
++
++        if not clauses:
++            self._error_current("Expected WHEN in CASE expression")
++
++        else_expr = None
++        if self._match(TokenType.ELSE):
++            else_expr = self.parse_expression()
++        self._expect(TokenType.END, "Expected END to close CASE expression")
++        return CaseExpr(operand=operand, when_clauses=clauses, else_expr=else_expr)
++
++    def _parse_exists(self) -> ExistsExpr:
++        self._expect(TokenType.EXISTS, "Expected EXISTS")
++        self._expect(TokenType.LPAREN, "Expected '(' after EXISTS")
++        if not self._check(TokenType.SELECT):
++            self._error_current("Expected SELECT in EXISTS subquery")
++        query = self._parse_select_union()
++        self._expect(TokenType.RPAREN, "Expected ')' after EXISTS subquery")
++        return ExistsExpr(subquery=SubqueryExpr(query))  # type: ignore[arg-type]
++
++    def _parse_parenthesized(self) -> Expression:
++        self._expect(TokenType.LPAREN, "Expected '('")
++        if self._check(TokenType.SELECT):
++            query = self._parse_select_union()
++            self._expect(TokenType.RPAREN, "Expected ')' after subquery")
++            return SubqueryExpr(query)  # type: ignore[arg-type]
++        expr = self.parse_expression()
++        self._expect(TokenType.RPAREN, "Expected ')' after expression")
++        return expr
++
++    def _parse_window_expr(self, function: FunctionCall | AggregateExpr) -> WindowExpr:
++        self._expect(TokenType.LPAREN, "Expected '(' after OVER")
++        partition_by: list[Expression] = []
++        order_by: list[OrderByItem] | None = None
++        frame = None
++
++        if self._match(TokenType.PARTITION):
++            self._expect(TokenType.BY, "Expected BY after PARTITION")
++            partition_by = self._parse_expr_list()
++
++        if self._match(TokenType.ORDER_BY):
++            order_by = self._parse_order_by().items
++
++        if self._check(TokenType.ROWS, TokenType.RANGE):
++            frame = self._parse_window_frame()
++
++        self._expect(TokenType.RPAREN, "Expected ')' after OVER clause")
++        return WindowExpr(
++            function=function,
++            partition_by=partition_by,
++            order_by=order_by,
++            frame=frame,
++        )
++
++    def _parse_window_frame(self) -> WindowFrame:
++        mode = self._advance().type.name
++        if self._match(TokenType.BETWEEN):
++            start = self._parse_frame_bound()
++            self._expect(TokenType.AND, "Expected AND in window frame")
++            end = self._parse_frame_bound()
++            return WindowFrame(mode=mode, start=start, end=end)
++        return WindowFrame(mode=mode, start=self._parse_frame_bound())
++
++    def _parse_frame_bound(self) -> FrameBound:
++        if self._match(TokenType.UNBOUNDED):
++            if self._match(TokenType.PRECEDING):
++                return FrameBound(bound_type="UNBOUNDED PRECEDING")
++            if self._match(TokenType.FOLLOWING):
++                return FrameBound(bound_type="UNBOUNDED FOLLOWING")
++            self._error_current("Expected PRECEDING or FOLLOWING after UNBOUNDED")
++
++        if self._match(TokenType.CURRENT):
++            self._expect(TokenType.ROW, "Expected ROW after CURRENT")
++            return FrameBound(bound_type="CURRENT ROW")
++
++        offset = self._parse_integer_literal("Expected frame bound offset")
++        if self._match(TokenType.PRECEDING):
++            return FrameBound(bound_type="PRECEDING", offset=offset)
++        if self._match(TokenType.FOLLOWING):
++            return FrameBound(bound_type="FOLLOWING", offset=offset)
++        self._error_current("Expected PRECEDING or FOLLOWING after frame offset")
++
++    def _parse_optional_expr_alias(self) -> str | None:
++        if self._match(TokenType.AS):
++            return self._parse_identifier("Expected alias after AS")
++        if self._check(*_CLAUSE_STARTERS):
++            return None
++        if self._is_identifier_like(self._current()):
++            return self._advance().value
++        return None
++
++    def _parse_integer_literal(self, message: str) -> int:
++        tok = self._current()
++        if tok.type != TokenType.NUMBER:
++            self._error_current(message)
++        self._advance()
++        return int(tok.value)
++
++    def _parse_qualified_name(self) -> str:
++        name = self._parse_identifier("Expected identifier")
++        while self._match(TokenType.DOT):
++            name += "." + self._parse_identifier("Expected identifier after '.'")
++        return name
++
++    def _parse_identifier(self, message: str) -> str:
++        tok = self._current()
++        if self._is_identifier_like(tok):
++            self._advance()
++            return tok.value
++        self._error_current(message)
++
++    def _expect_word(self, word: str, message: str) -> Token:
++        tok = self._current()
++        if tok.value.upper() != word:
++            self._error_current(message)
++        return self._advance()
++
++    def _match_word(self, word: str) -> Token | None:
++        if self._current().value.upper() == word:
++            return self._advance()
++        return None
++
++    def _expect_operator(self, operator: str, message: str) -> Token:
++        if not self._is_operator(operator):
++            self._error_current(message)
++        return self._advance()
++
++    def _is_operator(self, *operators: str) -> bool:
++        return self._current().type == TokenType.OPERATOR and self._current().value in operators
++
++    def _is_comparison_operator(self, tok: Token) -> bool:
++        return tok.type == TokenType.OPERATOR and tok.value in {"=", "!=", "<>", "<", ">", "<=", ">="}
++
++    def _is_identifier_like(self, tok: Token) -> bool:
++        return tok.type in (TokenType.IDENTIFIER, TokenType.WILDCARD)
++
++    def _check(self, *types: TokenType) -> bool:
++        return self.tokens.check(*types)
++
++    def _match(self, *types: TokenType) -> Token | None:
++        return self.tokens.match(*types)
++
++    def _expect(self, token_type: TokenType, message: str) -> Token:
++        if not self._check(token_type):
++            self._error_current(message)
++        return self._advance()
++
++    def _advance(self) -> Token:
++        return self.tokens.advance()
++
++    def _current(self) -> Token:
++        return self.tokens.current()
++
++    def _peek(self, offset: int = 1) -> Token:
++        return self.tokens.peek(offset)
++
++    def _previous(self) -> Token:
++        return self.tokens.peek(-1)
++
++    def _error_current(self, message: str) -> NoReturn:
++        self._raise_error(message, self._current())
++
++    def _error_previous(self, message: str) -> NoReturn:
++        self._raise_error(message, self._previous())
++
++    def _raise_error(self, message: str, tok: Token) -> NoReturn:
++        raise ParseError(
++            f"{message}; got {tok.type.name} ({tok.value!r})",
++            line=tok.line,
++            col=tok.col,
++        )
++
++
++def parse(query: str) -> Statement:
++    """Parse a SQL query string into an AST statement."""
++    return Parser(query).parse()
+diff --git a/repo/tests/test_parser.py b/repo/tests/test_parser.py
+new file mode 100644
+index 0000000..a85a05d
+--- /dev/null
++++ b/repo/tests/test_parser.py
+@@ -0,0 +1,246 @@
++from __future__ import annotations
++
++import pytest
++
++from queryweave.parser.ast_nodes import (
++    AggregateExpr,
++    AliasExpr,
++    BetweenExpr,
++    BinaryExpr,
++    CaseExpr,
++    ColumnRef,
++    CreateTableStmt,
++    DeleteStmt,
++    DropTableStmt,
++    FunctionCall,
++    InsertStmt,
++    JoinClause,
++    LikeExpr,
++    LiteralExpr,
++    SelectStmt,
++    StarExpr,
++    UnaryExpr,
++    UnionStmt,
++    UpdateStmt,
++    WindowExpr,
++)
++from queryweave.parser.lexer import Lexer
++from queryweave.parser.parser import Parser, parse
++from queryweave.utils.errors import ParseError
++
++
++def test_parse_simple_and_aliased_select_list() -> None:
++    stmt = parse("SELECT id, name AS username, age years FROM users")
++
++    assert isinstance(stmt, SelectStmt)
++    assert isinstance(stmt.columns[0], ColumnRef)
++    assert stmt.columns[0].name == "id"
++    assert isinstance(stmt.columns[1], AliasExpr)
++    assert stmt.columns[1].alias == "username"
++    assert isinstance(stmt.columns[2], AliasExpr)
++    assert stmt.columns[2].alias == "years"
++    assert stmt.from_table is not None
++    assert stmt.from_table.name == "users"
++
++
++def test_parser_accepts_lexer_instance() -> None:
++    stmt = Parser(Lexer("SELECT * FROM users")).parse()
++
++    assert isinstance(stmt, SelectStmt)
++    assert isinstance(stmt.columns[0], StarExpr)
++
++
++def test_parse_where_expression_precedence() -> None:
++    stmt = parse("SELECT * FROM users WHERE NOT active OR age + 1 * 2 >= 21 AND name LIKE 'A%'")
++
++    assert isinstance(stmt, SelectStmt)
++    assert stmt.where is not None
++    condition = stmt.where.condition
++    assert isinstance(condition, BinaryExpr)
++    assert condition.operator == "OR"
++    assert isinstance(condition.left, UnaryExpr)
++    assert isinstance(condition.right, BinaryExpr)
++    assert condition.right.operator == "AND"
++    assert isinstance(condition.right.right, LikeExpr)
++
++
++def test_parse_join_group_having_order_limit_offset() -> None:
++    stmt = parse(
++        "SELECT u.name, COUNT(o.id) AS orders "
++        "FROM users u LEFT JOIN orders o ON u.id = o.user_id "
++        "WHERE u.active = TRUE "
++        "GROUP BY u.name HAVING COUNT(o.id) > 1 "
++        "ORDER BY orders DESC LIMIT 10 OFFSET 5"
++    )
++
++    assert isinstance(stmt, SelectStmt)
++    assert stmt.from_table is not None
++    assert stmt.from_table.alias == "u"
++    assert len(stmt.joins) == 1
++    join = stmt.joins[0]
++    assert isinstance(join, JoinClause)
++    assert join.join_type == "LEFT"
++    assert join.table.alias == "o"
++    assert join.condition is not None
++    assert stmt.group_by is not None
++    assert len(stmt.group_by.columns) == 1
++    assert stmt.having is not None
++    assert stmt.order_by is not None
++    assert stmt.order_by.items[0].ascending is False
++    assert stmt.limit is not None
++    assert stmt.limit.limit == 10
++    assert stmt.limit.offset == 5
++
++
++def test_parse_aggregate_calls() -> None:
++    stmt = parse("SELECT COUNT(*), SUM(DISTINCT amount), AVG(score) FROM metrics")
++
++    assert isinstance(stmt, SelectStmt)
++    count = stmt.columns[0]
++    total = stmt.columns[1]
++    average = stmt.columns[2]
++    assert isinstance(count, AggregateExpr)
++    assert count.function == "COUNT"
++    assert isinstance(count.arg, StarExpr)
++    assert isinstance(total, AggregateExpr)
++    assert total.distinct is True
++    assert isinstance(average, AggregateExpr)
++
++
++def test_parse_case_expression() -> None:
++    stmt = parse("SELECT CASE WHEN age >= 18 THEN 'adult' ELSE 'minor' END AS bucket FROM users")
++
++    assert isinstance(stmt, SelectStmt)
++    assert isinstance(stmt.columns[0], AliasExpr)
++    case = stmt.columns[0].expr
++    assert isinstance(case, CaseExpr)
++    assert len(case.when_clauses) == 1
++    assert isinstance(case.else_expr, LiteralExpr)
++    assert case.else_expr.value == "minor"
++
++
++def test_parse_window_call() -> None:
++    stmt = parse(
++        "SELECT SUM(amount) OVER ("
++        "PARTITION BY account_id ORDER BY created_at "
++        "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW"
++        ") AS running_total FROM payments"
++    )
++
++    assert isinstance(stmt, SelectStmt)
++    assert isinstance(stmt.columns[0], AliasExpr)
++    window = stmt.columns[0].expr
++    assert isinstance(window, WindowExpr)
++    assert isinstance(window.function, AggregateExpr)
++    assert len(window.partition_by) == 1
++    assert window.order_by is not None
++    assert window.frame is not None
++    assert window.frame.mode == "ROWS"
++    assert window.frame.start is not None
++    assert window.frame.start.bound_type == "UNBOUNDED PRECEDING"
++    assert window.frame.end is not None
++    assert window.frame.end.bound_type == "CURRENT ROW"
++
++
++def test_parse_union_and_union_all() -> None:
++    stmt = parse("SELECT id FROM a UNION ALL SELECT id FROM b UNION SELECT id FROM c")
++
++    assert isinstance(stmt, UnionStmt)
++    assert stmt.all is True
++    assert isinstance(stmt.left, SelectStmt)
++    assert isinstance(stmt.right, UnionStmt)
++    assert stmt.right.all is False
++
++
++def test_parse_insert_values() -> None:
++    stmt = parse("INSERT INTO users (id, name) VALUES (1, 'Ada'), (2, 'Linus')")
++
++    assert isinstance(stmt, InsertStmt)
++    assert stmt.table.name == "users"
++    assert stmt.columns == ["id", "name"]
++    assert len(stmt.values) == 2
++    assert stmt.select is None
++
++
++def test_parse_update() -> None:
++    stmt = parse("UPDATE users SET name = 'Ada', age = age + 1 WHERE id = 1")
++
++    assert isinstance(stmt, UpdateStmt)
++    assert stmt.table.name == "users"
++    assert len(stmt.assignments) == 2
++    assert isinstance(stmt.assignments[1].value, BinaryExpr)
++    assert stmt.where is not None
++
++
++def test_parse_delete() -> None:
++    stmt = parse("DELETE FROM users WHERE id IN (1, 2, 3)")
++
++    assert isinstance(stmt, DeleteStmt)
++    assert stmt.table.name == "users"
++    assert stmt.where is not None
++
++
++def test_parse_create_table() -> None:
++    stmt = parse(
++        "CREATE TABLE IF NOT EXISTS users ("
++        "id INTEGER PRIMARY KEY, "
++        "name TEXT NOT NULL, "
++        "score DECIMAL(10,2) DEFAULT 0"
++        ")"
++    )
++
++    assert isinstance(stmt, CreateTableStmt)
++    assert stmt.if_not_exists is True
++    assert stmt.table.name == "users"
++    assert stmt.columns[0].primary_key is True
++    assert stmt.columns[1].nullable is False
++    assert stmt.columns[2].data_type == "DECIMAL(10,2)"
++    assert isinstance(stmt.columns[2].default, LiteralExpr)
++
++
++def test_parse_drop_table() -> None:
++    stmt = parse("DROP TABLE IF EXISTS users")
++
++    assert isinstance(stmt, DropTableStmt)
++    assert stmt.if_exists is True
++    assert stmt.table.name == "users"
++
++
++def test_parse_comparison_predicates() -> None:
++    stmt = parse(
++        "SELECT * FROM users WHERE age BETWEEN 18 AND 30 "
++        "AND name NOT LIKE 'x%' AND deleted_at IS NOT NULL"
++    )
++
++    assert isinstance(stmt, SelectStmt)
++    assert stmt.where is not None
++    condition = stmt.where.condition
++    assert isinstance(condition, BinaryExpr)
++    assert isinstance(condition.left, BinaryExpr)
++    assert isinstance(condition.left.left, BetweenExpr)
++    assert isinstance(condition.left.right, LikeExpr)
++    assert condition.left.right.negated is True
++
++
++def test_parse_general_function_call() -> None:
++    stmt = parse("SELECT LOWER(name) AS lowered FROM users")
++
++    assert isinstance(stmt, SelectStmt)
++    assert isinstance(stmt.columns[0], AliasExpr)
++    call = stmt.columns[0].expr
++    assert isinstance(call, FunctionCall)
++    assert call.name == "LOWER"
++
++
++@pytest.mark.parametrize(
++    "sql",
++    [
++        "SELECT FROM users",
++        "SELECT * FROM users WHERE",
++        "INSERT INTO users VALUES (1,)",
++        "CREATE TABLE users (id)",
++    ],
++)
++def test_malformed_input_raises_parse_error(sql: str) -> None:
++    with pytest.raises(ParseError):
++        parse(sql)
