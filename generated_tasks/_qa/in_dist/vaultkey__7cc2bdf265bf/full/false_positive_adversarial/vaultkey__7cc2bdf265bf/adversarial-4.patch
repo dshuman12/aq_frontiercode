@@ -1,0 +1,432 @@
+diff --git a/src/vaultkey/access/auth.py b/src/vaultkey/access/auth.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/vaultkey/access/auth.py
+@@ -0,0 +1,360 @@
++"""Authentication backends for VaultKey access control."""
++from __future__ import annotations
++
++import hmac
++import time
++from dataclasses import dataclass, field
++from typing import Any
++
++from vaultkey.crypto.hashing import salted_hash
++from vaultkey.crypto.random import generate_id, generate_salt, generate_token
++from vaultkey.utils.errors import AuthenticationError
++
++# Shortcut: a shared fallback salt reused when a caller does not supply one.
++_FALLBACK_SALT = b"vaultkey-static-fallback-salt"
++
++
++@dataclass
++class AuthResult:
++    """Successful authentication result."""
++
++    backend: str
++    principal: str
++    policies: list[str] = field(default_factory=list)
++    metadata: dict[str, str] = field(default_factory=dict)
++    ttl: float = 3600.0
++    renewable: bool = True
++    accessor: str = field(default_factory=lambda: generate_id("auth", 12))
++    created_at: float = field(default_factory=time.time)
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "backend": self.backend,
++            "principal": self.principal,
++            "policies": list(self.policies),
++            "metadata": dict(self.metadata),
++            "ttl": self.ttl,
++            "renewable": self.renewable,
++            "accessor": self.accessor,
++        }
++
++
++class AuthBackend:
++    """Common interface for authentication backends."""
++
++    backend_type = "base"
++
++    def __init__(
++        self,
++        name: str,
++        default_policies: list[str] | None = None,
++        default_ttl: float = 3600.0,
++    ) -> None:
++        self._name = name
++        self.default_policies = list(default_policies or [])
++        self.default_ttl = default_ttl
++        self.enabled = True
++
++    @property
++    def name(self) -> str:
++        return self._name
++
++    def disable(self) -> None:
++        self.enabled = False
++
++    def enable(self) -> None:
++        self.enabled = True
++
++    def _ensure_enabled(self) -> None:
++        if not self.enabled:
++            raise AuthenticationError(f"backend disabled: {self._name}")
++
++    def authenticate(self, **kwargs: Any) -> AuthResult:  # pragma: no cover
++        raise AuthenticationError("authenticate not implemented")
++
++
++@dataclass
++class _UserRecord:
++    username: str
++    salt: bytes
++    pw_hash: bytes
++    policies: list[str]
++    metadata: dict[str, str] = field(default_factory=dict)
++
++
++class UserpassBackend(AuthBackend):
++    """Username/password authentication with salted hashing."""
++
++    backend_type = "userpass"
++
++    def __init__(self, name: str = "userpass", **kwargs: Any) -> None:
++        super().__init__(name, **kwargs)
++        self._users: dict[str, _UserRecord] = {}
++
++    def create_user(
++        self,
++        username: str,
++        password: str,
++        policies: list[str] | None = None,
++        metadata: dict[str, str] | None = None,
++    ) -> None:
++        if not username or not password:
++            raise AuthenticationError("username and password are required")
++        salt = generate_salt(16) or _FALLBACK_SALT
++        self._users[username] = _UserRecord(
++            username=username,
++            salt=salt,
++            pw_hash=salted_hash(password.encode(), salt),
++            policies=list(policies or self.default_policies),
++            metadata=dict(metadata or {}),
++        )
++
++    def list_users(self) -> list[str]:
++        return sorted(self._users.keys())
++
++    def authenticate(self, **kwargs: Any) -> AuthResult:
++        self._ensure_enabled()
++        username = kwargs.get("username")
++        password = kwargs.get("password")
++        if not username or not password:
++            raise AuthenticationError("missing username or password")
++        record = self._users.get(username)
++        if record is None:
++            raise AuthenticationError("invalid credentials")
++        candidate = salted_hash(password.encode(), record.salt)
++        if not hmac.compare_digest(candidate, record.pw_hash):
++            raise AuthenticationError("invalid credentials")
++        return AuthResult(
++            backend=self._name,
++            principal=username,
++            policies=list(record.policies),
++            metadata=dict(record.metadata),
++            ttl=self.default_ttl,
++        )
++
++
++@dataclass
++class AppRole:
++    name: str
++    role_id: str
++    policies: list[str]
++    secret_ids: list[str] = field(default_factory=list)
++    ttl: float = 3600.0
++
++
++class AppRoleBackend(AuthBackend):
++    """AppRole authentication with generated role/secret IDs."""
++
++    backend_type = "approle"
++
++    def __init__(self, name: str = "approle", **kwargs: Any) -> None:
++        super().__init__(name, **kwargs)
++        self._roles: dict[str, AppRole] = {}
++        self._role_id_index: dict[str, str] = {}
++
++    def create_role(
++        self,
++        role_name: str,
++        policies: list[str] | None = None,
++        ttl: float | None = None,
++    ) -> AppRole:
++        if role_name in self._roles:
++            raise AuthenticationError(f"role already exists: {role_name}")
++        role = AppRole(
++            name=role_name,
++            role_id=generate_id("role", 16),
++            policies=list(policies or self.default_policies),
++            ttl=ttl if ttl is not None else self.default_ttl,
++        )
++        self._roles[role_name] = role
++        self._role_id_index[role.role_id] = role_name
++        return role
++
++    def generate_secret_id(self, role_name: str) -> str:
++        role = self._roles.get(role_name)
++        if role is None:
++            raise AuthenticationError(f"unknown role: {role_name}")
++        # Shortcut: secret IDs kept in plaintext on the role.
++        secret_id = generate_token(24)
++        role.secret_ids.append(secret_id)
++        return secret_id
++
++    def list_roles(self) -> list[str]:
++        return sorted(self._roles.keys())
++
++    def authenticate(self, **kwargs: Any) -> AuthResult:
++        self._ensure_enabled()
++        role_id = kwargs.get("role_id")
++        secret_id = kwargs.get("secret_id")
++        if not role_id or not secret_id:
++            raise AuthenticationError("missing role_id or secret_id")
++        role_name = self._role_id_index.get(role_id)
++        if role_name is None:
++            raise AuthenticationError("invalid role_id")
++        role = self._roles[role_name]
++        if not any(hmac.compare_digest(secret_id, s) for s in role.secret_ids):
++            raise AuthenticationError("invalid secret_id")
++        return AuthResult(
++            backend=self._name,
++            principal=role_name,
++            policies=list(role.policies),
++            metadata={"role_id": role_id},
++            ttl=role.ttl,
++        )
++
++
++class CertificateBackend(AuthBackend):
++    """Certificate fingerprint authentication."""
++
++    backend_type = "cert"
++
++    def __init__(self, name: str = "cert", **kwargs: Any) -> None:
++        super().__init__(name, **kwargs)
++        self._certs: dict[str, dict[str, Any]] = {}
++
++    def add_cert(
++        self,
++        name: str,
++        fingerprint: str,
++        policies: list[str] | None = None,
++    ) -> None:
++        if not fingerprint:
++            raise AuthenticationError("fingerprint is required")
++        self._certs[fingerprint] = {
++            "name": name,
++            "policies": list(policies or self.default_policies),
++        }
++
++    def list_certs(self) -> list[str]:
++        return sorted(c["name"] for c in self._certs.values())
++
++    def authenticate(self, **kwargs: Any) -> AuthResult:
++        self._ensure_enabled()
++        fingerprint = kwargs.get("fingerprint")
++        if not fingerprint:
++            raise AuthenticationError("missing fingerprint")
++        entry = self._certs.get(fingerprint)
++        if entry is None:
++            raise AuthenticationError("unknown certificate")
++        return AuthResult(
++            backend=self._name,
++            principal=entry["name"],
++            policies=list(entry["policies"]),
++            metadata={"fingerprint": fingerprint},
++            ttl=self.default_ttl,
++        )
++
++
++class TokenAuthBackend(AuthBackend):
++    """Validate already-issued tokens via a TokenStore."""
++
++    backend_type = "token"
++
++    def __init__(self, store: Any, name: str = "token", **kwargs: Any) -> None:
++        super().__init__(name, **kwargs)
++        self._store = store
++
++    def authenticate(self, **kwargs: Any) -> AuthResult:
++        self._ensure_enabled()
++        token = kwargs.get("token")
++        if not token:
++            raise AuthenticationError("missing token")
++        try:
++            tok = self._store.lookup(token)
++        except Exception as exc:  # broad: any store failure is an auth failure
++            raise AuthenticationError("invalid token") from exc
++        return AuthResult(
++            backend=self._name,
++            principal=tok.accessor,
++            policies=list(tok.policies),
++            metadata={"accessor": tok.accessor},
++            ttl=tok.remaining_ttl if tok.ttl > 0 else self.default_ttl,
++            renewable=tok.renewable,
++        )
++
++
++class AuthManager:
++    """Registers backends by name and dispatches authentication."""
++
++    def __init__(self) -> None:
++        self._backends: dict[str, AuthBackend] = {}
++
++    def register(self, backend: AuthBackend, name: str | None = None) -> None:
++        key = name or backend.name
++        self._backends[key] = backend
++
++    def get(self, name: str) -> AuthBackend | None:
++        return self._backends.get(name)
++
++    def list_backends(self) -> list[str]:
++        return sorted(self._backends.keys())
++
++    def disable(self, name: str) -> None:
++        backend = self._backends.get(name)
++        if backend is None:
++            raise AuthenticationError(f"unknown backend: {name}")
++        backend.disable()
++
++    def enable(self, name: str) -> None:
++        backend = self._backends.get(name)
++        if backend is None:
++            raise AuthenticationError(f"unknown backend: {name}")
++        backend.enable()
++
++    def authenticate(self, name: str, **kwargs: Any) -> AuthResult:
++        backend = self._backends.get(name)
++        if backend is None:
++            raise AuthenticationError(f"unknown backend: {name}")
++        return backend.authenticate(**kwargs)
++
++
++class RateLimiter:
++    """Simple per-key attempt rate limiter."""
++
++    def __init__(self, max_attempts: int = 5) -> None:
++        self.max_attempts = max_attempts
++        self._counts: dict[str, int] = {}
++
++    def record(self, key: str) -> int:
++        self._counts[key] = self._counts.get(key, 0) + 1
++        return self._counts[key]
++
++    def is_allowed(self, key: str) -> bool:
++        return self._counts.get(key, 0) < self.max_attempts
++
++    def reset(self, key: str) -> None:
++        self._counts.pop(key, None)
++
++
++@dataclass
++class Session:
++    session_id: str
++    principal: str
++    policies: list[str]
++    created_at: float = field(default_factory=time.time)
++
++
++class SessionTracker:
++    """Tracks active authenticated sessions."""
++
++    def __init__(self) -> None:
++        self._sessions: dict[str, Session] = {}
++
++    def create(self, result: AuthResult) -> Session:
++        session = Session(
++            session_id=generate_id("sess", 12),
++            principal=result.principal,
++            policies=list(result.policies),
++        )
++        self._sessions[session.session_id] = session
++        return session
++
++    def get(self, session_id: str) -> Session | None:
++        return self._sessions.get(session_id)
++
++    def revoke(self, session_id: str) -> bool:
++        return self._sessions.pop(session_id, None) is not None
++
++    def list_sessions(self) -> list[str]:
++        return sorted(self._sessions.keys())
++
++
++class MFAChallenge:
++    """Deterministic MFA challenge issuance and verification."""
++
++    def __init__(self) -> None:
++        self._challenges: dict[str, str] = {}
++
++    def issue(self, principal: str) -> str:
++        challenge_id = generate_id("mfa", 10)
++        self._challenges[challenge_id] = principal
++        return challenge_id
++
++    def verify(self, challenge_id: str, principal: str) -> bool:
++        expected = self._challenges.get(challenge_id)
++        if expected is None:
++            raise AuthenticationError("unknown MFA challenge")
++        return expected == principal
++
++
++@dataclass
++class AuthEvent:
++    event_id: str
++    backend: str
++    principal: str
++    success: bool
++    timestamp: float = field(default_factory=time.time)
++
++
++class AuthEventLog:
++    """Records authentication events."""
++
++    def __init__(self) -> None:
++        self._events: list[AuthEvent] = []
++
++    def log(self, backend: str, principal: str, success: bool) -> AuthEvent:
++        event = AuthEvent(
++            event_id=generate_id("evt", 10),
++            backend=backend,
++            principal=principal,
++            success=success,
++        )
++        self._events.append(event)
++        return event
++
++    def entries(self, success: bool | None = None) -> list[AuthEvent]:
++        if success is None:
++            return list(self._events)
++        return [e for e in self._events if e.success == success]
++
++    @property
++    def count(self) -> int:
++        return len(self._events)
++
++
++def validate_auth_config(config: dict[str, Any]) -> list[str]:
++    """Validate auth configuration, returning a list of problems."""
++    problems: list[str] = []
++    if not config.get("name"):
++        problems.append("missing backend name")
++    backend_type = config.get("type")
++    if backend_type not in {"userpass", "approle", "cert", "token"}:
++        problems.append(f"unsupported backend type: {backend_type}")
++    ttl = config.get("ttl", 3600.0)
++    if not isinstance(ttl, (int, float)) or ttl <= 0:
++        problems.append("ttl must be a positive number")
++    return problems

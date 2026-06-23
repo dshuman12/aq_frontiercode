@@ -1,0 +1,110 @@
+task_id: subhan-traders-pos__670dfc8c0d5e
+subset: extended
+repo_workdir: environment/repo
+base_commit: 556def311b77471827aa87a538f1f27b929a49d9
+low_quality_threshold: 0.5
+source:
+  repo: subhan-traders-pos
+  task_row_id: subhan-traders-pos__670dfc8c0d5e
+  source_archive: project_silver_repos/BrolG6dfmEuf7USOq9SL__subhan-traders-pos.zip
+  fix_commit: 670dfc8c0d5e4154940047ccc61f15770bc58d63
+  commit_subject: "feat: implement infinite scrolling customer list with search and filtering capabilities"
+  reference_test_files: []
+criteria:
+  - id: hidden_reference_tests_pass
+    category: patch_specific
+    description: >
+      Hidden behavioral checks validate the customer API pagination/search/filter contract
+      and the customer client infinite-scroll workflow. The source fix did not include
+      public test files, so these checks inspect the submitted implementation directly.
+    method: classical
+    blocker: true
+    weight: 0.45
+    command: python3 tests/hidden/run_criteria.py --criterion hidden_reference_tests_pass environment/repo
+    timeout_seconds: 600
+  - id: visible_regression_tests_pass
+    category: regular
+    description: >
+      The repository's real visible regression workflow still passes after the submitted
+      patch. This package has no npm test script, and full-project lint has unrelated
+      baseline failures, so the visible command targets the affected customer files.
+    method: command
+    blocker: true
+    weight: 0.20
+    command: python3 tests/hidden/run_criteria.py --criterion visible_regression_tests_pass environment/repo
+    timeout_seconds: 600
+  - id: scope_matches_reference_intent
+    category: regular
+    description: >
+      The patch stays within the customer listing feature, optional package script metadata,
+      and optional seed utilities implicated by the source fix, avoiding unrelated rewrites.
+    method: scope
+    blocker: true
+    weight: 0.20
+    scope:
+      allowed_paths: [".gitignore", "package.json", "src/app/api/customers/", "src/app/api/customers/route.ts", "src/components/customers/", "src/components/customers/CustomersClient.tsx", "src/db/seeds/", "src/db/seeds/migrate-mongodb.ts"]
+      denied_paths: []
+      max_files: 8
+      max_changed_lines: 2136
+  - id: no_hidden_asset_leak
+    category: regular
+    description: >
+      The agent-visible repository does not contain generated hidden tests, grader assets,
+      reference patches, or fix commit identifiers.
+    method: command
+    blocker: true
+    weight: 0.05
+    command: python3 tests/hidden/run_criteria.py --criterion no_hidden_asset_leak environment/repo
+  - id: api_client_quality
+    category: patch_specific
+    description: >
+      The implementation is idiomatic for this Next/Drizzle client and keeps pagination,
+      search, filtering, loading, and delete-state handling maintainable.
+    method: llm_prompt
+    blocker: false
+    weight: 0.10
+    threshold: 0.6
+    prompt: >
+      Score whether the diff cleanly implements the requested customer API pagination and
+      customer-list infinite-scroll behavior without broad rewrites, brittle special cases,
+      or unrelated changes.
+calibrations:
+  - id: no-op-base
+    type: hack
+    description: Leaves the base repository unchanged, so customer pagination and scope requirements are not satisfied.
+    criteria_results:
+      - criterion_id: hidden_reference_tests_pass
+        passed: false
+        score: 0
+      - criterion_id: visible_regression_tests_pass
+        passed: false
+        score: 0
+      - criterion_id: scope_matches_reference_intent
+        passed: false
+        score: 0
+      - criterion_id: no_hidden_asset_leak
+        passed: true
+        score: 1
+      - criterion_id: api_client_quality
+        passed: false
+        score: 0
+  - id: reference-fix
+    type: alternative_valid
+    description: The source fix commit's patch, stored privately under tests/grader/calibration/reference.patch.
+    patch: calibration/reference.patch
+    criteria_results:
+      - criterion_id: hidden_reference_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: visible_regression_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: scope_matches_reference_intent
+        passed: true
+        score: 1
+      - criterion_id: no_hidden_asset_leak
+        passed: true
+        score: 1
+      - criterion_id: api_client_quality
+        passed: true
+        score: 0.8

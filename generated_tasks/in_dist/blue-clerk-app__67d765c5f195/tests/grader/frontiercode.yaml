@@ -1,0 +1,203 @@
+task_id: blue-clerk-app__67d765c5f195
+subset: extended
+repo_workdir: environment/repo
+base_commit: 87108672bdc9501d88d2923e44e5b2cef98aadfe
+low_quality_threshold: 0.5
+source:
+  repo: blue-clerk-app
+  task_row_id: blue-clerk-app__67d765c5f195
+  source_archive: project_silver_repos/DU3tNvKuU1KA7yOW0prt__blue-clerk-app.zip
+  fix_commit: 67d765c5f195d9ee9f7da0554e8c1deef75627f0
+  commit_subject: "fix: resolve issue on job address"
+  reference_test_files: ["src/tests/controllers/jobSite.test.ts"]
+criteria:
+  - id: create_job_address_contract
+    category: patch_specific
+    description: >
+      Job address creation no longer requires customerId, accepts address-only or
+      coordinate-backed requests, rejects duplicates within a subdivision, creates
+      the JobSite, and links it back to the JobLocation.
+    method: command
+    blocker: true
+    weight: 0.25
+    command: python3 tests/hidden/run_criteria.py --criterion create_job_address_contract environment/repo
+    timeout_seconds: 60
+  - id: update_job_address_contract
+    category: patch_specific
+    description: >
+      Job address updates load the current site, reject duplicate renamed addresses,
+      preserve omitted fields, and distinguish successful updates from no-op updates.
+    method: command
+    blocker: true
+    weight: 0.25
+    command: python3 tests/hidden/run_criteria.py --criterion update_job_address_contract environment/repo
+    timeout_seconds: 60
+  - id: job_site_route_contract
+    category: patch_specific
+    description: >
+      The job site route exports the corrected create/update/get flow without the
+      conflicting /name search handler.
+    method: command
+    blocker: true
+    weight: 0.10
+    command: python3 tests/hidden/run_criteria.py --criterion job_site_route_contract environment/repo
+    timeout_seconds: 60
+  - id: submitted_job_site_tests_present
+    category: regular
+    description: >
+      The submitted patch includes focused jobSite controller tests for create and
+      update regressions, including missing address data and duplicate names.
+    method: command
+    blocker: true
+    weight: 0.10
+    command: python3 tests/hidden/run_criteria.py --criterion submitted_job_site_tests_present environment/repo
+    timeout_seconds: 60
+  - id: scope_matches_reference_intent
+    category: regular
+    description: >
+      The patch stays inside the job site controller, job site route, and targeted
+      controller-test area implicated by the source fix.
+    method: scope
+    blocker: true
+    weight: 0.15
+    scope:
+      allowed_paths:
+        - src/controllers/jobSite.ts
+        - src/controllers/serviceTicket.ts
+        - src/routes/jobSite.ts
+        - src/tests/controllers/jobSite.test.ts
+      denied_paths: []
+      max_files: 7
+      max_changed_lines: 2061
+  - id: no_hidden_asset_leak
+    category: regular
+    description: >
+      The agent-visible repository does not contain generated hidden tests, grader
+      assets, reference patches, or fix commit identifiers.
+    method: command
+    blocker: true
+    weight: 0.05
+    command: python3 tests/hidden/run_criteria.py --criterion no_hidden_asset_leak environment/repo
+    timeout_seconds: 60
+  - id: behavior_core_requirement
+    category: patch_specific
+    description: >
+      The patch fixes the job address create and update contracts, not just
+      superficial status messages.
+    method: llm_prompt
+    blocker: false
+    weight: 0.025
+    threshold: 0.6
+    prompt: >
+      Score whether the diff fully resolves the blue-clerk-app job address issue:
+      job site create should derive ownership from locationId, accept either coordinates
+      or address, reject duplicate names per subdivision, and link the created job site
+      back to the job location; update should preserve omitted fields and reject
+      duplicate renamed addresses.
+  - id: behavior_edge_cases
+    category: patch_specific
+    description: >
+      The implementation handles missing address data, duplicate names, omitted update
+      fields, and active-state conversion without breaking existing filters.
+    method: llm_prompt
+    blocker: false
+    weight: 0.025
+    threshold: 0.6
+    prompt: >
+      Score whether the diff handles edge cases around src/controllers/jobSite.ts and
+      src/routes/jobSite.ts while preserving existing get filters and response conventions.
+  - id: regression_tests_meaningful
+    category: regular
+    description: >
+      Submitted tests meaningfully cover the job address regression rather than only
+      exercising happy-path controller calls.
+    method: llm_prompt
+    blocker: false
+    weight: 0.025
+    threshold: 0.6
+    prompt: >
+      Score whether the submitted src/tests/controllers/jobSite.test.ts coverage validates
+      address-only creation, missing-address rejection, duplicate-name rejection, and
+      update preservation behavior.
+  - id: maintainability_scope
+    category: regular
+    description: >
+      The patch remains focused on job site address handling and avoids dependency churn
+      or unrelated rewrites.
+    method: llm_prompt
+    blocker: false
+    weight: 0.025
+    threshold: 0.6
+    prompt: >
+      Score whether the diff is maintainable, local to the job site controller/route/tests,
+      and avoids unrelated package, generated-file, or service-ticket behavior changes.
+calibrations:
+  - id: no-op-base
+    type: hack
+    description: Leaves the base repository unchanged, so the job address create/update behavior and required tests are absent.
+    criteria_results:
+      - criterion_id: create_job_address_contract
+        passed: false
+        score: 0
+      - criterion_id: update_job_address_contract
+        passed: false
+        score: 0
+      - criterion_id: job_site_route_contract
+        passed: false
+        score: 0
+      - criterion_id: submitted_job_site_tests_present
+        passed: false
+        score: 0
+      - criterion_id: scope_matches_reference_intent
+        passed: false
+        score: 0
+      - criterion_id: no_hidden_asset_leak
+        passed: true
+        score: 1
+      - criterion_id: behavior_core_requirement
+        passed: false
+        score: 0
+      - criterion_id: behavior_edge_cases
+        passed: false
+        score: 0
+      - criterion_id: regression_tests_meaningful
+        passed: false
+        score: 0
+      - criterion_id: maintainability_scope
+        passed: false
+        score: 0
+  - id: reference-fix
+    type: alternative_valid
+    description: The source patch for the job address fix, stored privately under tests/grader/calibration/reference.patch.
+    patch: calibration/reference.patch
+    criteria_results:
+      - criterion_id: create_job_address_contract
+        passed: true
+        score: 1
+      - criterion_id: update_job_address_contract
+        passed: true
+        score: 1
+      - criterion_id: job_site_route_contract
+        passed: true
+        score: 1
+      - criterion_id: submitted_job_site_tests_present
+        passed: true
+        score: 1
+      - criterion_id: scope_matches_reference_intent
+        passed: true
+        score: 1
+      - criterion_id: no_hidden_asset_leak
+        passed: true
+        score: 1
+      - criterion_id: behavior_core_requirement
+        passed: true
+        score: 0.8
+      - criterion_id: behavior_edge_cases
+        passed: true
+        score: 0.8
+      - criterion_id: regression_tests_meaningful
+        passed: true
+        score: 0.8
+      - criterion_id: maintainability_scope
+        passed: true
+        score: 0.8
