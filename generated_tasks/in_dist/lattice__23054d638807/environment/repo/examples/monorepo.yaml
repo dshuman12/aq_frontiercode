@@ -1,0 +1,86 @@
+# Monorepo example — multiple language stacks under one repo. Lattice
+# runs each language's task in parallel up to --parallel workers, so
+# `lattice run check` finishes in roughly max(go, python, web) wall
+# time rather than their sum.
+
+version: 1
+name: monorepo
+
+env:
+  GO_ENV: development
+  NODE_ENV: development
+
+defaults:
+  timeout: 10m
+
+tasks:
+  # Go service
+  go-build:
+    desc: Build the Go API server.
+    inputs: ["services/api/**/*.go", "services/api/go.mod"]
+    outputs: ["services/api/bin/api"]
+    dir: services/api
+    cmd: "go build -o bin/api ./cmd/api"
+
+  go-test:
+    desc: Test the Go service.
+    deps: [go-build]
+    inputs: ["services/api/**/*.go"]
+    dir: services/api
+    cmd: "go test -race ./..."
+
+  # Python ML pipeline
+  py-deps:
+    desc: Install Python dependencies into a venv.
+    inputs: ["services/ml/requirements.txt"]
+    outputs: ["services/ml/.venv/installed.flag"]
+    dir: services/ml
+    cmd: |
+      python -m venv .venv
+      .venv/bin/pip install -r requirements.txt
+      touch .venv/installed.flag
+
+  py-test:
+    desc: Run pytest on the ML service.
+    deps: [py-deps]
+    inputs: ["services/ml/**/*.py"]
+    dir: services/ml
+    cmd: ".venv/bin/pytest -x services/ml/tests"
+
+  # Web frontend
+  web-deps:
+    desc: Install npm dependencies.
+    inputs: ["apps/web/package.json", "apps/web/package-lock.json"]
+    outputs: ["apps/web/node_modules/.installed"]
+    dir: apps/web
+    cmd: |
+      npm ci
+      touch node_modules/.installed
+
+  web-build:
+    desc: Build the web frontend.
+    deps: [web-deps]
+    inputs: ["apps/web/src/**/*", "apps/web/index.html"]
+    outputs: ["apps/web/dist/**/*"]
+    dir: apps/web
+    cmd: "npm run build"
+
+  web-test:
+    desc: Run frontend tests.
+    deps: [web-deps]
+    inputs: ["apps/web/src/**/*"]
+    dir: apps/web
+    cmd: "npm test -- --run"
+
+  # Aggregate targets
+  test:
+    desc: Run every test suite in the repo.
+    deps: [go-test, py-test, web-test]
+
+  build:
+    desc: Build every deployable artifact.
+    deps: [go-build, web-build]
+
+  check:
+    desc: CI gate — build everything, test everything, lint everything.
+    deps: [build, test]

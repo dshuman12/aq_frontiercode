@@ -1,0 +1,71 @@
+# Canonical Lattice configuration for a typical Go project. The
+# `tasks` map is the heart of the file — each entry names a unit of
+# work; the runner figures out the order from the `deps` field.
+#
+# Run any task with `lattice run <name>` or `lattice run <a> <b>`.
+# Use `lattice list --long` to see what's defined here.
+
+version: 1
+name: lattice
+
+env:
+  CGO_ENABLED: "0"
+
+env_files:
+  - .env
+  - .env.local
+
+defaults:
+  timeout: 5m
+
+tasks:
+  generate:
+    desc: Run code generators (mocks, protos, embeds).
+    inputs: ["**/*.proto", "tools/**/*.go"]
+    outputs: ["pkg/**/*.pb.go"]
+    cmd: |
+      go generate ./...
+
+  build:
+    desc: Build the lattice binary.
+    deps: [generate]
+    inputs: ["**/*.go", "go.mod", "go.sum"]
+    outputs: ["bin/lattice"]
+    cmd: |
+      go build -trimpath -ldflags "-s -w -X 'github.com/manojgowda/lattice/pkg/cli.Version=$(git describe --tags --always)'" \
+        -o bin/lattice ./cmd/lattice
+
+  test:
+    desc: Run unit + integration tests with race detector enabled.
+    deps: [build]
+    inputs: ["**/*.go"]
+    cmd: |
+      go test -race -count=1 ./...
+
+  lint:
+    desc: Static analysis (vet + golangci-lint).
+    inputs: ["**/*.go", ".golangci.yml"]
+    cmd: |
+      go vet ./...
+      golangci-lint run ./...
+
+  fmt:
+    desc: Format the codebase. Caching disabled because gofmt rewrites files.
+    cache: false
+    cmd: |
+      gofmt -w -l .
+      goimports -w -local github.com/manojgowda/lattice .
+
+  release:
+    desc: Build distribution archives for all supported platforms.
+    deps: [test, lint]
+    inputs: ["**/*.go", "go.mod", "go.sum"]
+    outputs: ["dist/**/*"]
+    cmd: |
+      ./scripts/release.sh
+
+  clean:
+    desc: Remove build artifacts and the on-disk cache.
+    cache: false
+    cmd: |
+      rm -rf bin/ dist/ .lattice/

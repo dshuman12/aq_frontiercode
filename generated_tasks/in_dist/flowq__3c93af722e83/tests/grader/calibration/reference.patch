@@ -1,0 +1,125 @@
+diff --git a/flowq/job_groups.py b/flowq/job_groups.py
+index 2a9b770..b7fbb63 100644
+--- a/flowq/job_groups.py
++++ b/flowq/job_groups.py
+@@ -122,8 +122,8 @@ class JobGroup:
+             payload=payload or {},
+             priority=priority,
+             max_retries=max_retries,
+-            timeout=timeout,
+             tags=(tags or []) + [f"group:{self.id}"],
++            **({"timeout": timeout} if timeout is not None else {}),
+         )
+         with self._lock:
+             self._jobs.append(job)
+diff --git a/flowq/throttle.py b/flowq/throttle.py
+index ba1050d..39a3cce 100644
+--- a/flowq/throttle.py
++++ b/flowq/throttle.py
+@@ -36,7 +36,10 @@ class NamedSemaphore:
+         self._lock = threading.Lock()
+ 
+     def acquire(self, timeout: Optional[float] = None) -> bool:
+-        acquired = self._sem.acquire(timeout=timeout if timeout is not None else -1)
++        if timeout is None:
++            acquired = self._sem.acquire(blocking=True)
++        else:
++            acquired = self._sem.acquire(blocking=True, timeout=timeout)
+         if acquired:
+             with self._lock:
+                 self._in_use += 1
+diff --git a/flowq/workflows.py b/flowq/workflows.py
+index bf0aa0a..f30c022 100644
+--- a/flowq/workflows.py
++++ b/flowq/workflows.py
+@@ -238,7 +238,7 @@ class WorkflowRunner:
+                     payload=dict(step.payload, _workflow_step=step.name),
+                     priority=step.priority,
+                     max_retries=step.max_retries,
+-                    timeout=step.timeout,
++                    **({"timeout": step.timeout} if step.timeout is not None else {}),
+                 )
+                 try:
+                     self._storage.save(job)
+diff --git a/tests/test_job_groups.py b/tests/test_job_groups.py
+index 6390a77..a3ad8e5 100644
+--- a/tests/test_job_groups.py
++++ b/tests/test_job_groups.py
+@@ -8,16 +8,22 @@ from flowq.storage import Storage
+ from flowq.worker import register, Worker
+ 
+ 
+-@register("noop")
+-def noop_handler(job):
++def _noop_handler(job):
+     pass
+ 
+ 
+-@register("fail_handler")
+-def fail_handler(job):
++def _fail_handler(job):
+     raise RuntimeError("intentional failure")
+ 
+ 
++@pytest.fixture(autouse=True)
++def _register_handlers():
++    from flowq.worker import _HANDLERS
++    _HANDLERS["noop"] = _noop_handler
++    _HANDLERS["fail_handler"] = _fail_handler
++    yield
++
++
+ @pytest.fixture()
+ def storage(tmp_path):
+     return Storage(str(tmp_path / "test.db"))
+@@ -29,8 +35,8 @@ def queue():
+ 
+ 
+ @pytest.fixture()
+-def worker(storage):
+-    return Worker(storage=storage)
++def worker(queue, storage):
++    return Worker(queue=queue, storage=storage)
+ 
+ 
+ def test_add_jobs_to_group(queue, storage):
+diff --git a/tests/test_workflows.py b/tests/test_workflows.py
+index 29034af..56efa6a 100644
+--- a/tests/test_workflows.py
++++ b/tests/test_workflows.py
+@@ -11,16 +11,22 @@ from flowq.storage import Storage
+ from flowq.queue import JobQueue
+ 
+ 
+-@register("wf_noop")
+-def wf_noop(job):
++def _wf_noop(job):
+     pass
+ 
+ 
+-@register("wf_fail")
+-def wf_fail(job):
++def _wf_fail(job):
+     raise RuntimeError("step failed")
+ 
+ 
++@pytest.fixture(autouse=True)
++def _register_handlers():
++    from flowq.worker import _HANDLERS
++    _HANDLERS["wf_noop"] = _wf_noop
++    _HANDLERS["wf_fail"] = _wf_fail
++    yield
++
++
+ @pytest.fixture()
+ def storage(tmp_path):
+     return Storage(str(tmp_path / "wf.db"))
+@@ -28,7 +34,7 @@ def storage(tmp_path):
+ 
+ @pytest.fixture()
+ def worker(storage):
+-    return Worker(storage=storage)
++    return Worker(queue=JobQueue(), storage=storage)
+ 
+ 
+ @pytest.fixture()
