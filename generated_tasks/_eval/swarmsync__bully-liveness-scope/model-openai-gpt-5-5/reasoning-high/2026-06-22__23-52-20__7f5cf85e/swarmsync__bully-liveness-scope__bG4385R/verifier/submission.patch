@@ -1,0 +1,179 @@
+diff --git a/base/pkg/election/election.go b/repo/pkg/election/election.go
+index d8f0d5d..aa6e9b3 100644
+--- a/base/pkg/election/election.go
++++ b/repo/pkg/election/election.go
+@@ -4,17 +4,23 @@ import "sync"
+ 
+ // State represents the election state of a node.
+ type State int
++
+ const (
+-	StateFollower  State = iota
++	StateFollower State = iota
+ 	StateCandidate
+ 	StateLeader
+ )
++
+ func (s State) String() string {
+ 	switch s {
+-	case StateFollower: return "follower"
+-	case StateCandidate: return "candidate"
+-	case StateLeader: return "leader"
+-	default: return "unknown"
++	case StateFollower:
++		return "follower"
++	case StateCandidate:
++		return "candidate"
++	case StateLeader:
++		return "leader"
++	default:
++		return "unknown"
+ 	}
+ }
+ 
+@@ -60,7 +66,9 @@ func (be *BullyElection) RemovePeer(id string) {
+ func (be *BullyElection) MarkAlive(id string) {
+ 	be.mu.Lock()
+ 	defer be.mu.Unlock()
+-	if be.peers[id] { be.alive[id] = true }
++	if be.peers[id] {
++		be.alive[id] = true
++	}
+ }
+ 
+ // MarkDead marks a peer as dead.
+@@ -76,10 +84,23 @@ func (be *BullyElection) RunElection() string {
+ 	defer be.mu.Unlock()
+ 	be.rounds++
+ 	be.state = StateCandidate
+-	highestAlive := be.selfID
++
++	highestAlive := ""
+ 	for id := range be.peers {
+-		if id > highestAlive { highestAlive = id }
++		if !be.alive[id] {
++			continue
++		}
++		if highestAlive == "" || id > highestAlive {
++			highestAlive = id
++		}
+ 	}
++
++	if !be.peers[be.selfID] && len(be.alive) > 0 {
++		if highestAlive == "" || be.selfID > highestAlive {
++			highestAlive = be.selfID
++		}
++	}
++
+ 	be.leaderID = highestAlive
+ 	if highestAlive == be.selfID {
+ 		be.state = StateLeader
+@@ -154,7 +175,9 @@ func (re *RingElection) SetRing(ids []string) {
+ 	defer re.mu.Unlock()
+ 	re.ring = make([]string, len(ids))
+ 	copy(re.ring, ids)
+-	for _, id := range ids { re.alive[id] = true }
++	for _, id := range ids {
++		re.alive[id] = true
++	}
+ }
+ 
+ // MarkDead marks a node as dead.
+@@ -170,7 +193,9 @@ func (re *RingElection) Elect() string {
+ 	defer re.mu.Unlock()
+ 	best := re.selfID
+ 	for _, id := range re.ring {
+-		if re.alive[id] && id > best { best = id }
++		if re.alive[id] && id > best {
++			best = id
++		}
+ 	}
+ 	re.leaderID = best
+ 	return best
+diff --git a/repo/pkg/election/election_test.go b/repo/pkg/election/election_test.go
+new file mode 100644
+index 0000000..c16b263
+--- /dev/null
++++ b/repo/pkg/election/election_test.go
+@@ -0,0 +1,81 @@
++package election
++
++import "testing"
++
++func TestBullyElectionSkipsDeadHighestPeer(t *testing.T) {
++	be := NewBullyElection("node1")
++	be.AddPeer("node2")
++	be.AddPeer("node3")
++	be.MarkDead("node3")
++
++	if got := be.RunElection(); got != "node2" {
++		t.Fatalf("RunElection() = %q, want %q", got, "node2")
++	}
++	if got := be.Leader(); got != "node2" {
++		t.Fatalf("Leader() = %q, want %q", got, "node2")
++	}
++}
++
++func TestBullyElectionReelectsNextLivePeerAfterLeaderDies(t *testing.T) {
++	be := NewBullyElection("node1")
++	be.AddPeer("node2")
++	be.AddPeer("node3")
++	be.AddPeer("node4")
++
++	if got := be.RunElection(); got != "node4" {
++		t.Fatalf("initial RunElection() = %q, want %q", got, "node4")
++	}
++
++	be.MarkDead("node4")
++
++	if got := be.RunElection(); got != "node3" {
++		t.Fatalf("reelection RunElection() = %q, want %q", got, "node3")
++	}
++	if got := be.Leader(); got != "node3" {
++		t.Fatalf("Leader() = %q, want %q", got, "node3")
++	}
++}
++
++func TestBullyElectionAllAliveUnchanged(t *testing.T) {
++	be := NewBullyElection("node1")
++	be.AddPeer("node2")
++	be.AddPeer("node3")
++
++	if got := be.RunElection(); got != "node3" {
++		t.Fatalf("RunElection() = %q, want %q", got, "node3")
++	}
++}
++
++func TestBullyElectionAllAliveSelfCanStillWin(t *testing.T) {
++	be := NewBullyElection("node3")
++	be.AddPeer("node1")
++	be.AddPeer("node2")
++
++	if got := be.RunElection(); got != "node3" {
++		t.Fatalf("RunElection() = %q, want %q", got, "node3")
++	}
++	if !be.IsLeader() {
++		t.Fatal("IsLeader() = false, want true")
++	}
++}
++
++func TestBullyElectionNoLivePeersHasNoLeader(t *testing.T) {
++	be := NewBullyElection("node1")
++	be.AddPeer("node2")
++	be.AddPeer("node3")
++	be.MarkDead("node2")
++	be.MarkDead("node3")
++
++	if got := be.RunElection(); got != "" {
++		t.Fatalf("RunElection() = %q, want no leader", got)
++	}
++	if got := be.Leader(); got != "" {
++		t.Fatalf("Leader() = %q, want no leader", got)
++	}
++	if be.IsLeader() {
++		t.Fatal("IsLeader() = true, want false")
++	}
++	if got := be.CurrentState(); got != StateFollower {
++		t.Fatalf("CurrentState() = %s, want %s", got, StateFollower)
++	}
++}

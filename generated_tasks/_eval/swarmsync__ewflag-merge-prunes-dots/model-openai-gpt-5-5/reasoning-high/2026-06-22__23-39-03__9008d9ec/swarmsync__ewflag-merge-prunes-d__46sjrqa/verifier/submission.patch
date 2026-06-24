@@ -1,0 +1,346 @@
+diff --git a/base/pkg/crdt/counter.go b/repo/pkg/crdt/counter.go
+index f6e3b55..5f59051 100644
+--- a/base/pkg/crdt/counter.go
++++ b/repo/pkg/crdt/counter.go
+@@ -5,10 +5,10 @@ import "sync"
+ // GCounter is a grow-only counter. Each node maintains its own count;
+ // the value is the sum of all nodes. Merge takes element-wise max.
+ type GCounter struct {
+-	mu      sync.RWMutex
+-	nodeID  string
+-	counts  map[string]uint64
+-	cached  uint64
++	mu     sync.RWMutex
++	nodeID string
++	counts map[string]uint64
++	cached uint64
+ }
+ 
+ // NewGCounter creates a G-Counter owned by nodeID.
+@@ -156,4 +156,4 @@ func (p *PNCounter) NegState() map[string]uint64 {
+ 		m[k] = v
+ 	}
+ 	return m
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/ewflag.go b/repo/pkg/crdt/ewflag.go
+index 5e2aab3..b1cbc36 100644
+--- a/base/pkg/crdt/ewflag.go
++++ b/repo/pkg/crdt/ewflag.go
+@@ -43,20 +43,25 @@ func (f *EWFlag) Value() bool {
+ }
+ 
+ // Merge incorporates another EWFlag's state.
+-// For each node, the higher counter wins (enable-wins semantics).
++// Active dots are removed only when the other replica's causal context
++// proves it observed and removed them.
+ func (f *EWFlag) Merge(other *EWFlag) {
+ 	f.mu.Lock()
+ 	defer f.mu.Unlock()
+ 	other.mu.RLock()
+ 	defer other.mu.RUnlock()
+ 
+-	for nodeID := range f.dots {
+-		if _, ok := other.dots[nodeID]; !ok {
++	for nodeID, localDot := range f.dots {
++		if _, ok := other.dots[nodeID]; !ok && other.counters[nodeID] >= localDot {
+ 			delete(f.dots, nodeID)
+ 		}
+ 	}
+ 	for nodeID, otherDot := range other.dots {
+-		if localDot, ok := f.dots[nodeID]; !ok || otherDot > localDot {
++		localDot, ok := f.dots[nodeID]
++		if !ok && f.counters[nodeID] >= otherDot {
++			continue
++		}
++		if !ok || otherDot > localDot {
+ 			f.dots[nodeID] = otherDot
+ 		}
+ 	}
+diff --git a/repo/pkg/crdt/ewflag_test.go b/repo/pkg/crdt/ewflag_test.go
+new file mode 100644
+index 0000000..1bf79e1
+--- /dev/null
++++ b/repo/pkg/crdt/ewflag_test.go
+@@ -0,0 +1,162 @@
++package crdt
++
++import (
++	"reflect"
++	"testing"
++)
++
++type ewFlagSnapshot struct {
++	dots     map[string]uint64
++	counters map[string]uint64
++}
++
++func TestEWFlagMergeCausalSemantics(t *testing.T) {
++	tests := []struct {
++		name      string
++		setup     func() (*EWFlag, *EWFlag)
++		wantValue bool
++		wantDots  int
++	}{
++		{
++			name: "concurrent enable wins over disable with empty dot set",
++			setup: func() (*EWFlag, *EWFlag) {
++				enabled := NewEWFlag()
++				enabled.Enable("node-a")
++
++				disabled := NewEWFlag()
++				disabled.Disable()
++
++				return enabled, disabled
++			},
++			wantValue: true,
++			wantDots:  1,
++		},
++		{
++			name: "observed disable clears enable",
++			setup: func() (*EWFlag, *EWFlag) {
++				enabled := NewEWFlag()
++				enabled.Enable("node-a")
++
++				disabled := NewEWFlag()
++				disabled.Merge(enabled)
++				disabled.Disable()
++
++				return enabled, disabled
++			},
++			wantValue: false,
++			wantDots:  0,
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			left, right := tt.setup()
++
++			t.Run("left merges right", func(t *testing.T) {
++				merged := cloneEWFlag(left)
++				merged.Merge(right)
++				assertEWFlagState(t, merged, tt.wantValue, tt.wantDots)
++			})
++
++			t.Run("right merges left", func(t *testing.T) {
++				merged := cloneEWFlag(right)
++				merged.Merge(left)
++				assertEWFlagState(t, merged, tt.wantValue, tt.wantDots)
++			})
++		})
++	}
++}
++
++func TestEWFlagMergeRepeatedMergesAreIdempotentAndCommutative(t *testing.T) {
++	tests := []struct {
++		name  string
++		setup func() (*EWFlag, *EWFlag)
++	}{
++		{
++			name: "concurrent enable and disable",
++			setup: func() (*EWFlag, *EWFlag) {
++				enabled := NewEWFlag()
++				enabled.Enable("node-a")
++
++				disabled := NewEWFlag()
++				disabled.Disable()
++
++				return enabled, disabled
++			},
++		},
++		{
++			name: "observed enable then disable",
++			setup: func() (*EWFlag, *EWFlag) {
++				enabled := NewEWFlag()
++				enabled.Enable("node-a")
++
++				disabled := NewEWFlag()
++				disabled.Merge(enabled)
++				disabled.Disable()
++
++				return enabled, disabled
++			},
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			left, right := tt.setup()
++
++			leftMerged := cloneEWFlag(left)
++			leftMerged.Merge(right)
++			once := snapshotEWFlag(leftMerged)
++			leftMerged.Merge(right)
++			twice := snapshotEWFlag(leftMerged)
++			if !reflect.DeepEqual(once, twice) {
++				t.Fatalf("merge is not idempotent: once=%+v twice=%+v", once, twice)
++			}
++
++			rightMerged := cloneEWFlag(right)
++			rightMerged.Merge(left)
++			reverse := snapshotEWFlag(rightMerged)
++			if !reflect.DeepEqual(once, reverse) {
++				t.Fatalf("merge is not commutative: left/right=%+v right/left=%+v", once, reverse)
++			}
++		})
++	}
++}
++
++func assertEWFlagState(t *testing.T, flag *EWFlag, wantValue bool, wantDots int) {
++	t.Helper()
++
++	if got := flag.Value(); got != wantValue {
++		t.Fatalf("Value() = %v, want %v", got, wantValue)
++	}
++	if got := flag.DotCount(); got != wantDots {
++		t.Fatalf("DotCount() = %d, want %d", got, wantDots)
++	}
++}
++
++func cloneEWFlag(flag *EWFlag) *EWFlag {
++	flag.mu.RLock()
++	defer flag.mu.RUnlock()
++
++	return &EWFlag{
++		dots:     cloneUint64Map(flag.dots),
++		counters: cloneUint64Map(flag.counters),
++	}
++}
++
++func snapshotEWFlag(flag *EWFlag) ewFlagSnapshot {
++	flag.mu.RLock()
++	defer flag.mu.RUnlock()
++
++	return ewFlagSnapshot{
++		dots:     cloneUint64Map(flag.dots),
++		counters: cloneUint64Map(flag.counters),
++	}
++}
++
++func cloneUint64Map(values map[string]uint64) map[string]uint64 {
++	result := make(map[string]uint64, len(values))
++	for key, value := range values {
++		result[key] = value
++	}
++	return result
++}
+diff --git a/base/pkg/crdt/ormap.go b/repo/pkg/crdt/ormap.go
+index 88368cc..4c3e811 100644
+--- a/base/pkg/crdt/ormap.go
++++ b/repo/pkg/crdt/ormap.go
+@@ -6,9 +6,9 @@ import "sync"
+ // Keys can be added and removed; add-wins semantics apply.
+ // Each key's value is resolved by last-writer-wins.
+ type ORMap struct {
+-	mu       sync.RWMutex
+-	keys     *ORSet
+-	values   map[string]*LWWRegister
++	mu     sync.RWMutex
++	keys   *ORSet
++	values map[string]*LWWRegister
+ }
+ 
+ // NewORMap creates an empty OR-Map.
+@@ -114,4 +114,4 @@ func (m *ORMap) Merge(other *ORMap) {
+ 		}
+ 		m.values[key].Merge(otherReg)
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/register.go b/repo/pkg/crdt/register.go
+index f96ebb0..7a30da9 100644
+--- a/base/pkg/crdt/register.go
++++ b/repo/pkg/crdt/register.go
+@@ -144,4 +144,4 @@ func (mv *MVRegister) Len() int {
+ 	mv.mu.RLock()
+ 	defer mv.mu.RUnlock()
+ 	return len(mv.entries)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/rga.go b/repo/pkg/crdt/rga.go
+index 8f03236..23c7e17 100644
+--- a/base/pkg/crdt/rga.go
++++ b/repo/pkg/crdt/rga.go
+@@ -4,10 +4,10 @@ import "sync"
+ 
+ // RGAElement represents a single element in the Replicated Growable Array.
+ type RGAElement struct {
+-	ID        RGAId
+-	Value     interface{}
+-	Deleted   bool
+-	Prev      *RGAId
++	ID      RGAId
++	Value   interface{}
++	Deleted bool
++	Prev    *RGAId
+ }
+ 
+ // RGAId uniquely identifies an element using a (nodeID, counter) pair.
+@@ -79,7 +79,9 @@ func (r *RGA) Delete(id RGAId) bool {
+ 	r.mu.Lock()
+ 	defer r.mu.Unlock()
+ 	idx, ok := r.index[id]
+-	if !ok { return false }
++	if !ok {
++		return false
++	}
+ 	r.elements[idx].Deleted = true
+ 	return true
+ }
+@@ -90,7 +92,9 @@ func (r *RGA) Values() []interface{} {
+ 	defer r.mu.RUnlock()
+ 	var result []interface{}
+ 	for _, e := range r.elements {
+-		if !e.Deleted { result = append(result, e.Value) }
++		if !e.Deleted {
++			result = append(result, e.Value)
++		}
+ 	}
+ 	return result
+ }
+@@ -101,7 +105,9 @@ func (r *RGA) Len() int {
+ 	defer r.mu.RUnlock()
+ 	count := 0
+ 	for _, e := range r.elements {
+-		if !e.Deleted { count++ }
++		if !e.Deleted {
++			count++
++		}
+ 	}
+ 	return count
+ }
+@@ -124,7 +130,9 @@ func (r *RGA) Merge(other *RGA) {
+ 	for _, e := range other.elements {
+ 		if _, exists := r.index[e.ID]; exists {
+ 			idx := r.index[e.ID]
+-			if e.Deleted { r.elements[idx].Deleted = true }
++			if e.Deleted {
++				r.elements[idx].Deleted = true
++			}
+ 			continue
+ 		}
+ 		r.index[e.ID] = len(r.elements)
+@@ -137,5 +145,7 @@ func (r *RGA) NodeID() string { return r.nodeID }
+ 
+ func (r *RGA) rebuildIndex() {
+ 	r.index = make(map[RGAId]int, len(r.elements))
+-	for i, e := range r.elements { r.index[e.ID] = i }
++	for i, e := range r.elements {
++		r.index[e.ID] = i
++	}
+ }
+diff --git a/base/pkg/crdt/set.go b/repo/pkg/crdt/set.go
+index 3b912b8..25bde89 100644
+--- a/base/pkg/crdt/set.go
++++ b/repo/pkg/crdt/set.go
+@@ -171,4 +171,4 @@ func (s *ORSet) Tags(elem string) []ORTag {
+ 		result = append(result, t)
+ 	}
+ 	return result
+-}
+\ No newline at end of file
++}

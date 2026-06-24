@@ -1,0 +1,187 @@
+diff --git a/base/internal/engine/engine.go b/repo/internal/engine/engine.go
+index af4357a..67f6906 100644
+--- a/base/internal/engine/engine.go
++++ b/repo/internal/engine/engine.go
+@@ -284,4 +284,3 @@ func (e *Engine) ListWorkflows(ctx context.Context, f storage.WorkflowFilter) ([
+ 	}
+ 	return out, nil
+ }
+-
+diff --git a/base/internal/metrics/metrics.go b/repo/internal/metrics/metrics.go
+index 82466a1..a5c9f0c 100644
+--- a/base/internal/metrics/metrics.go
++++ b/repo/internal/metrics/metrics.go
+@@ -77,7 +77,7 @@ func (h *Histogram) Observe(v float64) {
+ 	h.sum += v
+ 	h.total++
+ 	for i, b := range h.buckets {
+-		if v < b {
++		if v <= b {
+ 			h.counts[i]++
+ 			return
+ 		}
+diff --git a/base/internal/metrics/trivial_test.go b/repo/internal/metrics/trivial_test.go
+index 10b59cc..c695ce3 100644
+--- a/base/internal/metrics/trivial_test.go
++++ b/repo/internal/metrics/trivial_test.go
+@@ -1,6 +1,11 @@
+ package metrics
+ 
+-import "testing"
++import (
++	"math"
++	"strconv"
++	"strings"
++	"testing"
++)
+ 
+ func TestMetricAccessors(t *testing.T) {
+ 	r := New()
+@@ -28,3 +33,90 @@ func TestDefaultRegistry(t *testing.T) {
+ 	}
+ 	Default.NewCounter("default_counter_ok", "").Inc()
+ }
++
++func TestHistogramObserveBoundaryValuesAreCumulative(t *testing.T) {
++	h := New().NewHistogram("h", "hh", []float64{1, 2, 5})
++
++	observations := []float64{1, 2, 5}
++	for _, v := range observations {
++		h.Observe(v)
++	}
++
++	assertHistogram(t, h, map[string]uint64{
++		"1":    1,
++		"2":    2,
++		"5":    3,
++		"+Inf": 3,
++	}, 3, 8)
++}
++
++func TestHistogramObserveKeepsNonBoundaryPlacement(t *testing.T) {
++	h := New().NewHistogram("h", "hh", []float64{1, 2, 5})
++
++	observations := []float64{0.9, 1.9, 2.1, 6}
++	for _, v := range observations {
++		h.Observe(v)
++	}
++
++	assertHistogram(t, h, map[string]uint64{
++		"1":    1,
++		"2":    2,
++		"5":    3,
++		"+Inf": 4,
++	}, 4, 10.9)
++}
++
++func assertHistogram(t *testing.T, h *Histogram, wantBuckets map[string]uint64, wantTotal uint64, wantSum float64) {
++	t.Helper()
++
++	if h.total != wantTotal {
++		t.Fatalf("total = %d, want %d", h.total, wantTotal)
++	}
++	if math.Abs(h.sum-wantSum) > 1e-9 {
++		t.Fatalf("sum = %v, want %v", h.sum, wantSum)
++	}
++
++	gotBuckets := readHistogramBuckets(t, h)
++	for bucket, want := range wantBuckets {
++		if got := gotBuckets[bucket]; got != want {
++			t.Fatalf("bucket %s = %d, want %d", bucket, got, want)
++		}
++	}
++}
++
++func readHistogramBuckets(t *testing.T, h *Histogram) map[string]uint64 {
++	t.Helper()
++
++	var b strings.Builder
++	h.Write(&b)
++
++	buckets := make(map[string]uint64)
++	for _, line := range strings.Split(b.String(), "\n") {
++		if !strings.HasPrefix(line, h.name+"_bucket") {
++			continue
++		}
++
++		start := strings.Index(line, `le="`)
++		if start < 0 {
++			t.Fatalf("bucket line missing le label: %q", line)
++		}
++		start += len(`le="`)
++		end := strings.Index(line[start:], `"`)
++		if end < 0 {
++			t.Fatalf("bucket line has malformed le label: %q", line)
++		}
++
++		fields := strings.Fields(line)
++		if len(fields) != 2 {
++			t.Fatalf("bucket line has malformed value: %q", line)
++		}
++		count, err := strconv.ParseUint(fields[1], 10, 64)
++		if err != nil {
++			t.Fatalf("parse bucket count from %q: %v", line, err)
++		}
++
++		buckets[line[start:start+end]] = count
++	}
++
++	return buckets
++}
+diff --git a/base/internal/storage/memory.go b/repo/internal/storage/memory.go
+index fee492d..0096061 100644
+--- a/base/internal/storage/memory.go
++++ b/repo/internal/storage/memory.go
+@@ -349,5 +349,4 @@ func attrEqual(a, b any) bool {
+ 	return string(aj) == string(bj)
+ }
+ 
+-
+ var _ Store = (*Memory)(nil)
+diff --git a/base/internal/storage/sqlite.go b/repo/internal/storage/sqlite.go
+index 68ddaa2..b2b914c 100644
+--- a/base/internal/storage/sqlite.go
++++ b/repo/internal/storage/sqlite.go
+@@ -18,7 +18,6 @@ import (
+ 	"github.com/vishaljakhar/durab/pkg/types"
+ )
+ 
+-
+ //go:embed sqlite_schema.sql
+ var sqliteSchema string
+ 
+diff --git a/base/internal/wasm/host_workflow.go b/repo/internal/wasm/host_workflow.go
+index 59a6000..482f9e4 100644
+--- a/base/internal/wasm/host_workflow.go
++++ b/repo/internal/wasm/host_workflow.go
+@@ -182,4 +182,3 @@ func formatUUID(b [16]byte) string {
+ 	}
+ 	return string(out[:])
+ }
+-
+diff --git a/base/internal/wasm/testbuild.go b/repo/internal/wasm/testbuild.go
+index e50c965..d53978b 100644
+--- a/base/internal/wasm/testbuild.go
++++ b/repo/internal/wasm/testbuild.go
+@@ -200,7 +200,6 @@ func writeSLEB(out *bytes.Buffer, v int64) {
+ 	}
+ }
+ 
+-
+ func NewReadingWorkflowModule() []byte {
+ 	var out bytes.Buffer
+ 	out.Write([]byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00})
+@@ -268,4 +267,3 @@ func NewReadingWorkflowModule() []byte {
+ 
+ 	return out.Bytes()
+ }
+-
+diff --git a/base/internal/worker/worker.go b/repo/internal/worker/worker.go
+index 55c7c89..6c50485 100644
+--- a/base/internal/worker/worker.go
++++ b/repo/internal/worker/worker.go
+@@ -226,4 +226,3 @@ func (w *Worker) DescribeRegistered() (workflows, activities []string) {
+ 	}
+ 	return
+ }
+-

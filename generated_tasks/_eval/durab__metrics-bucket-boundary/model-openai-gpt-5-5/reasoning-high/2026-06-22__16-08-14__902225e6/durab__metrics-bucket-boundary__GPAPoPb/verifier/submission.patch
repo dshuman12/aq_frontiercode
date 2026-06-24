@@ -1,0 +1,97 @@
+diff --git a/base/internal/metrics/metrics.go b/repo/internal/metrics/metrics.go
+index 82466a1..a5c9f0c 100644
+--- a/base/internal/metrics/metrics.go
++++ b/repo/internal/metrics/metrics.go
+@@ -77,7 +77,7 @@ func (h *Histogram) Observe(v float64) {
+ 	h.sum += v
+ 	h.total++
+ 	for i, b := range h.buckets {
+-		if v < b {
++		if v <= b {
+ 			h.counts[i]++
+ 			return
+ 		}
+diff --git a/base/internal/metrics/trivial_test.go b/repo/internal/metrics/trivial_test.go
+index 10b59cc..fef26f0 100644
+--- a/base/internal/metrics/trivial_test.go
++++ b/repo/internal/metrics/trivial_test.go
+@@ -1,6 +1,10 @@
+ package metrics
+ 
+-import "testing"
++import (
++	"strconv"
++	"strings"
++	"testing"
++)
+ 
+ func TestMetricAccessors(t *testing.T) {
+ 	r := New()
+@@ -28,3 +32,67 @@ func TestDefaultRegistry(t *testing.T) {
+ 	}
+ 	Default.NewCounter("default_counter_ok", "").Inc()
+ }
++
++func TestHistogramObserveBoundaryBuckets(t *testing.T) {
++	r := New()
++	h := r.NewHistogram("observe", "observations", []float64{1, 2.5, 10})
++	values := []float64{
++		0.5,   // below the smallest bound
++		1,     // exactly the first bound
++		2,     // strictly between bounds
++		2.49,  // just below a bound
++		2.5,   // exactly a middle bound
++		2.51,  // just above a bound
++		10,    // exactly the largest bound
++		11,    // overflow
++	}
++
++	var wantSum float64
++	for _, v := range values {
++		h.Observe(v)
++		wantSum += v
++	}
++
++	lines := metricLines(t, h)
++	wantBuckets := map[string]string{
++		`observe_bucket{le="1"}`:    "2",
++		`observe_bucket{le="2.5"}`:  "5",
++		`observe_bucket{le="10"}`:   "7",
++		`observe_bucket{le="+Inf"}`: "8",
++	}
++	for name, want := range wantBuckets {
++		if got := lines[name]; got != want {
++			t.Fatalf("%s = %s, want %s\nmetrics:\n%s", name, got, want, renderMetric(h))
++		}
++	}
++	if got := h.total; got != uint64(len(values)) {
++		t.Fatalf("total = %d, want %d", got, len(values))
++	}
++	if h.sum != wantSum {
++		t.Fatalf("sum = %v, want %v", h.sum, wantSum)
++	}
++	if got := lines["observe_count"]; got != strconv.Itoa(len(values)) {
++		t.Fatalf("observe_count = %s, want %d", got, len(values))
++	}
++	if got := lines["observe_sum"]; got != strconv.FormatFloat(wantSum, 'g', -1, 64) {
++		t.Fatalf("observe_sum = %s, want %v", got, wantSum)
++	}
++}
++
++func metricLines(t *testing.T, h *Histogram) map[string]string {
++	t.Helper()
++	lines := make(map[string]string)
++	for _, line := range strings.Split(renderMetric(h), "\n") {
++		fields := strings.Fields(line)
++		if len(fields) == 2 {
++			lines[fields[0]] = fields[1]
++		}
++	}
++	return lines
++}
++
++func renderMetric(h *Histogram) string {
++	var b strings.Builder
++	h.Write(&b)
++	return b.String()
++}

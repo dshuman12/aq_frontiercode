@@ -1,0 +1,199 @@
+diff --git a/base/src/centrality/centrality.cpp b/repo/src/centrality/centrality.cpp
+index b696a68..3091a92 100644
+--- a/base/src/centrality/centrality.cpp
++++ b/repo/src/centrality/centrality.cpp
+@@ -58,8 +58,6 @@ CentralityMap betweenness_centrality(const Graph& g, bool normalized) {
+     std::vector<std::vector<size_t>> preds(n);
+ 
+     for (size_t si = 0; si < n; si++) {
+-        NodeId s = ids[si];
+-
+         // Reset
+         for (size_t i = 0; i < n; i++) {
+             sigma[i] = 0.0;
+@@ -430,4 +428,4 @@ double centralization(const CentralityMap& cm) {
+     return max_possible > 1e-15 ? sum_diff / max_possible : 0.0;
+ }
+ 
+-} // namespace cryo
+\ No newline at end of file
++} // namespace cryo
+diff --git a/base/src/mst/mst.cpp b/repo/src/mst/mst.cpp
+index bffc79d..8850c9f 100644
+--- a/base/src/mst/mst.cpp
++++ b/repo/src/mst/mst.cpp
+@@ -150,7 +150,15 @@ MSTResult boruvka(const Graph& g) {
+     while (progress && uf.component_count() > 1) {
+         progress = false;
+ 
+-        std::vector<int> cheapest(ids.size(), -1);
++        const size_t no_edge = all_edges.size();
++        std::vector<size_t> cheapest(ids.size(), no_edge);
++
++        auto record_cheapest = [&](size_t component, size_t edge_index) {
++            if (cheapest[component] == no_edge ||
++                all_edges[edge_index].weight < all_edges[cheapest[component]].weight) {
++                cheapest[component] = edge_index;
++            }
++        };
+ 
+         for (size_t i = 0; i < all_edges.size(); i++) {
+             auto& e = all_edges[i];
+@@ -158,12 +166,12 @@ MSTResult boruvka(const Graph& g) {
+             size_t cv = uf.find(id_map[e.dst]);
+             if (cu == cv) continue;
+ 
+-            if (cheapest[cu] == -1 || all_edges[cheapest[cu]].weight > e.weight)
+-                cheapest[cu] = static_cast<int>(i);
++            record_cheapest(cu, i);
++            record_cheapest(cv, i);
+         }
+ 
+         for (size_t i = 0; i < ids.size(); i++) {
+-            if (cheapest[i] == -1) continue;
++            if (cheapest[i] == no_edge) continue;
+             auto& e = all_edges[cheapest[i]];
+             size_t u = id_map[e.src], v = id_map[e.dst];
+             if (uf.unite(u, v)) {
+@@ -189,4 +197,4 @@ double mst_weight_ratio(const Graph& g, const MSTResult& mst) {
+     return mst.total_weight / total;
+ }
+ 
+-} // namespace cryo
+\ No newline at end of file
++} // namespace cryo
+diff --git a/base/tests/test_framework.hpp b/repo/tests/test_framework.hpp
+index baea037..297dff1 100644
+--- a/base/tests/test_framework.hpp
++++ b/repo/tests/test_framework.hpp
+@@ -173,4 +173,4 @@ void assert_ge(const A& a, const B& b, const std::string& ctx = "") {
+     static void cryo_test_##suite##_##name(); \
+     static cryo_test::TestRegistrar cryo_reg_##suite##_##name( \
+         #suite, #name, cryo_test_##suite##_##name); \
+-    static void cryo_test_##suite##_##name()
+\ No newline at end of file
++    static void cryo_test_##suite##_##name()
+diff --git a/repo/tests/test_mst.cpp b/repo/tests/test_mst.cpp
+new file mode 100644
+index 0000000..9e45c1c
+--- /dev/null
++++ b/repo/tests/test_mst.cpp
+@@ -0,0 +1,118 @@
++#include "test_framework.hpp"
++#include "mst/mst.hpp"
++
++using namespace cryo;
++using namespace cryo_test;
++
++namespace {
++
++void add_nodes(Graph& g, size_t count) {
++    for (size_t i = 0; i < count; i++) {
++        g.add_node_with_id(i);
++    }
++}
++
++void assert_connected_mst_parity(const Graph& g) {
++    auto km = kruskal(g);
++    auto pm = prim(g, 0);
++    auto bm = boruvka(g);
++
++    assert_near(bm.total_weight, km.total_weight, 1e-9, "boruvka matches kruskal");
++    assert_near(bm.total_weight, pm.total_weight, 1e-9, "boruvka matches prim");
++    assert_true(is_spanning_tree(g, bm), "boruvka returns a spanning tree");
++}
++
++} // namespace
++
++CRYO_TEST(MST, BoruvkaRecordsCheapestEdgeForBothEndpointComponents) {
++    Graph g(GraphType::Undirected);
++    add_nodes(g, 3);
++
++    g.add_edge(0, 1, 1.0);
++    g.add_edge(0, 2, 1.0);
++    g.add_edge(1, 2, 2.0);
++
++    auto bm = boruvka(g);
++    assert_near(bm.total_weight, 2.0);
++    assert_eq(bm.edges.size(), (size_t)2);
++    assert_connected_mst_parity(g);
++}
++
++CRYO_TEST(MST, BoruvkaHandlesEqualWeightEdges) {
++    Graph g(GraphType::Undirected);
++    add_nodes(g, 4);
++
++    g.add_edge(0, 1, 1.0);
++    g.add_edge(0, 2, 1.0);
++    g.add_edge(0, 3, 1.0);
++    g.add_edge(1, 2, 1.0);
++    g.add_edge(2, 3, 1.0);
++
++    auto bm = boruvka(g);
++    assert_near(bm.total_weight, 3.0);
++    assert_eq(bm.edges.size(), (size_t)3);
++    assert_connected_mst_parity(g);
++}
++
++CRYO_TEST(MST, BoruvkaMergesMultipleComponentsInOnePhase) {
++    Graph g(GraphType::Undirected);
++    add_nodes(g, 4);
++
++    g.add_edge(0, 1, 1.0);
++    g.add_edge(2, 3, 1.0);
++    g.add_edge(0, 2, 5.0);
++    g.add_edge(1, 3, 5.0);
++    g.add_edge(0, 3, 9.0);
++
++    auto bm = boruvka(g);
++    assert_near(bm.total_weight, 7.0);
++    assert_eq(bm.edges.size(), (size_t)3);
++    assert_connected_mst_parity(g);
++}
++
++CRYO_TEST(MST, BoruvkaMatchesKruskalAndPrimOnConnectedGraph) {
++    Graph g(GraphType::Undirected);
++    add_nodes(g, 6);
++
++    g.add_edge(0, 1, 4.0);
++    g.add_edge(0, 2, 3.0);
++    g.add_edge(1, 2, 1.0);
++    g.add_edge(1, 3, 2.0);
++    g.add_edge(2, 3, 4.0);
++    g.add_edge(2, 4, 6.0);
++    g.add_edge(3, 4, 5.0);
++    g.add_edge(3, 5, 8.0);
++    g.add_edge(4, 5, 7.0);
++
++    assert_connected_mst_parity(g);
++}
++
++CRYO_TEST(MST, BoruvkaHandlesSingleNodeGraph) {
++    Graph g(GraphType::Undirected);
++    g.add_node_with_id(0);
++
++    auto bm = boruvka(g);
++    assert_near(bm.total_weight, 0.0);
++    assert_true(bm.edges.empty());
++    assert_false(bm.is_forest);
++    assert_true(is_spanning_tree(g, bm));
++}
++
++CRYO_TEST(MST, BoruvkaMatchesKruskalForestOnDisconnectedGraph) {
++    Graph g(GraphType::Undirected);
++    add_nodes(g, 6);
++
++    g.add_edge(0, 1, 1.0);
++    g.add_edge(1, 2, 2.0);
++    g.add_edge(0, 2, 3.0);
++    g.add_edge(3, 4, 4.0);
++
++    auto km = kruskal(g);
++    auto bm = boruvka(g);
++
++    assert_true(km.is_forest);
++    assert_true(bm.is_forest);
++    assert_near(bm.total_weight, km.total_weight, 1e-9);
++    assert_near(bm.total_weight, 7.0);
++    assert_eq(bm.edges.size(), km.edges.size());
++}

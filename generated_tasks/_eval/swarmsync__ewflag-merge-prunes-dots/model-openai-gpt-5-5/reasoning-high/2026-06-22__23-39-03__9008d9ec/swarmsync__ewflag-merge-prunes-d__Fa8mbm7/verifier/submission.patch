@@ -1,0 +1,377 @@
+diff --git a/base/pkg/crdt/counter.go b/repo/pkg/crdt/counter.go
+index f6e3b55..5f59051 100644
+--- a/base/pkg/crdt/counter.go
++++ b/repo/pkg/crdt/counter.go
+@@ -5,10 +5,10 @@ import "sync"
+ // GCounter is a grow-only counter. Each node maintains its own count;
+ // the value is the sum of all nodes. Merge takes element-wise max.
+ type GCounter struct {
+-	mu      sync.RWMutex
+-	nodeID  string
+-	counts  map[string]uint64
+-	cached  uint64
++	mu     sync.RWMutex
++	nodeID string
++	counts map[string]uint64
++	cached uint64
+ }
+ 
+ // NewGCounter creates a G-Counter owned by nodeID.
+@@ -156,4 +156,4 @@ func (p *PNCounter) NegState() map[string]uint64 {
+ 		m[k] = v
+ 	}
+ 	return m
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/ewflag.go b/repo/pkg/crdt/ewflag.go
+index 5e2aab3..8662c07 100644
+--- a/base/pkg/crdt/ewflag.go
++++ b/repo/pkg/crdt/ewflag.go
+@@ -43,23 +43,41 @@ func (f *EWFlag) Value() bool {
+ }
+ 
+ // Merge incorporates another EWFlag's state.
+-// For each node, the higher counter wins (enable-wins semantics).
++// Missing dots only remove local dots when the other replica has observed
++// the dot's counter; otherwise the local enable was concurrent and survives.
+ func (f *EWFlag) Merge(other *EWFlag) {
++	if f == other {
++		return
++	}
++
+ 	f.mu.Lock()
+ 	defer f.mu.Unlock()
+ 	other.mu.RLock()
+ 	defer other.mu.RUnlock()
+ 
+-	for nodeID := range f.dots {
+-		if _, ok := other.dots[nodeID]; !ok {
+-			delete(f.dots, nodeID)
++	nextDots := make(map[string]uint64)
++	for nodeID, localDot := range f.dots {
++		if otherDot, ok := other.dots[nodeID]; ok && otherDot == localDot {
++			nextDots[nodeID] = localDot
++			continue
++		}
++		if other.counters[nodeID] < localDot {
++			nextDots[nodeID] = localDot
+ 		}
+ 	}
+ 	for nodeID, otherDot := range other.dots {
+-		if localDot, ok := f.dots[nodeID]; !ok || otherDot > localDot {
+-			f.dots[nodeID] = otherDot
++		if localDot, ok := f.dots[nodeID]; ok && localDot == otherDot {
++			nextDots[nodeID] = otherDot
++			continue
++		}
++		if f.counters[nodeID] < otherDot {
++			if localDot, ok := nextDots[nodeID]; !ok || otherDot > localDot {
++				nextDots[nodeID] = otherDot
++			}
+ 		}
+ 	}
++	f.dots = nextDots
++
+ 	for nodeID, otherCounter := range other.counters {
+ 		if otherCounter > f.counters[nodeID] {
+ 			f.counters[nodeID] = otherCounter
+diff --git a/repo/pkg/crdt/ewflag_test.go b/repo/pkg/crdt/ewflag_test.go
+new file mode 100644
+index 0000000..51af7dc
+--- /dev/null
++++ b/repo/pkg/crdt/ewflag_test.go
+@@ -0,0 +1,175 @@
++package crdt
++
++import (
++	"reflect"
++	"testing"
++)
++
++type ewflagSnapshot struct {
++	enabled  bool
++	dots     map[string]uint64
++	counters map[string]uint64
++}
++
++func TestEWFlagMergeConcurrentEnableWinsOverDisable(t *testing.T) {
++	tests := []struct {
++		name  string
++		merge func(enabled *EWFlag, disabled *EWFlag) *EWFlag
++	}{
++		{
++			name: "enable replica merges concurrent disable",
++			merge: func(enabled *EWFlag, disabled *EWFlag) *EWFlag {
++				enabled.Merge(disabled)
++				return enabled
++			},
++		},
++		{
++			name: "disable replica merges concurrent enable",
++			merge: func(enabled *EWFlag, disabled *EWFlag) *EWFlag {
++				disabled.Merge(enabled)
++				return disabled
++			},
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			enabled, disabled := concurrentEnableAndDisable()
++
++			merged := tt.merge(enabled, disabled)
++
++			if !merged.Value() {
++				t.Fatalf("merged flag is disabled, want enabled")
++			}
++			if got := merged.DotCount(); got != 1 {
++				t.Fatalf("merged flag has %d active dots, want 1", got)
++			}
++		})
++	}
++}
++
++func TestEWFlagMergeObservedDisableClearsEnable(t *testing.T) {
++	tests := []struct {
++		name  string
++		merge func(enabled *EWFlag, disabled *EWFlag) *EWFlag
++	}{
++		{
++			name: "enabled replica merges observed disable",
++			merge: func(enabled *EWFlag, disabled *EWFlag) *EWFlag {
++				enabled.Merge(disabled)
++				return enabled
++			},
++		},
++		{
++			name: "disabled replica merges stale enable",
++			merge: func(enabled *EWFlag, disabled *EWFlag) *EWFlag {
++				disabled.Merge(enabled)
++				return disabled
++			},
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			enabled, disabled := observedDisable()
++
++			merged := tt.merge(enabled, disabled)
++
++			if merged.Value() {
++				t.Fatalf("merged flag is enabled, want disabled")
++			}
++			if got := merged.DotCount(); got != 0 {
++				t.Fatalf("merged flag has %d active dots, want 0", got)
++			}
++		})
++	}
++}
++
++func TestEWFlagMergeRepeatedMergesConverge(t *testing.T) {
++	tests := []struct {
++		name  string
++		setup func() (*EWFlag, *EWFlag)
++	}{
++		{
++			name:  "concurrent enable and disable",
++			setup: concurrentEnableAndDisable,
++		},
++		{
++			name:  "observed disable",
++			setup: observedDisable,
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			leftFirstA, leftFirstB := tt.setup()
++			leftFirstA.Merge(leftFirstB)
++			leftFirstB.Merge(leftFirstA)
++			leftFirst := snapshotEWFlag(leftFirstA)
++			assertEWFlagSnapshot(t, leftFirst, snapshotEWFlag(leftFirstB))
++
++			rightFirstA, rightFirstB := tt.setup()
++			rightFirstB.Merge(rightFirstA)
++			rightFirstA.Merge(rightFirstB)
++			rightFirst := snapshotEWFlag(rightFirstA)
++			assertEWFlagSnapshot(t, rightFirst, snapshotEWFlag(rightFirstB))
++			assertEWFlagSnapshot(t, leftFirst, rightFirst)
++
++			leftFirstA.Merge(leftFirstB)
++			leftFirstB.Merge(leftFirstA)
++			assertEWFlagSnapshot(t, leftFirst, snapshotEWFlag(leftFirstA))
++			assertEWFlagSnapshot(t, leftFirst, snapshotEWFlag(leftFirstB))
++
++			leftFirstA.Merge(leftFirstA)
++			assertEWFlagSnapshot(t, leftFirst, snapshotEWFlag(leftFirstA))
++		})
++	}
++}
++
++func concurrentEnableAndDisable() (*EWFlag, *EWFlag) {
++	enabled := NewEWFlag()
++	enabled.Enable("node-a")
++
++	disabled := NewEWFlag()
++	disabled.Disable()
++
++	return enabled, disabled
++}
++
++func observedDisable() (*EWFlag, *EWFlag) {
++	enabled := NewEWFlag()
++	enabled.Enable("node-a")
++
++	disabled := NewEWFlag()
++	disabled.Merge(enabled)
++	disabled.Disable()
++
++	return enabled, disabled
++}
++
++func snapshotEWFlag(f *EWFlag) ewflagSnapshot {
++	f.mu.RLock()
++	defer f.mu.RUnlock()
++
++	return ewflagSnapshot{
++		enabled:  len(f.dots) > 0,
++		dots:     cloneCounters(f.dots),
++		counters: cloneCounters(f.counters),
++	}
++}
++
++func cloneCounters(counters map[string]uint64) map[string]uint64 {
++	clone := make(map[string]uint64, len(counters))
++	for nodeID, counter := range counters {
++		clone[nodeID] = counter
++	}
++	return clone
++}
++
++func assertEWFlagSnapshot(t *testing.T, want ewflagSnapshot, got ewflagSnapshot) {
++	t.Helper()
++
++	if !reflect.DeepEqual(got, want) {
++		t.Fatalf("snapshot mismatch\ngot:  %#v\nwant: %#v", got, want)
++	}
++}
+diff --git a/base/pkg/crdt/ormap.go b/repo/pkg/crdt/ormap.go
+index 88368cc..4c3e811 100644
+--- a/base/pkg/crdt/ormap.go
++++ b/repo/pkg/crdt/ormap.go
+@@ -6,9 +6,9 @@ import "sync"
+ // Keys can be added and removed; add-wins semantics apply.
+ // Each key's value is resolved by last-writer-wins.
+ type ORMap struct {
+-	mu       sync.RWMutex
+-	keys     *ORSet
+-	values   map[string]*LWWRegister
++	mu     sync.RWMutex
++	keys   *ORSet
++	values map[string]*LWWRegister
+ }
+ 
+ // NewORMap creates an empty OR-Map.
+@@ -114,4 +114,4 @@ func (m *ORMap) Merge(other *ORMap) {
+ 		}
+ 		m.values[key].Merge(otherReg)
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/register.go b/repo/pkg/crdt/register.go
+index f96ebb0..7a30da9 100644
+--- a/base/pkg/crdt/register.go
++++ b/repo/pkg/crdt/register.go
+@@ -144,4 +144,4 @@ func (mv *MVRegister) Len() int {
+ 	mv.mu.RLock()
+ 	defer mv.mu.RUnlock()
+ 	return len(mv.entries)
+-}
+\ No newline at end of file
++}
+diff --git a/base/pkg/crdt/rga.go b/repo/pkg/crdt/rga.go
+index 8f03236..23c7e17 100644
+--- a/base/pkg/crdt/rga.go
++++ b/repo/pkg/crdt/rga.go
+@@ -4,10 +4,10 @@ import "sync"
+ 
+ // RGAElement represents a single element in the Replicated Growable Array.
+ type RGAElement struct {
+-	ID        RGAId
+-	Value     interface{}
+-	Deleted   bool
+-	Prev      *RGAId
++	ID      RGAId
++	Value   interface{}
++	Deleted bool
++	Prev    *RGAId
+ }
+ 
+ // RGAId uniquely identifies an element using a (nodeID, counter) pair.
+@@ -79,7 +79,9 @@ func (r *RGA) Delete(id RGAId) bool {
+ 	r.mu.Lock()
+ 	defer r.mu.Unlock()
+ 	idx, ok := r.index[id]
+-	if !ok { return false }
++	if !ok {
++		return false
++	}
+ 	r.elements[idx].Deleted = true
+ 	return true
+ }
+@@ -90,7 +92,9 @@ func (r *RGA) Values() []interface{} {
+ 	defer r.mu.RUnlock()
+ 	var result []interface{}
+ 	for _, e := range r.elements {
+-		if !e.Deleted { result = append(result, e.Value) }
++		if !e.Deleted {
++			result = append(result, e.Value)
++		}
+ 	}
+ 	return result
+ }
+@@ -101,7 +105,9 @@ func (r *RGA) Len() int {
+ 	defer r.mu.RUnlock()
+ 	count := 0
+ 	for _, e := range r.elements {
+-		if !e.Deleted { count++ }
++		if !e.Deleted {
++			count++
++		}
+ 	}
+ 	return count
+ }
+@@ -124,7 +130,9 @@ func (r *RGA) Merge(other *RGA) {
+ 	for _, e := range other.elements {
+ 		if _, exists := r.index[e.ID]; exists {
+ 			idx := r.index[e.ID]
+-			if e.Deleted { r.elements[idx].Deleted = true }
++			if e.Deleted {
++				r.elements[idx].Deleted = true
++			}
+ 			continue
+ 		}
+ 		r.index[e.ID] = len(r.elements)
+@@ -137,5 +145,7 @@ func (r *RGA) NodeID() string { return r.nodeID }
+ 
+ func (r *RGA) rebuildIndex() {
+ 	r.index = make(map[RGAId]int, len(r.elements))
+-	for i, e := range r.elements { r.index[e.ID] = i }
++	for i, e := range r.elements {
++		r.index[e.ID] = i
++	}
+ }
+diff --git a/base/pkg/crdt/set.go b/repo/pkg/crdt/set.go
+index 3b912b8..25bde89 100644
+--- a/base/pkg/crdt/set.go
++++ b/repo/pkg/crdt/set.go
+@@ -171,4 +171,4 @@ func (s *ORSet) Tags(elem string) []ORTag {
+ 		result = append(result, t)
+ 	}
+ 	return result
+-}
+\ No newline at end of file
++}

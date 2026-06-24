@@ -1,0 +1,257 @@
+diff --git a/base/pkg/crdt/ewflag.go b/repo/pkg/crdt/ewflag.go
+index 5e2aab3..12581ef 100644
+--- a/base/pkg/crdt/ewflag.go
++++ b/repo/pkg/crdt/ewflag.go
+@@ -43,22 +43,33 @@ func (f *EWFlag) Value() bool {
+ }
+ 
+ // Merge incorporates another EWFlag's state.
+-// For each node, the higher counter wins (enable-wins semantics).
++// Active dots are removed only when the other replica has observed that dot
++// and no longer carries it as active.
+ func (f *EWFlag) Merge(other *EWFlag) {
++	if f == other {
++		return
++	}
++
+ 	f.mu.Lock()
+ 	defer f.mu.Unlock()
+ 	other.mu.RLock()
+ 	defer other.mu.RUnlock()
+ 
+-	for nodeID := range f.dots {
+-		if _, ok := other.dots[nodeID]; !ok {
++	for nodeID, localDot := range f.dots {
++		otherDot, otherActive := other.dots[nodeID]
++		if (!otherActive || otherDot != localDot) && other.counters[nodeID] >= localDot {
+ 			delete(f.dots, nodeID)
+ 		}
+ 	}
+ 	for nodeID, otherDot := range other.dots {
+-		if localDot, ok := f.dots[nodeID]; !ok || otherDot > localDot {
+-			f.dots[nodeID] = otherDot
++		localDot, localActive := f.dots[nodeID]
++		if localActive && localDot >= otherDot {
++			continue
++		}
++		if (!localActive || localDot != otherDot) && f.counters[nodeID] >= otherDot {
++			continue
+ 		}
++		f.dots[nodeID] = otherDot
+ 	}
+ 	for nodeID, otherCounter := range other.counters {
+ 		if otherCounter > f.counters[nodeID] {
+diff --git a/repo/pkg/crdt/ewflag_test.go b/repo/pkg/crdt/ewflag_test.go
+new file mode 100644
+index 0000000..b19888e
+--- /dev/null
++++ b/repo/pkg/crdt/ewflag_test.go
+@@ -0,0 +1,208 @@
++package crdt
++
++import (
++	"fmt"
++	"reflect"
++	"testing"
++)
++
++func TestEWFlagMergeEnableWinsConcurrentDisable(t *testing.T) {
++	tests := []struct {
++		name  string
++		setup func() (*EWFlag, *EWFlag)
++	}{
++		{
++			name: "concurrent enable survives empty disable",
++			setup: func() (*EWFlag, *EWFlag) {
++				enabled := NewEWFlag()
++				disabled := NewEWFlag()
++
++				enabled.Enable("node-a")
++				disabled.Merge(enabled)
++
++				enabled.Enable("node-a")
++				disabled.Disable()
++
++				return enabled, disabled
++			},
++		},
++		{
++			name: "concurrent enable from unseen node survives empty disable",
++			setup: func() (*EWFlag, *EWFlag) {
++				enabled := NewEWFlag()
++				disabled := NewEWFlag()
++
++				enabled.Enable("node-a")
++				disabled.Disable()
++
++				return enabled, disabled
++			},
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			left, right := tt.setup()
++
++			leftFirst := cloneEWFlag(left)
++			leftFirst.Merge(cloneEWFlag(right))
++			if !leftFirst.Value() {
++				t.Fatal("merge with disable first disabled a concurrent enable")
++			}
++
++			rightFirst := cloneEWFlag(right)
++			rightFirst.Merge(cloneEWFlag(left))
++			if !rightFirst.Value() {
++				t.Fatal("merge with enable first failed to preserve concurrent enable")
++			}
++
++			assertSameEWFlagState(t, leftFirst, rightFirst)
++		})
++	}
++}
++
++func TestEWFlagMergeObservedDisableClearsEnable(t *testing.T) {
++	tests := []struct {
++		name  string
++		setup func() (*EWFlag, *EWFlag)
++	}{
++		{
++			name: "observed disable clears active dot",
++			setup: func() (*EWFlag, *EWFlag) {
++				enabled := NewEWFlag()
++				disabled := NewEWFlag()
++
++				enabled.Enable("node-a")
++				disabled.Merge(enabled)
++				disabled.Disable()
++
++				return enabled, disabled
++			},
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			left, right := tt.setup()
++
++			leftFirst := cloneEWFlag(left)
++			leftFirst.Merge(cloneEWFlag(right))
++			if leftFirst.Value() {
++				t.Fatal("merge kept an enable dot observed by a disable")
++			}
++
++			rightFirst := cloneEWFlag(right)
++			rightFirst.Merge(cloneEWFlag(left))
++			if rightFirst.Value() {
++				t.Fatal("merge resurrected an enable dot observed by a disable")
++			}
++
++			assertSameEWFlagState(t, leftFirst, rightFirst)
++		})
++	}
++}
++
++func TestEWFlagMergeIdempotentAndCommutative(t *testing.T) {
++	tests := []struct {
++		name  string
++		setup func() (*EWFlag, *EWFlag)
++	}{
++		{
++			name: "concurrent enable and disable",
++			setup: func() (*EWFlag, *EWFlag) {
++				enabled := NewEWFlag()
++				disabled := NewEWFlag()
++
++				enabled.Enable("node-a")
++				disabled.Merge(enabled)
++				enabled.Enable("node-a")
++				disabled.Disable()
++
++				return enabled, disabled
++			},
++		},
++		{
++			name: "observed disable",
++			setup: func() (*EWFlag, *EWFlag) {
++				enabled := NewEWFlag()
++				disabled := NewEWFlag()
++
++				enabled.Enable("node-a")
++				disabled.Merge(enabled)
++				disabled.Disable()
++
++				return enabled, disabled
++			},
++		},
++		{
++			name: "independent concurrent enables",
++			setup: func() (*EWFlag, *EWFlag) {
++				left := NewEWFlag()
++				right := NewEWFlag()
++
++				left.Enable("node-a")
++				right.Enable("node-b")
++
++				return left, right
++			},
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			left, right := tt.setup()
++
++			leftFirst := cloneEWFlag(left)
++			leftFirst.Merge(cloneEWFlag(right))
++			mergedOnce := snapshotEWFlag(leftFirst)
++			leftFirst.Merge(cloneEWFlag(right))
++			leftFirst.Merge(cloneEWFlag(right))
++			if got := snapshotEWFlag(leftFirst); !reflect.DeepEqual(got, mergedOnce) {
++				t.Fatalf("merge is not idempotent: once=%v repeated=%v", mergedOnce, got)
++			}
++
++			rightFirst := cloneEWFlag(right)
++			rightFirst.Merge(cloneEWFlag(left))
++			assertSameEWFlagState(t, leftFirst, rightFirst)
++		})
++	}
++}
++
++func cloneEWFlag(flag *EWFlag) *EWFlag {
++	flag.mu.RLock()
++	defer flag.mu.RUnlock()
++
++	clone := NewEWFlag()
++	for nodeID, dot := range flag.dots {
++		clone.dots[nodeID] = dot
++	}
++	for nodeID, counter := range flag.counters {
++		clone.counters[nodeID] = counter
++	}
++	return clone
++}
++
++func assertSameEWFlagState(t *testing.T, left, right *EWFlag) {
++	t.Helper()
++
++	leftState := snapshotEWFlag(left)
++	rightState := snapshotEWFlag(right)
++	if !reflect.DeepEqual(leftState, rightState) {
++		t.Fatalf("merged states differ: left=%v right=%v", leftState, rightState)
++	}
++}
++
++func snapshotEWFlag(flag *EWFlag) map[string]string {
++	flag.mu.RLock()
++	defer flag.mu.RUnlock()
++
++	state := make(map[string]string, len(flag.dots)+len(flag.counters)+1)
++	state["value"] = fmt.Sprintf("%t", len(flag.dots) > 0)
++	for nodeID, dot := range flag.dots {
++		state["dot:"+nodeID] = fmt.Sprintf("%d", dot)
++	}
++	for nodeID, counter := range flag.counters {
++		state["counter:"+nodeID] = fmt.Sprintf("%d", counter)
++	}
++	return state
++}

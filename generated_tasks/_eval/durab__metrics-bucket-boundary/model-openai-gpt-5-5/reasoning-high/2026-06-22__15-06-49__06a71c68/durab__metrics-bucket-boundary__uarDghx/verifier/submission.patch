@@ -1,0 +1,137 @@
+diff --git a/base/internal/engine/engine.go b/repo/internal/engine/engine.go
+index af4357a..67f6906 100644
+--- a/base/internal/engine/engine.go
++++ b/repo/internal/engine/engine.go
+@@ -284,4 +284,3 @@ func (e *Engine) ListWorkflows(ctx context.Context, f storage.WorkflowFilter) ([
+ 	}
+ 	return out, nil
+ }
+-
+diff --git a/base/internal/metrics/metrics.go b/repo/internal/metrics/metrics.go
+index 82466a1..a5c9f0c 100644
+--- a/base/internal/metrics/metrics.go
++++ b/repo/internal/metrics/metrics.go
+@@ -77,7 +77,7 @@ func (h *Histogram) Observe(v float64) {
+ 	h.sum += v
+ 	h.total++
+ 	for i, b := range h.buckets {
+-		if v < b {
++		if v <= b {
+ 			h.counts[i]++
+ 			return
+ 		}
+diff --git a/base/internal/metrics/trivial_test.go b/repo/internal/metrics/trivial_test.go
+index 10b59cc..4d90275 100644
+--- a/base/internal/metrics/trivial_test.go
++++ b/repo/internal/metrics/trivial_test.go
+@@ -28,3 +28,53 @@ func TestDefaultRegistry(t *testing.T) {
+ 	}
+ 	Default.NewCounter("default_counter_ok", "").Inc()
+ }
++
++func TestHistogramObserveBoundaryBuckets(t *testing.T) {
++	h := New().NewHistogram("histogram_boundary", "", []float64{1, 5, 10})
++
++	for _, v := range []float64{1, 5, 10} {
++		h.Observe(v)
++	}
++
++	wantCounts := []uint64{1, 1, 1}
++	if h.total != 3 {
++		t.Fatalf("total = %d, want 3", h.total)
++	}
++	for i, want := range wantCounts {
++		if h.counts[i] != want {
++			t.Fatalf("counts[%d] = %d, want %d; all counts = %v", i, h.counts[i], want, h.counts)
++		}
++	}
++	if overflowCount(h) != 0 {
++		t.Fatalf("overflow count = %d, want 0", overflowCount(h))
++	}
++}
++
++func TestHistogramObserveNearBoundaryAndOverflow(t *testing.T) {
++	h := New().NewHistogram("histogram_near_boundary", "", []float64{1, 5, 10})
++
++	for _, v := range []float64{0.5, 4.99, 10.01} {
++		h.Observe(v)
++	}
++
++	wantCounts := []uint64{1, 1, 0}
++	if h.total != 3 {
++		t.Fatalf("total = %d, want 3", h.total)
++	}
++	for i, want := range wantCounts {
++		if h.counts[i] != want {
++			t.Fatalf("counts[%d] = %d, want %d; all counts = %v", i, h.counts[i], want, h.counts)
++		}
++	}
++	if overflowCount(h) != 1 {
++		t.Fatalf("overflow count = %d, want 1", overflowCount(h))
++	}
++}
++
++func overflowCount(h *Histogram) uint64 {
++	var bucketed uint64
++	for _, count := range h.counts {
++		bucketed += count
++	}
++	return h.total - bucketed
++}
+diff --git a/base/internal/storage/memory.go b/repo/internal/storage/memory.go
+index fee492d..0096061 100644
+--- a/base/internal/storage/memory.go
++++ b/repo/internal/storage/memory.go
+@@ -349,5 +349,4 @@ func attrEqual(a, b any) bool {
+ 	return string(aj) == string(bj)
+ }
+ 
+-
+ var _ Store = (*Memory)(nil)
+diff --git a/base/internal/storage/sqlite.go b/repo/internal/storage/sqlite.go
+index 68ddaa2..b2b914c 100644
+--- a/base/internal/storage/sqlite.go
++++ b/repo/internal/storage/sqlite.go
+@@ -18,7 +18,6 @@ import (
+ 	"github.com/vishaljakhar/durab/pkg/types"
+ )
+ 
+-
+ //go:embed sqlite_schema.sql
+ var sqliteSchema string
+ 
+diff --git a/base/internal/wasm/host_workflow.go b/repo/internal/wasm/host_workflow.go
+index 59a6000..482f9e4 100644
+--- a/base/internal/wasm/host_workflow.go
++++ b/repo/internal/wasm/host_workflow.go
+@@ -182,4 +182,3 @@ func formatUUID(b [16]byte) string {
+ 	}
+ 	return string(out[:])
+ }
+-
+diff --git a/base/internal/wasm/testbuild.go b/repo/internal/wasm/testbuild.go
+index e50c965..d53978b 100644
+--- a/base/internal/wasm/testbuild.go
++++ b/repo/internal/wasm/testbuild.go
+@@ -200,7 +200,6 @@ func writeSLEB(out *bytes.Buffer, v int64) {
+ 	}
+ }
+ 
+-
+ func NewReadingWorkflowModule() []byte {
+ 	var out bytes.Buffer
+ 	out.Write([]byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00})
+@@ -268,4 +267,3 @@ func NewReadingWorkflowModule() []byte {
+ 
+ 	return out.Bytes()
+ }
+-
+diff --git a/base/internal/worker/worker.go b/repo/internal/worker/worker.go
+index 55c7c89..6c50485 100644
+--- a/base/internal/worker/worker.go
++++ b/repo/internal/worker/worker.go
+@@ -226,4 +226,3 @@ func (w *Worker) DescribeRegistered() (workflows, activities []string) {
+ 	}
+ 	return
+ }
+-

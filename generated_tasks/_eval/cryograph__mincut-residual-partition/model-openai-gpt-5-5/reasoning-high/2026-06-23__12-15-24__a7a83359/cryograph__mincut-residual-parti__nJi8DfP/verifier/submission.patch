@@ -1,0 +1,117 @@
+diff --git a/base/src/flow/flow.cpp b/repo/src/flow/flow.cpp
+index 909eba3..82ab91f 100644
+--- a/base/src/flow/flow.cpp
++++ b/repo/src/flow/flow.cpp
+@@ -123,7 +123,7 @@ MinCutResult min_cut(const Graph& g, NodeId source, NodeId sink) {
+         size_t u = bfs.front(); bfs.pop();
+         result.source_side.insert(ids[u]);
+         for (size_t v = 0; v < n; v++) {
+-            if (!visited[v] && capacity[u][v] > 1e-12) {
++            if (!visited[v] && capacity[u][v] - flow[u][v] > 1e-12) {
+                 visited[v] = true;
+                 bfs.push(v);
+             }
+@@ -146,4 +146,4 @@ double max_flow_value(const Graph& g, NodeId source, NodeId sink) {
+     return edmonds_karp(g, source, sink).max_flow;
+ }
+ 
+-} // namespace cryo
+\ No newline at end of file
++} // namespace cryo
+diff --git a/repo/tests/test_flow.cpp b/repo/tests/test_flow.cpp
+new file mode 100644
+index 0000000..bd46337
+--- /dev/null
++++ b/repo/tests/test_flow.cpp
+@@ -0,0 +1,91 @@
++#include "test_framework.hpp"
++#include "flow/flow.hpp"
++#include <unordered_set>
++
++using namespace cryo;
++using namespace cryo_test;
++
++static double cut_edge_weight_sum(const MinCutResult& cut) {
++    double sum = 0.0;
++    for (const auto& edge : cut.cut_edges) {
++        sum += edge.weight;
++    }
++    return sum;
++}
++
++static void assert_valid_min_cut_partition(const Graph& g,
++                                           const MinCutResult& cut,
++                                           NodeId source,
++                                           NodeId sink) {
++    assert_true(cut.source_side.count(source) == 1, "source must be on source side");
++    assert_true(cut.sink_side.count(sink) == 1, "sink must be on sink side");
++
++    std::unordered_set<NodeId> seen;
++    for (NodeId node : cut.source_side) {
++        assert_true(seen.insert(node).second, "duplicate node in source side");
++        assert_true(cut.sink_side.count(node) == 0, "node cannot be on both sides");
++    }
++    for (NodeId node : cut.sink_side) {
++        assert_true(seen.insert(node).second, "node cannot be on both sides");
++    }
++
++    assert_eq(seen.size(), g.node_count(), "every node must be assigned");
++
++    std::unordered_set<EdgeId> cut_edge_ids;
++    for (const auto& edge : cut.cut_edges) {
++        assert_true(cut_edge_ids.insert(edge.id).second, "cut edges must be unique");
++        assert_true(cut.source_side.count(edge.src) == 1, "cut edge source must be on source side");
++        assert_true(cut.sink_side.count(edge.dst) == 1, "cut edge destination must be on sink side");
++    }
++
++    g.for_each_edge([&](const Edge& edge) {
++        const bool crosses_cut = cut.source_side.count(edge.src) == 1 &&
++                                 cut.sink_side.count(edge.dst) == 1;
++        assert_eq(cut_edge_ids.count(edge.id), crosses_cut ? (size_t)1 : (size_t)0,
++                  "cut edges must exactly match original source-to-sink crossing edges");
++    });
++
++    assert_near(cut_edge_weight_sum(cut), cut.cut_value, 1e-9,
++                "cut edge weights must sum to cut value");
++}
++
++CRYO_TEST(Flow, MinCutUsesResidualReachability) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++
++    g.add_edge(0, 1, 1.0);
++    g.add_edge(1, 2, 1.0);
++    g.add_edge(2, 3, 2.0);
++
++    auto cut = min_cut(g, 0, 3);
++
++    assert_near(cut.cut_value, 1.0);
++    assert_valid_min_cut_partition(g, cut, 0, 3);
++    assert_eq(cut.source_side.size(), (size_t)1);
++    assert_true(cut.source_side.count(0) == 1);
++    assert_true(cut.sink_side.count(1) == 1);
++    assert_true(cut.sink_side.count(2) == 1);
++    assert_true(cut.sink_side.count(3) == 1);
++    assert_eq(cut.cut_edges.size(), (size_t)1);
++    assert_eq(cut.cut_edges[0].src, (NodeId)0);
++    assert_eq(cut.cut_edges[0].dst, (NodeId)1);
++}
++
++CRYO_TEST(Flow, MinCutDisconnectedNodesStayOnSinkSide) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 5; i++) g.add_node_with_id(i);
++
++    g.add_edge(0, 1, 3.0);
++    g.add_edge(3, 4, 2.0);
++
++    auto cut = min_cut(g, 0, 2);
++
++    assert_near(cut.cut_value, 0.0);
++    assert_valid_min_cut_partition(g, cut, 0, 2);
++    assert_true(cut.source_side.count(0) == 1);
++    assert_true(cut.source_side.count(1) == 1);
++    assert_true(cut.sink_side.count(2) == 1);
++    assert_true(cut.sink_side.count(3) == 1);
++    assert_true(cut.sink_side.count(4) == 1);
++    assert_eq(cut.cut_edges.size(), (size_t)0);
++}

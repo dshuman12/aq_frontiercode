@@ -1,0 +1,214 @@
+diff --git a/base/go.mod b/repo/go.mod
+index 5b2023d..f5be783 100644
+--- a/base/go.mod
++++ b/repo/go.mod
+@@ -1,8 +1,11 @@
+ module github.com/vishaljakhar/durab
+ 
+-go 1.22
++go 1.25.0
+ 
+-require modernc.org/sqlite v1.50.1
++require (
++	github.com/tetratelabs/wazero v1.11.0
++	modernc.org/sqlite v1.50.1
++)
+ 
+ require (
+ 	github.com/dustin/go-humanize v1.0.1 // indirect
+@@ -10,7 +13,6 @@ require (
+ 	github.com/mattn/go-isatty v0.0.20 // indirect
+ 	github.com/ncruces/go-strftime v1.0.0 // indirect
+ 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+-	github.com/tetratelabs/wazero v1.11.0 // indirect
+ 	golang.org/x/sys v0.42.0 // indirect
+ 	modernc.org/libc v1.72.3 // indirect
+ 	modernc.org/mathutil v1.7.1 // indirect
+diff --git a/base/internal/engine/engine.go b/repo/internal/engine/engine.go
+index af4357a..67f6906 100644
+--- a/base/internal/engine/engine.go
++++ b/repo/internal/engine/engine.go
+@@ -284,4 +284,3 @@ func (e *Engine) ListWorkflows(ctx context.Context, f storage.WorkflowFilter) ([
+ 	}
+ 	return out, nil
+ }
+-
+diff --git a/base/internal/metrics/metrics.go b/repo/internal/metrics/metrics.go
+index 82466a1..a5c9f0c 100644
+--- a/base/internal/metrics/metrics.go
++++ b/repo/internal/metrics/metrics.go
+@@ -77,7 +77,7 @@ func (h *Histogram) Observe(v float64) {
+ 	h.sum += v
+ 	h.total++
+ 	for i, b := range h.buckets {
+-		if v < b {
++		if v <= b {
+ 			h.counts[i]++
+ 			return
+ 		}
+diff --git a/base/internal/metrics/trivial_test.go b/repo/internal/metrics/trivial_test.go
+index 10b59cc..fab5e02 100644
+--- a/base/internal/metrics/trivial_test.go
++++ b/repo/internal/metrics/trivial_test.go
+@@ -1,6 +1,10 @@
+ package metrics
+ 
+-import "testing"
++import (
++	"strconv"
++	"strings"
++	"testing"
++)
+ 
+ func TestMetricAccessors(t *testing.T) {
+ 	r := New()
+@@ -28,3 +32,92 @@ func TestDefaultRegistry(t *testing.T) {
+ 	}
+ 	Default.NewCounter("default_counter_ok", "").Inc()
+ }
++
++func TestHistogramObserveBoundaryBuckets(t *testing.T) {
++	r := New()
++	h := r.NewHistogram("request_duration_seconds", "request duration", []float64{100, 1, 10})
++	observations := []float64{
++		0.5,   // below the smallest bound
++		1,     // exactly on the first bound
++		1.1,   // just above the first bound
++		9.9,   // just below the middle bound
++		10,    // exactly on the middle bound
++		10.1,  // just above the middle bound
++		99.9,  // just below the largest bound
++		100,   // exactly on the largest bound
++		100.1, // overflow
++	}
++
++	var wantSum float64
++	for _, observation := range observations {
++		h.Observe(observation)
++		wantSum += observation
++	}
++
++	got := readMetricValues(t, h)
++	want := map[string]float64{
++		`request_duration_seconds_bucket{le="1"}`:    2,
++		`request_duration_seconds_bucket{le="10"}`:   5,
++		`request_duration_seconds_bucket{le="100"}`:  8,
++		`request_duration_seconds_bucket{le="+Inf"}`: float64(len(observations)),
++		"request_duration_seconds_sum":               wantSum,
++		"request_duration_seconds_count":             float64(len(observations)),
++	}
++
++	for name, wantValue := range want {
++		if got[name] != wantValue {
++			t.Fatalf("%s = %v, want %v\nmetrics:\n%s", name, got[name], wantValue, writeMetric(h))
++		}
++	}
++}
++
++func readMetricValues(t *testing.T, m Metric) map[string]float64 {
++	t.Helper()
++
++	values := make(map[string]float64)
++	for _, line := range strings.Split(writeMetric(m), "\n") {
++		if line == "" || strings.HasPrefix(line, "#") {
++			continue
++		}
++		name, value, ok := strings.Cut(line, " ")
++		if !ok {
++			t.Fatalf("metric line %q missing value", line)
++		}
++		parsed, err := strconv.ParseFloat(value, 64)
++		if err != nil {
++			t.Fatalf("metric line %q has invalid value: %v", line, err)
++		}
++		values[name] = parsed
++	}
++	return values
++}
++
++func writeMetric(m Metric) string {
++	var b strings.Builder
++	m.Write(&b)
++	return b.String()
++}
++
++func TestHistogramObserveLargestBoundaryDoesNotOverflow(t *testing.T) {
++	r := New()
++	h := r.NewHistogram("payload_bytes", "payload size", []float64{1, 10})
++
++	h.Observe(10)
++
++	got := readMetricValues(t, h)
++	for name, want := range map[string]float64{
++		`payload_bytes_bucket{le="1"}`:    0,
++		`payload_bytes_bucket{le="10"}`:   1,
++		`payload_bytes_bucket{le="+Inf"}`: 1,
++		"payload_bytes_sum":               10,
++		"payload_bytes_count":             1,
++	} {
++		if got[name] != want {
++			t.Fatalf("%s = %v, want %v\nmetrics:\n%s", name, got[name], want, writeMetric(h))
++		}
++	}
++
++	if got[`payload_bytes_bucket{le="10"}`] != got[`payload_bytes_bucket{le="+Inf"}`] {
++		t.Fatalf("largest boundary observation overflowed:\n%s", writeMetric(h))
++	}
++}
+diff --git a/base/internal/storage/memory.go b/repo/internal/storage/memory.go
+index fee492d..0096061 100644
+--- a/base/internal/storage/memory.go
++++ b/repo/internal/storage/memory.go
+@@ -349,5 +349,4 @@ func attrEqual(a, b any) bool {
+ 	return string(aj) == string(bj)
+ }
+ 
+-
+ var _ Store = (*Memory)(nil)
+diff --git a/base/internal/storage/sqlite.go b/repo/internal/storage/sqlite.go
+index 68ddaa2..b2b914c 100644
+--- a/base/internal/storage/sqlite.go
++++ b/repo/internal/storage/sqlite.go
+@@ -18,7 +18,6 @@ import (
+ 	"github.com/vishaljakhar/durab/pkg/types"
+ )
+ 
+-
+ //go:embed sqlite_schema.sql
+ var sqliteSchema string
+ 
+diff --git a/base/internal/wasm/host_workflow.go b/repo/internal/wasm/host_workflow.go
+index 59a6000..482f9e4 100644
+--- a/base/internal/wasm/host_workflow.go
++++ b/repo/internal/wasm/host_workflow.go
+@@ -182,4 +182,3 @@ func formatUUID(b [16]byte) string {
+ 	}
+ 	return string(out[:])
+ }
+-
+diff --git a/base/internal/wasm/testbuild.go b/repo/internal/wasm/testbuild.go
+index e50c965..d53978b 100644
+--- a/base/internal/wasm/testbuild.go
++++ b/repo/internal/wasm/testbuild.go
+@@ -200,7 +200,6 @@ func writeSLEB(out *bytes.Buffer, v int64) {
+ 	}
+ }
+ 
+-
+ func NewReadingWorkflowModule() []byte {
+ 	var out bytes.Buffer
+ 	out.Write([]byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00})
+@@ -268,4 +267,3 @@ func NewReadingWorkflowModule() []byte {
+ 
+ 	return out.Bytes()
+ }
+-
+diff --git a/base/internal/worker/worker.go b/repo/internal/worker/worker.go
+index 55c7c89..6c50485 100644
+--- a/base/internal/worker/worker.go
++++ b/repo/internal/worker/worker.go
+@@ -226,4 +226,3 @@ func (w *Worker) DescribeRegistered() (workflows, activities []string) {
+ 	}
+ 	return
+ }
+-

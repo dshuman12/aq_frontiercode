@@ -1,0 +1,124 @@
+diff --git a/repo/internal/metrics/histogram_test.go b/repo/internal/metrics/histogram_test.go
+new file mode 100644
+index 0000000..e23fdd2
+--- /dev/null
++++ b/repo/internal/metrics/histogram_test.go
+@@ -0,0 +1,105 @@
++package metrics
++
++import (
++	"math"
++	"reflect"
++	"strconv"
++	"strings"
++	"testing"
++)
++
++func TestHistogramObserveCountsBoundaryValuesInMatchingBucket(t *testing.T) {
++	r := New()
++	h := r.NewHistogram("boundary_histogram", "boundary help", []float64{1, 2.5, 5})
++
++	for _, observation := range []float64{1, 2.5, 5} {
++		h.Observe(observation)
++	}
++
++	samples := collectHistogramSamples(t, h)
++	assertHistogramSamples(t, samples, map[string]uint64{
++		"1":    1,
++		"2.5":  2,
++		"5":    3,
++		"+Inf": 3,
++	}, 3, 8.5)
++}
++
++func TestHistogramObserveKeepsAdjacentAndOverflowPlacement(t *testing.T) {
++	r := New()
++	h := r.NewHistogram("adjacent_histogram", "adjacent help", []float64{1, 2, 4})
++
++	for _, observation := range []float64{0.999, 1.001, 3.999, 4.001, 10} {
++		h.Observe(observation)
++	}
++
++	samples := collectHistogramSamples(t, h)
++	assertHistogramSamples(t, samples, map[string]uint64{
++		"1":    1,
++		"2":    2,
++		"4":    3,
++		"+Inf": 5,
++	}, 5, 20)
++}
++
++type histogramSamples struct {
++	buckets map[string]uint64
++	count   uint64
++	sum     float64
++}
++
++func collectHistogramSamples(t *testing.T, h *Histogram) histogramSamples {
++	t.Helper()
++
++	var b strings.Builder
++	h.Write(&b)
++
++	samples := histogramSamples{buckets: make(map[string]uint64)}
++	bucketPrefix := h.name + `_bucket{le="`
++
++	for _, line := range strings.Split(b.String(), "\n") {
++		fields := strings.Fields(line)
++		if len(fields) != 2 {
++			continue
++		}
++
++		switch {
++		case strings.HasPrefix(fields[0], bucketPrefix):
++			le := strings.TrimPrefix(fields[0], bucketPrefix)
++			le = strings.TrimSuffix(le, `"}`)
++			value, err := strconv.ParseUint(fields[1], 10, 64)
++			if err != nil {
++				t.Fatalf("parse bucket value from %q: %v", line, err)
++			}
++			samples.buckets[le] = value
++		case fields[0] == h.name+"_count":
++			value, err := strconv.ParseUint(fields[1], 10, 64)
++			if err != nil {
++				t.Fatalf("parse count from %q: %v", line, err)
++			}
++			samples.count = value
++		case fields[0] == h.name+"_sum":
++			value, err := strconv.ParseFloat(fields[1], 64)
++			if err != nil {
++				t.Fatalf("parse sum from %q: %v", line, err)
++			}
++			samples.sum = value
++		}
++	}
++
++	return samples
++}
++
++func assertHistogramSamples(t *testing.T, got histogramSamples, wantBuckets map[string]uint64, wantCount uint64, wantSum float64) {
++	t.Helper()
++
++	if !reflect.DeepEqual(got.buckets, wantBuckets) {
++		t.Fatalf("buckets = %#v, want %#v", got.buckets, wantBuckets)
++	}
++	if got.count != wantCount {
++		t.Fatalf("count = %d, want %d", got.count, wantCount)
++	}
++	if math.Abs(got.sum-wantSum) > 1e-9 {
++		t.Fatalf("sum = %v, want %v", got.sum, wantSum)
++	}
++}
+diff --git a/base/internal/metrics/metrics.go b/repo/internal/metrics/metrics.go
+index 82466a1..a5c9f0c 100644
+--- a/base/internal/metrics/metrics.go
++++ b/repo/internal/metrics/metrics.go
+@@ -77,7 +77,7 @@ func (h *Histogram) Observe(v float64) {
+ 	h.sum += v
+ 	h.total++
+ 	for i, b := range h.buckets {
+-		if v < b {
++		if v <= b {
+ 			h.counts[i]++
+ 			return
+ 		}
