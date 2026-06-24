@@ -202,23 +202,62 @@ function trialSearchText(trial) {
   ].join(" ").toLowerCase();
 }
 
+// Ground-truth category from the server (best effort of latest 5-trial run, frontier model).
+// Falls back to the old pooled calc only if the server predates the fix.
+function taskCategory(task) {
+  if (task.gt && task.gt.category) return task.gt.category;
+  return categoryOf(getTaskTrials(task));
+}
+
 function taskMatchesFilter(task, trials) {
-  if (state.filter === "pass") return trials.some((trial) => trial.pass);
-  if (state.filter === "fail") return trials.some((trial) => !trial.pass);
   if (state.filter === "unrun") return trials.length === 0;
+  if (state.filter === "indist" || state.filter === "outdist") {
+    if (!trials.length) return false; // no runs -> use the "unrun" filter
+    return taskCategory(task) === state.filter;
+  }
   return true;
+}
+
+function taskMatchesQuery(task, trials, query) {
+  if (!query) return true;
+  const taskText = [task.title, task.name, task.description, task.key, task.dockerImage].join(" ").toLowerCase();
+  return taskText.includes(query) || trials.some((trial) => trialSearchText(trial).includes(query));
+}
+
+function categoryOf(trials) {
+  if (!trials.length) return "unrun";
+  const passRate = trials.filter((trial) => trial.pass).length / trials.length;
+  if (passRate > 0 && passRate < 1) return "indist";
+  return "outdist"; // 0% or 100%
 }
 
 function filteredTasks() {
   const query = state.query.trim().toLowerCase();
   return state.overview.tasks.filter((task) => {
-    const trials = task.trialIds
-      .map((id) => state.overview.trials.find((trial) => trial.id === id))
-      .filter(Boolean);
-    if (!taskMatchesFilter(task, trials)) return false;
-    if (!query) return true;
-    const taskText = [task.title, task.name, task.description, task.key, task.dockerImage].join(" ").toLowerCase();
-    return taskText.includes(query) || trials.some((trial) => trialSearchText(trial).includes(query));
+    const trials = getTaskTrials(task);
+    return taskMatchesFilter(task, trials) && taskMatchesQuery(task, trials, query);
+  });
+}
+
+const FILTER_LABELS = { all: "All", indist: "In Dist", outdist: "Out of Dist", unrun: "Unrun" };
+
+function categoryCounts() {
+  const query = state.query.trim().toLowerCase();
+  const counts = { all: 0, indist: 0, outdist: 0, unrun: 0 };
+  for (const task of state.overview.tasks) {
+    const trials = getTaskTrials(task);
+    if (!taskMatchesQuery(task, trials, query)) continue;
+    counts.all += 1;
+    counts[trials.length ? taskCategory(task) : "unrun"] += 1;
+  }
+  return counts;
+}
+
+function renderFilterCounts() {
+  const counts = categoryCounts();
+  document.querySelectorAll(".segmented button[data-filter]").forEach((button) => {
+    const f = button.dataset.filter;
+    button.innerHTML = `${FILTER_LABELS[f] || f} <span class="filter-count">${counts[f] ?? 0}</span>`;
   });
 }
 
@@ -253,23 +292,38 @@ function renderSummary() {
   `).join("");
 }
 
+function taskItemHtml(task) {
+  const trials = getTaskTrials(task);
+  const isActive = task.id === state.selectedTaskId || trials.some((trial) => trial.id === state.selectedTrialId);
+  const statusClass = task.runCount === 0 ? "neutral" : task.failCount > 0 ? "fail" : "pass";
+  const statusText = task.runCount === 0 ? "No Runs" : `${task.passCount}/${task.runCount} Pass`;
+  return `
+    <button class="task-item ${isActive ? "active" : ""}" type="button" data-task-id="${task.id}">
+      <div class="task-title-row">
+        <h3 class="task-title">${escapeHtml(task.title)}</h3>
+        <span class="badge ${statusClass}">${escapeHtml(statusText)}</span>
+      </div>
+      <p class="task-description">${escapeHtml(task.description || task.key)}</p>
+    </button>
+  `;
+}
+
 function renderTaskList() {
+  renderFilterCounts();
+  renderDistributions();
   const tasks = filteredTasks();
-  $("#taskList").innerHTML = tasks.map((task) => {
-    const trials = getTaskTrials(task);
-    const isActive = task.id === state.selectedTaskId || trials.some((trial) => trial.id === state.selectedTrialId);
-    const statusClass = task.runCount === 0 ? "neutral" : task.failCount > 0 ? "fail" : "pass";
-    const statusText = task.runCount === 0 ? "No Runs" : `${task.passCount}/${task.runCount} Pass`;
-    return `
-      <button class="task-item ${isActive ? "active" : ""}" type="button" data-task-id="${task.id}">
-        <div class="task-title-row">
-          <h3 class="task-title">${escapeHtml(task.title)}</h3>
-          <span class="badge ${statusClass}">${escapeHtml(statusText)}</span>
-        </div>
-        <p class="task-description">${escapeHtml(task.description || task.key)}</p>
-      </button>
-    `;
-  }).join("") || `<div class="empty-state">No matching tasks.</div>`;
+  const emptyState = `<div class="empty-state">No matching tasks.</div>`;
+  if (state.filter === "outdist") {
+    const rate = (t) => (t.runCount ? t.passCount / t.runCount : -1);
+    const section = (label, list) => list.length
+      ? `<div class="list-subheader">${label} <span class="filter-count">${list.length}</span></div>${list.map(taskItemHtml).join("")}`
+      : "";
+    const zero = section("0%", tasks.filter((t) => rate(t) === 0));
+    const full = section("100%", tasks.filter((t) => rate(t) >= 1));
+    $("#taskList").innerHTML = (zero + full) || emptyState;
+  } else {
+    $("#taskList").innerHTML = tasks.map(taskItemHtml).join("") || emptyState;
+  }
 
   document.querySelectorAll(".task-item").forEach((button) => {
     button.addEventListener("click", () => selectTask(button.dataset.taskId, { focus: true }));
@@ -940,6 +994,78 @@ async function renderTabPanel() {
   }
 
   panel.innerHTML = `<div class="empty-state">Unknown tab.</div>`;
+}
+
+function languageOf(task) {
+  const img = (task.dockerImage || "").toLowerCase();
+  if (img.startsWith("golang") || img.includes("/go:")) return "Go";
+  if (img.startsWith("python")) return "Python";
+  if (img.startsWith("gcc") || img.startsWith("g++")) return "C++";
+  if (img.startsWith("node")) return "JS/TS";
+  if (img.includes("maven") || img.includes("temurin") || img.includes("jdk") || img.includes("openjdk")) return "Java";
+  if (img.includes("rust")) return "Rust";
+  return "Other";
+}
+
+function meanScore(trials) {
+  const scored = trials.filter((trial) => typeof trial.score === "number");
+  if (!scored.length) return null;
+  return scored.reduce((sum, trial) => sum + trial.score, 0) / scored.length;
+}
+
+function distChart(title, labels, values) {
+  const total = values.reduce((a, b) => a + b, 0);
+  const max = Math.max(1, ...values);
+  const rows = labels.map((label, i) => {
+    const v = values[i];
+    const pct = Math.round((v / max) * 100);
+    return `
+      <div class="dist-row">
+        <span class="dist-label">${escapeHtml(label)}</span>
+        <span class="dist-bar"><span class="dist-fill" style="width:${pct}%"></span></span>
+        <span class="dist-value">${v}</span>
+      </div>`;
+  }).join("");
+  return `
+    <div class="dist-card">
+      <div class="dist-title">${escapeHtml(title)} <span class="dist-total">n=${total}</span></div>
+      ${rows}
+    </div>`;
+}
+
+function renderDistributions() {
+  const el = $("#distributions");
+  if (!el) return;
+  if (state.filter !== "indist") { el.innerHTML = ""; return; } // only on the In Dist tab
+  const inDist = state.overview.tasks
+    .map((task) => ({ task, trials: getTaskTrials(task) }))
+    .filter(({ task }) => taskCategory(task) === "indist");
+  if (!inDist.length) {
+    el.innerHTML = `<div class="dist-empty">No in-dist tasks yet (pass rate strictly between 0% and 100%).</div>`;
+    return;
+  }
+  const prLabels = ["0–20%", "20–40%", "40–60%", "60–80%", "80–100%"];
+  const scLabels = ["0–0.2", "0.2–0.4", "0.4–0.6", "0.6–0.8", "0.8–1.0"];
+  const prBins = [0, 0, 0, 0, 0];
+  const scBins = [0, 0, 0, 0, 0];
+  const langCounts = {};
+  for (const { task, trials } of inDist) {
+    // Ground-truth pass rate / score (best effort, latest run, frontier model); fall back to pooled.
+    const pr = task.gt?.passRate ?? (task.passCount / task.runCount);
+    prBins[Math.min(4, Math.floor(pr * 5))] += 1;
+    const sc = task.gt?.score ?? meanScore(trials);
+    if (sc != null) scBins[Math.min(4, Math.floor(Math.max(0, Math.min(0.999999, sc)) * 5))] += 1;
+    const lang = languageOf(task);
+    langCounts[lang] = (langCounts[lang] || 0) + 1;
+  }
+  const langLabels = Object.keys(langCounts).sort((a, b) => langCounts[b] - langCounts[a]);
+  el.innerHTML = `
+    <div class="dist-head">In-Dist Distributions <span class="dist-count">${inDist.length} tasks</span></div>
+    <div class="dist-grid">
+      ${distChart("Pass rate", prLabels, prBins)}
+      ${distChart("Score (mean)", scLabels, scBins)}
+      ${distChart("Language", langLabels, langLabels.map((l) => langCounts[l]))}
+    </div>`;
 }
 
 function render() {

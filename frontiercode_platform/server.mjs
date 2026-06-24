@@ -239,8 +239,13 @@ function clampScore(value) {
 }
 
 function weightedCriterionScore(result) {
-  const fallback = typeof result.score === "number" ? result.score : null;
   const criteria = Array.isArray(result.criteria_results) ? result.criteria_results : [];
+  // FrontierCode ground truth: a solution that fails any blocker criterion receives score 0.
+  const blockerFailed =
+    (Array.isArray(result.blocker_failures) && result.blocker_failures.length > 0) ||
+    criteria.some((criterion) => criterion.blocker && !criterion.passed);
+  if (blockerFailed) return 0;
+  const fallback = typeof result.score === "number" ? result.score : null;
   if (!criteria.length) return fallback;
 
   let scoreTotal = 0;
@@ -553,6 +558,88 @@ async function scanTrials(aliases) {
   return trials.sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
 }
 
+// Frontier-solver preference for the per-task in-dist categorization (ground truth reports per model).
+const FRONTIER_MODEL_PREF = [
+  "openai/gpt-5.5", "gpt-5.5", "openai-gpt-5-5",
+  "anthropic/gpt-5.5", "anthropic-gpt-5-5", "openai/gpt-5", "openai-gpt-5",
+];
+
+function trialCellKeys(trial) {
+  const parts = String(trial.trialPath || "").split("/");
+  const effIdx = parts.findIndex((s) => s.startsWith("reasoning-"));
+  const modelIdx = parts.findIndex((s) => s.startsWith("model-"));
+  const model = trial.model || (modelIdx >= 0 ? parts[modelIdx].slice("model-".length) : "unknown");
+  const effort = trial.reasoningEffort || (effIdx >= 0 ? parts[effIdx].slice("reasoning-".length) : "default");
+  // The harbor run dir (timestamp__hash) sits right after the reasoning- segment; used to de-pool reruns.
+  const run = (effIdx >= 0 && parts[effIdx + 1]) ? parts[effIdx + 1] : (parts[parts.length - 2] || "run");
+  return { model, effort, run };
+}
+
+// Runs older than this before a task's newest run are treated as stale (e.g. from a previous
+// version of the task, before it was regenerated) and excluded from categorization.
+const STALE_RUN_WINDOW_MS = 12 * 60 * 60 * 1000;
+
+// Harbor run dirs look like "2026-06-23__17-14-36__hash"; parse to epoch ms for staleness checks.
+function parseRunTime(run) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})__(\d{2})-(\d{2})-(\d{2})/.exec(run || "");
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null;
+}
+
+// FrontierCode ground truth: per (model, effort) take the STRONGEST run (most trials, latest as
+// tiebreak so a 1-trial probe can't override a 5-trial calibration), report each model at its
+// best effort, categorize on the frontier model. Runs older than STALE_RUN_WINDOW_MS before the
+// task's newest run are dropped so pre-regeneration results can't mis-categorize a task.
+function groundTruthStats(trials) {
+  const valid = trials.filter((t) => t && !t.error && typeof t.pass === "boolean");
+  if (!valid.length) {
+    return { category: "unrun", passRate: null, score: null, nTrials: 0, model: null, effort: null, perModel: [], staleDropped: 0 };
+  }
+  const enriched = valid.map((t) => { const k = trialCellKeys(t); return { t, model: k.model, effort: k.effort, run: k.run, rt: parseRunTime(k.run) }; });
+  const times = enriched.map((e) => e.rt).filter((x) => x != null);
+  const newest = times.length ? Math.max(...times) : null;
+  const fresh = newest == null ? enriched : enriched.filter((e) => e.rt == null || newest - e.rt <= STALE_RUN_WINDOW_MS);
+
+  const byModel = new Map();
+  for (const e of fresh) {
+    if (!byModel.has(e.model)) byModel.set(e.model, new Map());
+    const byEffort = byModel.get(e.model);
+    if (!byEffort.has(e.effort)) byEffort.set(e.effort, new Map());
+    const byRun = byEffort.get(e.effort);
+    if (!byRun.has(e.run)) byRun.set(e.run, []);
+    byRun.get(e.run).push(e.t);
+  }
+  const perModel = [];
+  for (const [model, byEffort] of byModel) {
+    let best = null;
+    for (const [effort, byRun] of byEffort) {
+      // strongest run for this cell: most trials, latest run as tiebreak
+      const runKey = [...byRun.keys()].sort((a, b) => (byRun.get(b).length - byRun.get(a).length) || (a < b ? 1 : -1))[0];
+      const cell = byRun.get(runKey);
+      const n = cell.length;
+      const passRate = cell.filter((t) => t.pass).length / n;
+      const scored = cell.filter((t) => typeof t.score === "number");
+      const score = scored.length ? scored.reduce((a, t) => a + t.score, 0) / scored.length : null;
+      const cand = { effort, passRate, score, nTrials: n, run: runKey };
+      const cs = cand.score ?? -1;
+      const bs = best?.score ?? -1;
+      if (!best || cs > bs || (cs === bs && cand.passRate > best.passRate)) best = cand;
+    }
+    perModel.push({ model, effort: best.effort, passRate: best.passRate, score: best.score, nTrials: best.nTrials });
+  }
+  let primary = null;
+  for (const pref of FRONTIER_MODEL_PREF) {
+    primary = perModel.find((m) => m.model === pref || m.model === pref.replace(/\//g, "-"));
+    if (primary) break;
+  }
+  if (!primary) primary = perModel.slice().sort((a, b) => b.nTrials - a.nTrials)[0];
+  const passRate = primary.passRate;
+  const category = passRate > 0 && passRate < 1 ? "indist" : "outdist";
+  return {
+    category, passRate, score: primary.score, nTrials: primary.nTrials,
+    model: primary.model, effort: primary.effort, perModel, staleDropped: enriched.length - fresh.length,
+  };
+}
+
 async function scanOverview() {
   const { tasks, aliases } = await scanTasks();
   const trials = await scanTrials(aliases);
@@ -571,11 +658,15 @@ async function scanOverview() {
     task.failCount = taskTrials.filter((trial) => !trial.pass).length;
     task.bestScore = scoredTrials.length ? Math.max(...scoredTrials.map((trial) => trial.score)) : null;
     task.latestStartedAt = taskTrials.map((trial) => trial.startedAt).filter(Boolean).sort().at(-1) || "";
+    // Ground-truth aggregation (best effort of latest 5-trial run, frontier model) for in-dist categorization.
+    task.gt = groundTruthStats(taskTrials);
   }
 
   const criteriaTotal = trials.reduce((sum, trial) => sum + trial.criteriaTotal, 0);
   const criteriaPassed = trials.reduce((sum, trial) => sum + trial.criteriaPassed, 0);
   const passedTrials = trials.filter((trial) => trial.pass).length;
+  const gtCounts = { indist: 0, outdist: 0, unrun: 0 };
+  for (const task of tasks) gtCounts[task.gt?.category || "unrun"] += 1;
 
   return {
     root: ROOT_DIR,
@@ -587,6 +678,8 @@ async function scanOverview() {
       passedTrials,
       failedTrials: trials.length - passedTrials,
       passRate: trials.length ? passedTrials / trials.length : 0,
+      indistTasks: gtCounts.indist,
+      outdistTasks: gtCounts.outdist,
       criteriaTotal,
       criteriaPassed,
       criteriaFailed: criteriaTotal - criteriaPassed
