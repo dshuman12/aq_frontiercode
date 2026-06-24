@@ -58,9 +58,21 @@ SKIP_DIRS = {
     "dist",
     "node_modules",
     "venv",
+    # build/test artifacts that agents regenerate and that pollute scope/diffs
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".turbo",
+    ".cache",
+    ".parcel-cache",
+    ".angular",
+    "coverage",
+    "out",
+    "target",
+    ".gradle",
 }
-SKIP_FILES = {".DS_Store"}
-SKIP_FILE_SUFFIXES = (".log", ".pyc")
+SKIP_FILES = {".DS_Store", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "next-env.d.ts", ".eslintcache"}
+SKIP_FILE_SUFFIXES = (".log", ".pyc", ".tsbuildinfo", ".class")
 SKIP_PATH_PREFIXES = ("dist/", "frontend/dist/", "server/logs/")
 DEFAULT_INSTRUCTION_MODEL = "anthropic/opus-4.8"
 DEFAULT_BASE_URL = "https://api.aqinference.com/v1"
@@ -227,9 +239,21 @@ SKIP_DIRS = {
     "dist",
     "node_modules",
     "venv",
+    # build/test artifacts that agents regenerate and that pollute scope/diffs
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".turbo",
+    ".cache",
+    ".parcel-cache",
+    ".angular",
+    "coverage",
+    "out",
+    "target",
+    ".gradle",
 }
-SKIP_FILES = {".DS_Store"}
-SKIP_FILE_SUFFIXES = (".log", ".pyc")
+SKIP_FILES = {".DS_Store", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "next-env.d.ts", ".eslintcache"}
+SKIP_FILE_SUFFIXES = (".log", ".pyc", ".tsbuildinfo", ".class")
 SKIP_PATH_PREFIXES = ("dist/", "frontend/dist/", "server/logs/")
 TEST_PATH_RE = re.compile(
     r"(^|/)(__tests__|tests?|specs?)(/|$)|"
@@ -366,6 +390,9 @@ def build_result_doc(spec: dict, results: list[dict]) -> dict:
         if score_total
         else 0.0
     )
+    # FrontierCode ground truth: a solution that fails any blocker criterion receives score 0.
+    if blocker_failures:
+        score = 0.0
     category_counts: dict[str, dict[str, int]] = {}
     for result in results:
         counts = category_counts.setdefault(result["category"], {"passed": 0, "total": 0})
@@ -427,6 +454,7 @@ def check_hidden_reference_tests_pass(repo: Path, script_dir: Path, spec: dict) 
     with tempfile.TemporaryDirectory(prefix="frontiercode-hidden-tests-") as tmp:
         workdir = Path(tmp) / "repo"
         copy_repo(repo, workdir)
+        link_node_modules(repo, workdir)
         overlay_reference_tests(script_dir, workdir, reference_files)
         return run_visible_command(workdir, spec, "hidden reference tests")
 
@@ -442,6 +470,7 @@ def check_submitted_tests_fail_on_base(repo: Path, script_dir: Path, spec: dict)
     with tempfile.TemporaryDirectory(prefix="frontiercode-reverse-classical-") as tmp:
         workdir = Path(tmp) / "repo"
         copy_repo(base_repo, workdir)
+        link_node_modules(repo, workdir)
         for rel in submitted_tests:
             target = workdir / rel
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -460,6 +489,7 @@ def check_visible_regression_tests_pass(repo: Path, _: Path, spec: dict) -> tupl
     with tempfile.TemporaryDirectory(prefix="frontiercode-visible-tests-") as tmp:
         workdir = Path(tmp) / "repo"
         copy_repo(repo, workdir)
+        link_node_modules(repo, workdir)
         return run_visible_command(workdir, spec, "visible regression command")
 
 
@@ -514,6 +544,14 @@ def run_visible_command(workdir: Path, spec: dict, label: str) -> tuple[bool, st
         return False, "No visible test command was generated."
     env = os.environ.copy()
     env.setdefault("CI", "1")
+    # Repo packages are not pip-installed in the grading copy, and the repo is copied to a
+    # temp dir before the command runs, so a build-time editable install would point at the
+    # wrong source. Put the repo root (and src/) on PYTHONPATH so `import <pkg>` resolves the
+    # copied/patched source -- the same effect as `python -m pytest`.
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in [str(workdir), str(workdir / "src"), existing_pp] if p
+    )
     try:
         result = subprocess.run(
             command,
@@ -551,6 +589,27 @@ def copy_repo(source: Path, target: Path) -> None:
         ignore=repo_ignore(source),
         dirs_exist_ok=False,
     )
+
+
+def link_node_modules(deps_repo: Path, workdir: Path) -> None:
+    """node_modules is excluded from the copied test workdir (it is in SKIP_DIRS for diffing),
+    so JS test runners (jest/vitest/...) can't be resolved. Symlink the installed node_modules
+    from the live repo into each package dir of the workdir so `npm test` finds them."""
+    try:
+        for pj in workdir.rglob("package.json"):
+            pkg_dir = pj.parent
+            rel = pkg_dir.relative_to(workdir)
+            if "node_modules" in rel.parts:
+                continue
+            src_nm = deps_repo / rel / "node_modules"
+            link = pkg_dir / "node_modules"
+            if src_nm.is_dir() and not link.exists():
+                try:
+                    link.symlink_to(src_nm.resolve(), target_is_directory=True)
+                except OSError:
+                    pass
+    except OSError:
+        pass
 
 
 def repo_ignore(source: Path):
@@ -1566,6 +1625,8 @@ def create_task_files(
     instruction_text = generate_instruction_markdown(
         row=row,
         repo=env_repo,
+        source_repo=source_repo,
+        fix_commit=fix_commit,
         changed_paths=changed_paths,
         reference_test_files=reference_test_files,
         visible_command=visible_command,
@@ -1626,6 +1687,8 @@ def generate_instruction_markdown(
     timeout_seconds: int,
     max_context_chars: int,
     progress: Progress,
+    source_repo: Path | None = None,
+    fix_commit: str = "",
 ) -> str:
     api_key = os.environ.get("QA_API_KEY", "").strip()
     if not api_key:
@@ -1642,6 +1705,8 @@ def generate_instruction_markdown(
             visible_command=visible_command,
             max_context_chars=max_context_chars,
             validation_feedback=validation_feedback,
+            source_repo=source_repo,
+            fix_commit=fix_commit,
         )
         payload = {
             "model": normalized_model,
@@ -1690,6 +1755,22 @@ def generate_instruction_markdown(
     raise RuntimeError("instruction generation failed unexpectedly")
 
 
+def reference_test_spec(source_repo: Path | None, fix_commit: str, reference_test_files: list[str],
+                        max_chars: int = 6000) -> str:
+    """Concatenated content of the hidden reference tests (read from the fix commit). Used PRIVATELY
+    to anchor the instruction to what the tests actually check -- never emitted to the agent."""
+    if not source_repo or not fix_commit:
+        return ""
+    chunks = []
+    for rel in reference_test_files:
+        try:
+            data = git_show_bytes(source_repo, fix_commit, rel).decode("utf-8", "ignore")
+        except Exception:
+            continue
+        chunks.append(f"### {rel}\n{data}")
+    return "\n\n".join(chunks)[:max_chars]
+
+
 def build_instruction_prompt(
     *,
     row: dict[str, str],
@@ -1699,6 +1780,8 @@ def build_instruction_prompt(
     visible_command: str,
     max_context_chars: int,
     validation_feedback: str = "",
+    source_repo: Path | None = None,
+    fix_commit: str = "",
 ) -> tuple[str, str]:
     system_prompt = (
         "You write concise FrontierCode Harbor instruction.md files for coding agents. "
@@ -1778,6 +1861,23 @@ Task row:
 Public repository context:
 {context}
 """.strip()
+    test_spec = reference_test_spec(source_repo, fix_commit, reference_test_files)
+    if test_spec:
+        user_prompt += f"""
+
+Hidden acceptance spec (PRIVATE -- the solution is graded against these tests, which the agent never sees):
+Derive the task's required contract from them: the exact functions/methods to add or change, their
+signatures and return types, the modules/files involved, and the edge cases asserted. Your
+# Task description MUST name and describe those behaviors so an agent following ONLY your instruction
+would satisfy these tests. This is the single most important requirement -- if these tests exercise
+APIs your instruction never mentions, the task is unsolvable.
+AUTHORITATIVE: if the bug/task description or commit subject above conflicts with or omits what these
+tests exercise, THESE TESTS WIN -- describe the behavior/modules/APIs they actually check, even if that
+differs from the commit subject (commits are often multi-part and the subject names only one piece).
+Do NOT copy test code, restate assertions verbatim, name test files, or otherwise reveal these tests exist.
+
+{test_spec}
+"""
     if validation_feedback:
         user_prompt += (
             "\n\nPrevious draft validation failed. Regenerate from scratch and fix this issue: "
@@ -2106,13 +2206,39 @@ def render_dockerfile(repo: Path, visible_command: str) -> str:
         "    for req in requirements.txt server/requirements.txt; do \\",
         "      if [ -f \"$req\" ] && command -v python3 >/dev/null 2>&1; then python3 -m pip install --break-system-packages -r \"$req\"; fi; \\",
         "    done; \\",
-        "    for pkg in package.json frontend/package.json; do \\",
-        "      if [ -f \"$pkg\" ] && command -v npm >/dev/null 2>&1; then (cd \"$(dirname \"$pkg\")\" && npm install --legacy-peer-deps); fi; \\",
+        # Install the project's OWN package so deps declared only in pyproject.toml /",
+        # setup.py (e.g. pytest-asyncio, httpx) are present. Best-effort; non-fatal.",
+        "    if command -v python3 >/dev/null 2>&1 && { [ -f pyproject.toml ] || [ -f setup.py ] || [ -f setup.cfg ]; }; then \\",
+        "      python3 -m pip install --break-system-packages -e . 2>/dev/null || python3 -m pip install --break-system-packages . 2>/dev/null || true; \\",
+        "      for ex in test tests dev testing; do python3 -m pip install --break-system-packages -e \".[$ex]\" 2>/dev/null || true; done; \\",
+        "    fi; \\",
+        # pytest plugins implied by config but frequently undeclared (otherwise pytest",
+        # errors at collection: 'Unknown config option: asyncio_mode').",
+        "    if command -v python3 >/dev/null 2>&1 && grep -rqsE 'asyncio_mode|pytest-asyncio' pyproject.toml pytest.ini setup.cfg tox.ini 2>/dev/null; then \\",
+        "      python3 -m pip install --break-system-packages pytest-asyncio 2>/dev/null || true; \\",
+        "    fi; \\",
+        "    node_install() { ( cd \"$1\" || exit 0; \\",
+        "      corepack enable >/dev/null 2>&1 || true; \\",
+        "      if [ -f bun.lockb ] || grep -q 'bun run' package.json 2>/dev/null; then \\",
+        "        (command -v bun >/dev/null 2>&1 || npm install -g bun >/dev/null 2>&1) && bun install; \\",
+        "      elif [ -f pnpm-lock.yaml ]; then (pnpm install --no-frozen-lockfile || npm install --legacy-peer-deps); \\",
+        "      elif [ -f yarn.lock ]; then (yarn install || npm install --legacy-peer-deps); \\",
+        "      else npm install --legacy-peer-deps; fi; \\",
+        "      if grep -q '\\\"build\\\"' package.json 2>/dev/null; then (npm run build 2>/dev/null || bun run build 2>/dev/null || true); fi ); }; \\",
+        "    if [ -f package.json ] && command -v node >/dev/null 2>&1; then node_install .; fi; \\",
+        "    for pkg in frontend/package.json server/package.json; do \\",
+        "      if [ -f \"$pkg\" ] && command -v node >/dev/null 2>&1; then node_install \"$(dirname \"$pkg\")\" || true; fi; \\",
         "    done; \\",
         "    mkdir -p /environment; \\",
         "    ln -s /testbed/frontiercode-repo /environment/repo",
     ]
-    return "\n".join([f"FROM {image}", *install_lines, "", *dependency_steps, "", "ENTRYPOINT []", ""]) + "\n"
+    # Make repo-root-relative imports work in the AGENT's environment too (the grader sets its
+    # own per-copy PYTHONPATH; this prevents the agent from making scope-violating fixes like
+    # editing pyproject.toml just to get `import <pkg>` to resolve). Harmless for non-Python.
+    env_lines = ["ENV PYTHONPATH=/testbed/frontiercode-repo:/testbed/frontiercode-repo/src"]
+    return "\n".join(
+        [f"FROM {image}", *install_lines, "", *dependency_steps, "", *env_lines, "", "ENTRYPOINT []", ""]
+    ) + "\n"
 
 
 def build_advisory_rubric_items(

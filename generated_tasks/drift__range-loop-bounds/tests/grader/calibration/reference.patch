@@ -1,0 +1,654 @@
+diff --git a/pkg/evaluator/evaluator.go b/pkg/evaluator/evaluator.go
+index d1c4680..8923158 100644
+--- a/pkg/evaluator/evaluator.go
++++ b/pkg/evaluator/evaluator.go
+@@ -189,7 +189,7 @@ func evalForStmt(s *ast.ForStmt, env *environ.Env) object.Object {
+ 			}
+ 		}
+ 	case *object.Range:
+-		for i := it.Start; i <= it.End; i++ {
++		for i := it.Start; i < it.End; i++ {
+ 			if ret, stop := runBody(&object.Int{Value: i}); stop {
+ 				return ret
+ 			}
+diff --git a/fixed/pkg/evaluator/evaluator_test.go b/pkg/evaluator/evaluator_test.go
+new file mode 100644
+index 0000000..0a28079
+--- /dev/null
++++ b/pkg/evaluator/evaluator_test.go
+@@ -0,0 +1,635 @@
++package evaluator
++
++import (
++	"testing"
++
++	"github.com/Mustafa4ngin/Drift/pkg/environ"
++	"github.com/Mustafa4ngin/Drift/pkg/object"
++	"github.com/Mustafa4ngin/Drift/pkg/parser"
++)
++
++func testEval(input string) object.Object {
++	prog, errs := parser.Parse(input)
++	if errs.HasErrors() {
++		return &runtimeError{Message: "parse error: " + errs.Error()}
++	}
++	env := environ.New()
++	return Eval(prog, env)
++}
++
++func testIntResult(t *testing.T, input string, expected int64) {
++	t.Helper()
++	result := testEval(input)
++	assertInt(t, result, expected, input)
++}
++
++func assertInt(t *testing.T, obj object.Object, expected int64, ctx string) {
++	t.Helper()
++	if isErr(obj) {
++		t.Fatalf("[%s] error: %s", ctx, obj.Inspect())
++	}
++	i, ok := obj.(*object.Int)
++	if !ok {
++		t.Fatalf("[%s] expected Int, got %T (%s)", ctx, obj, obj.Inspect())
++	}
++	if i.Value != expected {
++		t.Errorf("[%s] expected %d, got %d", ctx, expected, i.Value)
++	}
++}
++
++func assertBool(t *testing.T, obj object.Object, expected bool, ctx string) {
++	t.Helper()
++	b, ok := obj.(*object.Bool)
++	if !ok {
++		t.Fatalf("[%s] expected Bool, got %T (%s)", ctx, obj, obj.Inspect())
++	}
++	if b.Value != expected {
++		t.Errorf("[%s] expected %v, got %v", ctx, expected, b.Value)
++	}
++}
++
++func TestEvalIntLiterals(t *testing.T) {
++	tests := []struct {
++		input    string
++		expected int64
++	}{
++		{"42", 42},
++		{"0", 0},
++		{"-5", -5},
++		{"0xff", 255},
++		{"0b1010", 10},
++	}
++	for _, tc := range tests {
++		testIntResult(t, tc.input, tc.expected)
++	}
++}
++
++func TestEvalFloatLiterals(t *testing.T) {
++	result := testEval("3.14")
++	f, ok := result.(*object.Float)
++	if !ok {
++		t.Fatalf("expected Float, got %T", result)
++	}
++	if f.Value != 3.14 {
++		t.Errorf("expected 3.14, got %g", f.Value)
++	}
++}
++
++func TestEvalStringLiterals(t *testing.T) {
++	result := testEval(`"hello"`)
++	s, ok := result.(*object.String)
++	if !ok {
++		t.Fatalf("expected String, got %T", result)
++	}
++	if s.Value != "hello" {
++		t.Errorf("expected 'hello', got %q", s.Value)
++	}
++}
++
++func TestEvalBoolLiterals(t *testing.T) {
++	assertBool(t, testEval("true"), true, "true")
++	assertBool(t, testEval("false"), false, "false")
++}
++
++func TestEvalNil(t *testing.T) {
++	result := testEval("nil")
++	if _, ok := result.(*object.Nil); !ok {
++		t.Fatalf("expected Nil, got %T", result)
++	}
++}
++
++func TestEvalArithmetic(t *testing.T) {
++	tests := []struct {
++		input    string
++		expected int64
++	}{
++		{"1 + 2", 3},
++		{"5 - 3", 2},
++		{"2 * 3", 6},
++		{"10 / 2", 5},
++		{"10 % 3", 1},
++		{"2 + 3 * 4", 14},
++		{"(2 + 3) * 4", 20},
++		{"-10 + 15", 5},
++	}
++	for _, tc := range tests {
++		testIntResult(t, tc.input, tc.expected)
++	}
++}
++
++func TestEvalFloatArithmetic(t *testing.T) {
++	result := testEval("1.5 + 2.5")
++	f := result.(*object.Float)
++	if f.Value != 4.0 {
++		t.Errorf("expected 4.0, got %g", f.Value)
++	}
++}
++
++func TestEvalMixedArithmetic(t *testing.T) {
++	result := testEval("1 + 2.5")
++	f := result.(*object.Float)
++	if f.Value != 3.5 {
++		t.Errorf("expected 3.5, got %g", f.Value)
++	}
++}
++
++func TestEvalStringConcat(t *testing.T) {
++	result := testEval(`"hello" + " " + "world"`)
++	s := result.(*object.String)
++	if s.Value != "hello world" {
++		t.Errorf("expected 'hello world', got %q", s.Value)
++	}
++}
++
++func TestEvalComparisons(t *testing.T) {
++	tests := []struct {
++		input    string
++		expected bool
++	}{
++		{"1 < 2", true},
++		{"2 > 1", true},
++		{"1 == 1", true},
++		{"1 != 2", true},
++		{"1 >= 1", true},
++		{"1 <= 1", true},
++		{"1 == 2", false},
++		{`"a" < "b"`, true},
++		{`"hello" == "hello"`, true},
++	}
++	for _, tc := range tests {
++		assertBool(t, testEval(tc.input), tc.expected, tc.input)
++	}
++}
++
++func TestEvalLogical(t *testing.T) {
++	tests := []struct {
++		input    string
++		expected bool
++	}{
++		{"true && true", true},
++		{"true && false", false},
++		{"false || true", true},
++		{"false || false", false},
++		{"!true", false},
++		{"!false", true},
++	}
++	for _, tc := range tests {
++		assertBool(t, testEval(tc.input), tc.expected, tc.input)
++	}
++}
++
++func TestEvalShortCircuit(t *testing.T) {
++	result := testEval("false && (1 / 0)")
++	assertBool(t, result, false, "short-circuit &&")
++
++	result2 := testEval("true || (1 / 0)")
++	assertBool(t, result2, true, "short-circuit ||")
++}
++
++func TestEvalLetBinding(t *testing.T) {
++	testIntResult(t, "let x = 42; x", 42)
++}
++
++func TestEvalLetMutable(t *testing.T) {
++	testIntResult(t, "let mut x = 1; x = 2; x", 2)
++}
++
++func TestEvalImmutableError(t *testing.T) {
++	result := testEval("let x = 1; x = 2")
++	if !isErr(result) {
++		t.Error("expected error for immutable assignment")
++	}
++}
++
++func TestEvalIfExpr(t *testing.T) {
++	testIntResult(t, "if true { 1 } else { 2 }", 1)
++	testIntResult(t, "if false { 1 } else { 2 }", 2)
++}
++
++func TestEvalIfNoElse(t *testing.T) {
++	result := testEval("if false { 1 }")
++	if _, ok := result.(*object.Nil); !ok {
++		t.Errorf("expected Nil, got %T", result)
++	}
++}
++
++func TestEvalElseIf(t *testing.T) {
++	testIntResult(t, "if false { 1 } else if true { 2 } else { 3 }", 2)
++}
++
++func TestEvalWhileLoop(t *testing.T) {
++	testIntResult(t, "let mut x = 0; while x < 5 { x += 1 }; x", 5)
++}
++
++func TestEvalForLoop(t *testing.T) {
++	testIntResult(t, "let mut sum = 0; for i in 0..5 { sum += i }; sum", 10)
++}
++
++func TestEvalForOverArray(t *testing.T) {
++	testIntResult(t, "let mut sum = 0; for x in [1, 2, 3] { sum += x }; sum", 6)
++}
++
++func TestEvalForOverString(t *testing.T) {
++	result := testEval(`let mut s = ""; for c in "abc" { s = s + c + "-" }; s`)
++	s := result.(*object.String)
++	if s.Value != "a-b-c-" {
++		t.Errorf("expected 'a-b-c-', got %q", s.Value)
++	}
++}
++
++func TestEvalBreak(t *testing.T) {
++	testIntResult(t, "let mut x = 0; while true { x += 1; if x == 3 { break } }; x", 3)
++}
++
++func TestEvalContinue(t *testing.T) {
++	testIntResult(t, "let mut sum = 0; for i in 0..5 { if i == 2 { continue }; sum += i }; sum", 8)
++}
++
++func TestEvalFunction(t *testing.T) {
++	testIntResult(t, "fn add(a: int, b: int) -> int { a + b }; add(3, 4)", 7)
++}
++
++func TestEvalRecursion(t *testing.T) {
++	input := `
++fn factorial(n: int) -> int {
++    if n <= 1 { 1 } else { n * factorial(n - 1) }
++}
++factorial(5)
++`
++	testIntResult(t, input, 120)
++}
++
++func TestEvalFibonacci(t *testing.T) {
++	input := `
++fn fib(n: int) -> int {
++    if n <= 1 { n } else { fib(n - 1) + fib(n - 2) }
++}
++fib(10)
++`
++	testIntResult(t, input, 55)
++}
++
++func TestEvalClosure(t *testing.T) {
++	input := `
++fn makeAdder(x: int) -> fn {
++    fn(y: int) -> int { x + y }
++}
++let add5 = makeAdder(5)
++add5(3)
++`
++	testIntResult(t, input, 8)
++}
++
++func TestEvalNestedClosure(t *testing.T) {
++	input := `
++fn outer(a: int) -> fn {
++    fn(b: int) -> fn {
++        fn(c: int) -> int { a + b + c }
++    }
++}
++let f = outer(1)(2)
++f(3)
++`
++	testIntResult(t, input, 6)
++}
++
++func TestEvalReturn(t *testing.T) {
++	input := `
++fn earlyReturn(n: int) -> int {
++    if n < 0 { return -1 }
++    n * 2
++}
++earlyReturn(-5)
++`
++	testIntResult(t, input, -1)
++}
++
++func TestEvalArrayLiteral(t *testing.T) {
++	result := testEval("[1, 2, 3]")
++	arr := result.(*object.Array)
++	if arr.Len() != 3 {
++		t.Errorf("expected 3, got %d", arr.Len())
++	}
++}
++
++func TestEvalArrayIndex(t *testing.T) {
++	testIntResult(t, "let a = [10, 20, 30]; a[1]", 20)
++}
++
++func TestEvalArrayNegativeIndex(t *testing.T) {
++	testIntResult(t, "let a = [10, 20, 30]; a[-1]", 30)
++}
++
++func TestEvalArrayConcat(t *testing.T) {
++	result := testEval("[1, 2] + [3, 4]")
++	arr := result.(*object.Array)
++	if arr.Len() != 4 {
++		t.Errorf("expected 4, got %d", arr.Len())
++	}
++}
++
++func TestEvalMapLiteral(t *testing.T) {
++	result := testEval(`{"a": 1, "b": 2}`)
++	m := result.(*object.Map)
++	if m.Len() != 2 {
++		t.Errorf("expected 2, got %d", m.Len())
++	}
++}
++
++func TestEvalMapIndex(t *testing.T) {
++	testIntResult(t, `let m = {"x": 42}; m["x"]`, 42)
++}
++
++func TestEvalMapDot(t *testing.T) {
++	testIntResult(t, `let m = {"x": 42}; m.x`, 42)
++}
++
++func TestEvalMatchExpr(t *testing.T) {
++	input := `
++let x = 2
++match x {
++    1 => 10
++    2 => 20
++    _ => 30
++}
++`
++	testIntResult(t, input, 20)
++}
++
++func TestEvalMatchWildcard(t *testing.T) {
++	testIntResult(t, "match 99 { 1 => 10; _ => 0 }", 0)
++}
++
++func TestEvalPipe(t *testing.T) {
++	input := `
++fn double(x: int) -> int { x * 2 }
++fn addOne(x: int) -> int { x + 1 }
++5 |> double |> addOne
++`
++	testIntResult(t, input, 11)
++}
++
++func TestEvalRange(t *testing.T) {
++	result := testEval("0..10")
++	r := result.(*object.Range)
++	if r.Start != 0 || r.End != 10 {
++		t.Errorf("expected 0..10, got %d..%d", r.Start, r.End)
++	}
++}
++
++func TestEvalCompoundAssign(t *testing.T) {
++	tests := []struct {
++		input    string
++		expected int64
++	}{
++		{"let mut x = 10; x += 5; x", 15},
++		{"let mut x = 10; x -= 3; x", 7},
++		{"let mut x = 4; x *= 3; x", 12},
++		{"let mut x = 20; x /= 4; x", 5},
++	}
++	for _, tc := range tests {
++		testIntResult(t, tc.input, tc.expected)
++	}
++}
++
++func TestEvalIndexAssign(t *testing.T) {
++	testIntResult(t, "let a = [1, 2, 3]; a[0] = 10; a[0]", 10)
++}
++
++func TestEvalDivisionByZero(t *testing.T) {
++	result := testEval("1 / 0")
++	if !isErr(result) {
++		t.Error("expected error for division by zero")
++	}
++}
++
++func TestEvalUndefinedVariable(t *testing.T) {
++	result := testEval("x")
++	if !isErr(result) {
++		t.Error("expected error for undefined variable")
++	}
++}
++
++func TestEvalWrongArgCount(t *testing.T) {
++	result := testEval("fn f(x: int) { x }; f(1, 2)")
++	if !isErr(result) {
++		t.Error("expected error for wrong arg count")
++	}
++}
++
++func TestEvalArrayLength(t *testing.T) {
++	testIntResult(t, "[1, 2, 3].length", 3)
++}
++
++func TestEvalStringLength(t *testing.T) {
++	testIntResult(t, `"hello".length`, 5)
++}
++
++func TestEvalStringIndex(t *testing.T) {
++	result := testEval(`"hello"[1]`)
++	s := result.(*object.String)
++	if s.Value != "e" {
++		t.Errorf("expected 'e', got %q", s.Value)
++	}
++}
++
++func TestEvalScope(t *testing.T) {
++	input := `
++let x = 10
++fn foo() -> int {
++    let x = 20
++    x
++}
++foo() + x
++`
++	testIntResult(t, input, 30)
++}
++
++func TestEvalMapMissing(t *testing.T) {
++	result := testEval(`let m = {"a": 1}; m["b"]`)
++	if _, ok := result.(*object.Nil); !ok {
++		t.Errorf("expected Nil for missing key, got %T", result)
++	}
++}
++
++func TestEvalLargeRangeIteration(t *testing.T) {
++	input := `
++let mut sum = 0
++for i in 0..10000 {
++    sum += i
++}
++sum
++`
++	testIntResult(t, input, 49995000)
++}
++
++func TestEvalRangeWithBreak(t *testing.T) {
++	input := `
++let mut count = 0
++for i in 0..1000000 {
++    count += 1
++    if count == 5 { break }
++}
++count
++`
++	testIntResult(t, input, 5)
++}
++
++func TestEvalStringIterationLarge(t *testing.T) {
++	input := `
++let mut count = 0
++for ch in "abcdefghijklmnopqrstuvwxyz" {
++    count += 1
++}
++count
++`
++	testIntResult(t, input, 26)
++}
++
++func TestEvalForContinueInRange(t *testing.T) {
++	input := `
++let mut sum = 0
++for i in 0..10 {
++    if i % 2 == 0 { continue }
++    sum += i
++}
++sum
++`
++	testIntResult(t, input, 25)
++}
++
++func TestEvalStringComparisons(t *testing.T) {
++	tests := []struct {
++		input    string
++		expected bool
++	}{
++		{`"apple" < "banana"`, true},
++		{`"banana" > "apple"`, true},
++		{`"abc" <= "abc"`, true},
++		{`"abc" >= "abc"`, true},
++		{`"abc" <= "abd"`, true},
++		{`"z" > "a"`, true},
++		{`"" < "a"`, true},
++		{`"abc" == "abc"`, true},
++		{`"abc" != "def"`, true},
++	}
++	for _, tc := range tests {
++		assertBool(t, testEval(tc.input), tc.expected, tc.input)
++	}
++}
++
++func TestEvalStringMultiplication(t *testing.T) {
++	result := testEval(`"abc" * 3`)
++	s := result.(*object.String)
++	if s.Value != "abcabcabc" {
++		t.Errorf("expected 'abcabcabc', got %q", s.Value)
++	}
++	result2 := testEval(`3 * "xy"`)
++	s2 := result2.(*object.String)
++	if s2.Value != "xyxyxy" {
++		t.Errorf("expected 'xyxyxy', got %q", s2.Value)
++	}
++	result3 := testEval(`"abc" * 0`)
++	s3 := result3.(*object.String)
++	if s3.Value != "" {
++		t.Errorf("expected empty string, got %q", s3.Value)
++	}
++}
++
++func TestEvalConstBinding(t *testing.T) {
++	testIntResult(t, "const x = 42; x", 42)
++	result := testEval("const x = 1; x = 2")
++	if !isErr(result) {
++		t.Error("expected error for const reassignment")
++	}
++}
++
++func TestEvalTypeof(t *testing.T) {
++	tests := []struct {
++		input    string
++		expected string
++	}{
++		{`typeof 42`, "int"},
++		{`typeof 3.14`, "float"},
++		{`typeof "hello"`, "string"},
++		{`typeof true`, "bool"},
++		{`typeof nil`, "nil"},
++		{`typeof [1, 2]`, "array"},
++		{`typeof {"a": 1}`, "map"},
++	}
++	for _, tc := range tests {
++		result := testEval(tc.input)
++		s, ok := result.(*object.String)
++		if !ok {
++			t.Fatalf("[%s] expected String, got %T", tc.input, result)
++		}
++		if s.Value != tc.expected {
++			t.Errorf("[%s] expected %q, got %q", tc.input, tc.expected, s.Value)
++		}
++	}
++}
++
++func TestEvalTernary(t *testing.T) {
++	testIntResult(t, "true ? 1 : 2", 1)
++	testIntResult(t, "false ? 1 : 2", 2)
++	testIntResult(t, "(5 > 3) ? 10 : 20", 10)
++}
++
++func TestEvalNullCoalesce(t *testing.T) {
++	testIntResult(t, "nil ?? 42", 42)
++	testIntResult(t, "10 ?? 42", 10)
++}
++
++func TestEvalDeepRecursion(t *testing.T) {
++	input := `
++fn countdown(n: int) -> int {
++    if n <= 0 { 0 } else { countdown(n - 1) }
++}
++countdown(500)
++`
++	testIntResult(t, input, 0)
++}
++
++func TestEvalNestedClosureCapture(t *testing.T) {
++	input := `
++fn makeMultiplier(factor: int) -> fn {
++    fn(x: int) -> int { x * factor }
++}
++let double = makeMultiplier(2)
++let triple = makeMultiplier(3)
++double(5) + triple(5)
++`
++	testIntResult(t, input, 25)
++}
++
++func TestEvalBlockExpression(t *testing.T) {
++	testIntResult(t, "let x = { let a = 1; let b = 2; a + b }; x", 3)
++}
++
++func TestEvalMapIndexAssign(t *testing.T) {
++	testIntResult(t, `let m = {"a": 1}; m["a"] = 42; m["a"]`, 42)
++}
++
++func TestEvalArrayCompoundAssign(t *testing.T) {
++	testIntResult(t, "let a = [10, 20, 30]; a[1] += 5; a[1]", 25)
++}
++
++func TestEvalNestedMap(t *testing.T) {
++	testIntResult(t, `let m = {"inner": {"val": 99}}; m["inner"]["val"]`, 99)
++}
++
++func TestEvalComplexProgram(t *testing.T) {
++	input := `
++fn sum_to(n: int) -> int {
++    let mut total = 0
++    let mut i = 1
++    while i <= n {
++        total += i
++        i += 1
++    }
++    total
++}
++sum_to(100)
++`
++	testIntResult(t, input, 5050)
++}

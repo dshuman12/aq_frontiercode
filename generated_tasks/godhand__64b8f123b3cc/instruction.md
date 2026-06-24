@@ -1,25 +1,33 @@
 # Task description
 
-The auth CSRF flow and production asset loading are unstable and need to be hardened. On the backend, the auth router (`server/api/routers/auth.py`) must enforce CSRF validation consistently across state-changing auth endpoints, returning clear errors when a CSRF token is missing or mismatched, and keeping the existing rate-limit and token-validation behavior intact. On the frontend, `frontend/src/lib/authApi.ts` must send and synchronize CSRF tokens correctly so login, registration, and logout requests succeed without spurious failures, preserving the existing HTTPS transport guard for non-localhost environments.
+Stabilize the auth CSRF flow and production asset loading so login/register works reliably under production-like conditions.
 
-Production asset loading in the game theme modules (`buildingSprites.ts`, `oreSprites.ts`, `terrainTileset.ts`, `valleyDecorations.ts`) must resolve asset URLs in a way that works under a built/bundled deployment rather than only in dev. Update `ProfileQuickMenu.tsx`, `GameScreen.tsx`, and `LobbyScreen.tsx` only as needed to consume the corrected auth/asset behavior. Keep `server/docs/auth.md` aligned with the resulting CSRF contract.
+On the backend, harden the CSRF protection in `server/api/routers/auth.py` so the auth endpoints accept legitimate same-origin requests and consistently reject missing or mismatched CSRF tokens. The double-submit pairing between the CSRF cookie and the request header must validate correctly across register, login, logout, and token refresh, returning the appropriate status codes without leaking sensitive errors. As part of this, **add a new `GET /api/v1/auth/csrf` endpoint** that lets an authenticated client read its current CSRF tokens (see the Response contract). Keep the existing route prefixes, request schemas, and response shapes intact so existing clients and `server/docs/auth.md` stay accurate; update that doc if the observable contract changes.
 
-Do not change the public auth API shape, route paths, or unrelated game simulation logic.
+On the frontend, fix production asset loading so the game theme assets (`buildingSprites.ts`, `oreSprites.ts`, `terrainTileset.ts`, `valleyDecorations.ts`) resolve under the production base URL rather than relying on dev-only paths, and ensure `authApi.ts`, `ProfileQuickMenu.tsx`, `GameScreen.tsx`, and `LobbyScreen.tsx` send CSRF-protected auth/session requests consistently with the backend contract.
+
+Do not change unrelated game simulation, worldgen, or messaging behavior. Preserve the secure-transport rules for non-localhost auth.
+
+## Response contract
+
+Keep these exact observable behaviors for the auth endpoints (the auth-flow tests and existing clients depend on them):
+
+- `POST` register → `201`, body `{"message": ResponseMessages.USER_REGISTERED_SUCCESS, "user": {...}}`. The `user` includes `email` and `username` and must **not** include `password`. Registration must **not** set auth cookies — `access_token_cookie`, `refresh_token_cookie`, and `csrf_access_token` are all absent on a register response.
+- `POST` register with an already-used email → `409`.
+- `POST` login with a wrong password → `401`.
+- `POST` login with a correct password, identified by **either** email or username → `200`, body `{"user": {...}}`, and it **must** set both `access_token_cookie` and `refresh_token_cookie`.
+- **`GET /api/v1/auth/csrf`** (new endpoint, authenticated session) → `200`, JSON: `csrf_access_token` equal to the request's `csrf_access_token` cookie, `csrf_refresh_token` equal to the `csrf_refresh_token` cookie, and `anon_csrf` equal to `""` (empty string) for an authenticated caller. This snapshot endpoint lets the frontend read its current CSRF tokens.
 
 # Test guidelines
 
-Run the visible test command:
+Run `make test-backend-auth`, which executes `server/tests/test_auth_user_flow.py` and covers registration, login, logout, refresh, rate-limit (`429`) responses, and CSRF/token validation edge cases.
 
-```bash
-make test-backend-auth
-```
-
-This exercises `server/tests/test_auth_user_flow.py`, covering registration, login, rate-limit `429` responses, and CSRF/token validation. Add or extend tests in `server/tests` so the missing-token and mismatched-token CSRF cases are asserted on the state-changing endpoints. Confirm the full backend suite still passes via `make test-backend`. Tests use the `testing` environment and the mocked Mongo setup from `server/tests/conftest.py`.
+Add or extend tests under `server/tests` to cover both accepted same-origin CSRF requests and rejected missing/mismatched-token requests. Tests use the mocked Mongo setup in `server/tests/conftest.py` under the `testing` environment.
 
 # Lint guidelines
 
-Lint the frontend with `cd frontend && npm run lint` (ESLint via `frontend/eslint.config.js`) and resolve any reported issues in the files you touch. Keep TypeScript clean under `npm run build` (`tsc -b`).
+For frontend changes, run `npm run lint` from `frontend/` and resolve all reported issues. Keep TypeScript types intact; do not introduce `any` to silence checks.
 
 # Style guidelines
 
-You are already on the correct starting snapshot. Create your branch from this state. Do not rebase or start from master, main, or any other branch. Match the surrounding TypeScript and Python conventions, and avoid introducing churn in generated or bundled output.
+You are already on the correct starting snapshot. Create your branch from this state. Do not rebase or start from master, main, or any other branch.

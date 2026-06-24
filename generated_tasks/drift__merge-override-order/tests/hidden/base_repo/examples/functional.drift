@@ -1,0 +1,58 @@
+// Functional Programming Patterns in Drift
+
+// Higher-order functions
+fn apply_twice(f, x) { f(f(x)) }
+fn double(x) { x * 2 }
+fn increment(x) { x + 1 }
+
+println("apply_twice(double, 3) =", apply_twice(double, 3))
+println("apply_twice(increment, 10) =", apply_twice(increment, 10))
+
+// Compose
+let double_then_inc = compose(increment, double)
+println("compose(inc, dbl)(5) =", double_then_inc(5))
+
+// Map, Filter, Reduce pipeline
+let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+let evens = filter(numbers, fn(x) { x % 2 == 0 })
+println("Evens:", evens)
+
+let squared = map(evens, fn(x) { x * x })
+println("Squared evens:", squared)
+
+let total = reduce(squared, 0, fn(acc, x) { acc + x })
+println("Sum of squared evens:", total)
+
+// Pipeline with pipe operator
+let result = numbers
+    |> fn(arr) { filter(arr, fn(x) { x > 5 }) }
+    |> fn(arr) { map(arr, fn(x) { x * 10 }) }
+    |> sum
+println("Pipeline result:", result)
+
+// Closure factories
+fn multiplier(factor) {
+    fn(x) { x * factor }
+}
+
+let times3 = multiplier(3)
+let times5 = multiplier(5)
+println("times3(7) =", times3(7))
+println("times5(7) =", times5(7))
+
+// Memoization via closure
+fn make_counter() {
+    let mut count = 0
+    fn() {
+        count += 1
+        count
+    }
+}
+
+let counter = make_counter()
+println("Counter:", counter(), counter(), counter())
+
+// Tap for debugging
+let debug_result = 42 |> fn(x) { tap(x, fn(v) { println("Debug value:", v) }) }
+println("After tap:", debug_result)
