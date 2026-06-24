@@ -313,17 +313,7 @@ function renderTaskList() {
   renderDistributions();
   const tasks = filteredTasks();
   const emptyState = `<div class="empty-state">No matching tasks.</div>`;
-  if (state.filter === "outdist") {
-    const rate = (t) => (t.runCount ? t.passCount / t.runCount : -1);
-    const section = (label, list) => list.length
-      ? `<div class="list-subheader">${label} <span class="filter-count">${list.length}</span></div>${list.map(taskItemHtml).join("")}`
-      : "";
-    const zero = section("0%", tasks.filter((t) => rate(t) === 0));
-    const full = section("100%", tasks.filter((t) => rate(t) >= 1));
-    $("#taskList").innerHTML = (zero + full) || emptyState;
-  } else {
-    $("#taskList").innerHTML = tasks.map(taskItemHtml).join("") || emptyState;
-  }
+  $("#taskList").innerHTML = tasks.map(taskItemHtml).join("") || emptyState;
 
   document.querySelectorAll(".task-item").forEach((button) => {
     button.addEventListener("click", () => selectTask(button.dataset.taskId, { focus: true }));
