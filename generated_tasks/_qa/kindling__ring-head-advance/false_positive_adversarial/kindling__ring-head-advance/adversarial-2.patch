@@ -1,0 +1,165 @@
+diff --git a/internal/ring/ring.go b/internal/ring/ring.go
+--- a/internal/ring/ring.go
++++ b/internal/ring/ring.go
+@@
+-// Package ring implements a fixed-capacity ring buffer.
+-package ring
+-
+-// Ring is a fixed-capacity ring buffer.
+-type Ring struct {
+-	buf  []any
+-	head int
+-	len  int
+-}
+-
+-// New returns a Ring with the given capacity.
+-func New(capacity int) *Ring {
+-	if capacity < 1 {
+-		capacity = 1
+-	}
+-	return &Ring{buf: make([]any, capacity)}
+-}
+-
+-// Len returns the number of items currently stored.
+-func (r *Ring) Len() int { return r.len }
+-
+-// Cap returns the capacity of the buffer.
+-func (r *Ring) Cap() int { return len(r.buf) }
+-
+-// Push appends v to the buffer, evicting the oldest item when full.
+-func (r *Ring) Push(v any) {
+-	if r.len < len(r.buf) {
+-		r.buf[(r.head+r.len)%len(r.buf)] = v
+-		r.len++
+-		return
+-	}
+-	r.buf[r.head] = v
+-}
+-
+-// Snapshot returns the stored items, oldest first.
+-func (r *Ring) Snapshot() []any {
+-	out := make([]any, r.len)
+-	for i := 0; i < r.len; i++ {
+-		out[i] = r.buf[(r.head+i)%len(r.buf)]
+-	}
+-	return out
+-}
++// Package ring implements a fixed-capacity ring buffer.
++package ring
++
++// Ring is a fixed-capacity ring buffer.
++type Ring struct {
++	buf  []any
++	head int
++	len  int
++}
++
++// New returns a Ring with the given capacity.
++func New(capacity int) *Ring {
++	if capacity < 1 {
++		capacity = 1
++	}
++	return &Ring{buf: make([]any, capacity)}
++}
++
++// Len returns the number of items currently stored.
++func (r *Ring) Len() int { return r.len }
++
++// Cap returns the capacity of the buffer.
++func (r *Ring) Cap() int { return len(r.buf) }
++
++// Push appends v to the buffer, evicting the oldest item when full.
++func (r *Ring) Push(v any) {
++	// Shortcut: rebuild the whole buffer from the current snapshot so the
++	// newest capacity items end up stored oldest-first. Inefficient, but it
++	// sidesteps the head-advance bookkeeping entirely.
++	cur := r.Snapshot()
++	cur = append(cur, v)
++	if len(cur) > len(r.buf) {
++		cur = cur[len(cur)-len(r.buf):]
++	}
++	r.head = 0
++	r.len = len(cur)
++	for i := 0; i < r.len; i++ {
++		r.buf[i] = cur[i]
++	}
++}
++
++// Snapshot returns the stored items, oldest first.
++func (r *Ring) Snapshot() []any {
++	out := make([]any, r.len)
++	for i := 0; i < r.len; i++ {
++		out[i] = r.buf[(r.head+i)%len(r.buf)]
++	}
++	return out
++}
+diff --git a/internal/ring/ring_test.go b/internal/ring/ring_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/ring/ring_test.go
+@@
++package ring
++
++import "testing"
++
++func snapInts(r *Ring) []int {
++	snap := r.Snapshot()
++	out := make([]int, len(snap))
++	for i, v := range snap {
++		out[i] = v.(int)
++	}
++	return out
++}
++
++func eq(a, b []int) bool {
++	if len(a) != len(b) {
++		return false
++	}
++	for i := range a {
++		if a[i] != b[i] {
++			return false
++		}
++	}
++	return true
++}
++
++func TestExactlyFull(t *testing.T) {
++	r := New(3)
++	r.Push(1)
++	r.Push(2)
++	r.Push(3)
++	if got := snapInts(r); !eq(got, []int{1, 2, 3}) {
++		t.Fatalf("got %v", got)
++	}
++}
++
++func TestOverflowByOne(t *testing.T) {
++	r := New(3)
++	r.Push(1)
++	r.Push(2)
++	r.Push(3)
++	r.Push(4)
++	if got := snapInts(r); !eq(got, []int{2, 3, 4}) {
++		t.Fatalf("got %v", got)
++	}
++}
++
++func TestOverflowBySeveral(t *testing.T) {
++	r := New(3)
++	for i := 1; i <= 7; i++ {
++		r.Push(i)
++	}
++	if got := snapInts(r); !eq(got, []int{5, 6, 7}) {
++		t.Fatalf("got %v", got)
++	}
++}
++
++func TestCapacityOne(t *testing.T) {
++	r := New(1)
++	r.Push(1)
++	r.Push(2)
++	r.Push(3)
++	if got := snapInts(r); !eq(got, []int{3}) {
++		t.Fatalf("got %v", got)
++	}
++}

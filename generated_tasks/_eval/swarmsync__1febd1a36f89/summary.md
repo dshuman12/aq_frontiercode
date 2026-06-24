@@ -10,37 +10,37 @@ Trial mode: each trial is one independent agent solve trajectory. The agent rece
 
 | Task | Agent | Model | Best Reasoning Effort | Trials | Final Pass Rate | Final Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| swarmsync__1febd1a36f89 | codex | openai/gpt-5.5 | high | 5 | 0.200 | 0.833 | 0.200 |
+| swarmsync__1febd1a36f89 | codex | openai/gpt-5.5 | high | 5 | 0.200 | 0.200 | 0.200 |
 
 ## Effort Results
 
 | Task | Agent | Model | Reasoning Effort | Trials | Pass Rate | Average Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| swarmsync__1febd1a36f89 | codex | openai/gpt-5.5 | high | 5 | 0.200 | 0.833 | 0.200 |
+| swarmsync__1febd1a36f89 | codex | openai/gpt-5.5 | high | 5 | 0.200 | 0.200 | 0.200 |
 
 ## Trial Details
 
 | Task | Agent | Model | Reasoning Effort | Submission | Pass | Criteria | Categories | Score | Blocker Failures |
 | --- | --- | --- | --- | --- | --- | ---: | --- | ---: | --- |
-| swarmsync__1febd1a36f89 | codex | openai/gpt-5.5 | high | swarmsync__1febd1a36f89__HShc66A | no | 18/20 | patch_specific 5/6, regular 13/14 | 0.583 | hidden_reference_tests_pass, submitted_tests_fail_on_base |
-| swarmsync__1febd1a36f89 | codex | openai/gpt-5.5 | high | swarmsync__1febd1a36f89__J5txrT6 | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.833 | visible_regression_tests_pass |
+| swarmsync__1febd1a36f89 | codex | openai/gpt-5.5 | high | swarmsync__1febd1a36f89__HShc66A | no | 18/20 | patch_specific 5/6, regular 13/14 | 0.000 | hidden_reference_tests_pass, submitted_tests_fail_on_base |
+| swarmsync__1febd1a36f89 | codex | openai/gpt-5.5 | high | swarmsync__1febd1a36f89__J5txrT6 | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | visible_regression_tests_pass |
 | swarmsync__1febd1a36f89 | codex | openai/gpt-5.5 | high | swarmsync__1febd1a36f89__bC5efuw | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
-| swarmsync__1febd1a36f89 | codex | openai/gpt-5.5 | high | swarmsync__1febd1a36f89__eKue2QQ | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | submitted_tests_fail_on_base |
-| swarmsync__1febd1a36f89 | codex | openai/gpt-5.5 | high | swarmsync__1febd1a36f89__jGHGMaR | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | submitted_tests_fail_on_base |
+| swarmsync__1febd1a36f89 | codex | openai/gpt-5.5 | high | swarmsync__1febd1a36f89__eKue2QQ | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | submitted_tests_fail_on_base |
+| swarmsync__1febd1a36f89 | codex | openai/gpt-5.5 | high | swarmsync__1febd1a36f89__jGHGMaR | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | submitted_tests_fail_on_base |
 
 ## Grader Details
 
 Trial pass/fail is determined by blocker criteria. Trial score is the weighted average of criterion scores, including failed trials.
 
 <details>
-<summary>swarmsync__1febd1a36f89__HShc66A: FAIL, score 0.583, criteria 18/20</summary>
+<summary>swarmsync__1febd1a36f89__HShc66A: FAIL, score 0.000, criteria 18/20</summary>
 
 - Task: `swarmsync__1febd1a36f89`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.583
+- Score: 0.000
 - Reward: 0.000
 - Criteria: 18/20
 - Categories: patch_specific 5/6, regular 13/14
@@ -287,14 +287,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>swarmsync__1febd1a36f89__J5txrT6: FAIL, score 0.833, criteria 19/20</summary>
+<summary>swarmsync__1febd1a36f89__J5txrT6: FAIL, score 0.000, criteria 19/20</summary>
 
 - Task: `swarmsync__1febd1a36f89`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.833
+- Score: 0.000
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14
@@ -799,14 +799,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>swarmsync__1febd1a36f89__eKue2QQ: FAIL, score 0.875, criteria 19/20</summary>
+<summary>swarmsync__1febd1a36f89__eKue2QQ: FAIL, score 0.000, criteria 19/20</summary>
 
 - Task: `swarmsync__1febd1a36f89`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.875
+- Score: 0.000
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14
@@ -1049,14 +1049,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>swarmsync__1febd1a36f89__jGHGMaR: FAIL, score 0.875, criteria 19/20</summary>
+<summary>swarmsync__1febd1a36f89__jGHGMaR: FAIL, score 0.000, criteria 19/20</summary>
 
 - Task: `swarmsync__1febd1a36f89`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.875
+- Score: 0.000
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14

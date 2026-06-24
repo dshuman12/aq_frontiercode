@@ -10,47 +10,47 @@ Trial mode: each trial is one independent agent solve trajectory. The agent rece
 
 | Task | Agent | Model | Best Reasoning Effort | Trials | Final Pass Rate | Final Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | 5 | 0.400 | 0.400 | 0.400 |
+| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | 5 | 0.000 | 0.000 | 0.000 |
 
 ## Effort Results
 
 | Task | Agent | Model | Reasoning Effort | Trials | Pass Rate | Average Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | 5 | 0.400 | 0.400 | 0.400 |
+| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | 5 | 0.000 | 0.000 | 0.000 |
 
 ## Trial Details
 
 | Task | Agent | Model | Reasoning Effort | Submission | Pass | Criteria | Categories | Score | Blocker Failures |
 | --- | --- | --- | --- | --- | --- | ---: | --- | ---: | --- |
-| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | swarmsync__5b08ac17d75f__LRNLCyR | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
-| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | swarmsync__5b08ac17d75f__faSAQRK | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
-| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | swarmsync__5b08ac17d75f__oNWqji3 | yes | 20/20 | patch_specific 6/6, regular 14/14 | 1.000 |  |
-| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | swarmsync__5b08ac17d75f__peHfw5H | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
-| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | swarmsync__5b08ac17d75f__uYjCz5H | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
+| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | swarmsync__5b08ac17d75f__42uE7eJ | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | visible_regression_tests_pass |
+| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | swarmsync__5b08ac17d75f__LgJpC2h | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
+| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | swarmsync__5b08ac17d75f__fpw5wQL | no | 19/20 | patch_specific 5/6, regular 14/14 | 0.000 | hidden_reference_tests_pass |
+| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | swarmsync__5b08ac17d75f__o2nKitz | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
+| swarmsync__5b08ac17d75f | codex | openai/gpt-5.5 | high | swarmsync__5b08ac17d75f__warYyVa | no | 18/20 | patch_specific 6/6, regular 12/14 | 0.000 | visible_regression_tests_pass, scope_matches_reference_intent |
 
 ## Grader Details
 
-Trial score is zero when any blocker criterion fails; otherwise it is the weighted average of criterion scores.
+Trial pass/fail is determined by blocker criteria. Trial score is the weighted average of criterion scores, including failed trials.
 
 <details>
-<summary>swarmsync__5b08ac17d75f__LRNLCyR: PASS, score 1.000, criteria 20/20</summary>
+<summary>swarmsync__5b08ac17d75f__42uE7eJ: FAIL, score 0.000, criteria 19/20</summary>
 
 - Task: `swarmsync__5b08ac17d75f`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
-- Pass: yes
-- Score: 1.000
-- Reward: 1.000
-- Criteria: 20/20
-- Categories: patch_specific 6/6, regular 14/14
-- Blocker failures: none
+- Pass: no
+- Score: 0.000
+- Reward: 0.000
+- Criteria: 19/20
+- Categories: patch_specific 6/6, regular 13/14
+- Blocker failures: `visible_regression_tests_pass`
 
 | Criterion | Category | Method | Blocker | Weight | Score | Pass |
 | --- | --- | --- | --- | ---: | ---: | --- |
 | hidden_reference_tests_pass | patch_specific | classical | yes | 0.350 | 1.000 | yes |
 | submitted_tests_fail_on_base | regular | reverse_classical | yes | 0.150 | 1.000 | yes |
-| visible_regression_tests_pass | regular | command | yes | 0.200 | 1.000 | yes |
+| visible_regression_tests_pass | regular | command | yes | 0.200 | 0.000 | no |
 | scope_matches_reference_intent | regular | scope | yes | 0.150 | 1.000 | yes |
 | no_hidden_asset_leak | regular | command | yes | 0.050 | 1.000 | yes |
 | behavior_core_requirement | patch_specific | llm_prompt | no | 0.020 | 1.000 | yes |
@@ -89,26 +89,30 @@ Submitted tests failed on the broken base snapshot as expected.
 submitted tests on base snapshot: `go test ./pkg/sim/... ./pkg/gossip/...` exited 1
 STDOUT:
 --- FAIL: TestNetworkSim_MerkleSyncPropagatesHigherVersionDelete (0.00s)
-    sim_test.go:142: node n2 should not return deleted key dead
+    sim_test.go:150: node n2 should not return deleted key deleted
 --- FAIL: TestNetworkSim_MerkleSyncDeleteWinsSameVersion (0.00s)
-    sim_test.go:171: node n2 should not return deleted key same-version
---- FAIL: TestNetworkSim_MerkleSyncBulkDeleteConvergence (0.02s)
-    sim_test.go:209: cluster should converge after bulk deletes through merkle sync
+    sim_test.go:173: node n2 should not return deleted key same-version
+--- FAIL: TestNetworkSim_MerkleSyncBulkDeleteConvergesMultiNode (0.02s)
+    sim_test.go:205: bulk deletes did not converge
 FAIL
-FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.028s
+FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.022s
 ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.002s
 FAIL
 
 STDERR:
 ```
 
-#### `visible_regression_tests_pass` (PASS, score 1.000)
+#### `visible_regression_tests_pass` (FAIL, score 0.000)
 
 ```text
-visible regression command: `go test ./pkg/sim/... ./pkg/gossip/...` exited 0
+visible regression command: `go test ./pkg/sim/... ./pkg/gossip/...` exited 1
 STDOUT:
 ok  	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.004s
-ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.002s
+--- FAIL: TestStats_Uptime (0.00s)
+    gossip_test.go:484: uptime should be positive
+FAIL
+FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.002s
+FAIL
 
 STDERR:
 ```
@@ -116,7 +120,7 @@ STDERR:
 #### `scope_matches_reference_intent` (PASS, score 1.000)
 
 ```text
-Changed files stay within the generated reference scope: pkg/gossip/state.go, pkg/gossip/stats.go, pkg/sim/network.go, pkg/sim/sim_test.go
+Changed files stay within the generated reference scope: pkg/gossip/state.go, pkg/sim/network.go, pkg/sim/sim_test.go
 ```
 
 #### `no_hidden_asset_leak` (PASS, score 1.000)
@@ -219,7 +223,7 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>swarmsync__5b08ac17d75f__faSAQRK: FAIL, score 0.000, criteria 19/20</summary>
+<summary>swarmsync__5b08ac17d75f__LgJpC2h: FAIL, score 0.000, criteria 19/20</summary>
 
 - Task: `swarmsync__5b08ac17d75f`
 - Agent: `codex`
@@ -262,8 +266,8 @@ Criterion evidence:
 ```text
 hidden reference tests: `go test ./pkg/sim/... ./pkg/gossip/...` exited 0
 STDOUT:
-ok  	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.004s
-ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.001s
+ok  	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.005s
+ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.002s
 
 STDERR:
 ```
@@ -275,17 +279,14 @@ Submitted tests failed on the broken base snapshot as expected.
 submitted tests on base snapshot: `go test ./pkg/sim/... ./pkg/gossip/...` exited 1
 STDOUT:
 --- FAIL: TestNetworkSim_MerkleSyncPropagatesHigherVersionDelete (0.00s)
-    sim_test.go:152: n2 should not return deleted key "deleted", got "value"
+    sim_test.go:133: merkle sync should converge after higher-version delete
 --- FAIL: TestNetworkSim_MerkleSyncDeleteWinsSameVersion (0.00s)
-    sim_test.go:184: n1 should not return deleted key "same-version", got "live"
---- FAIL: TestNetworkSim_MerkleSyncBulkDeleteConvergence (0.06s)
-    sim_test.go:222: nodes should converge after merkle-only bulk deletes
+    sim_test.go:150: merkle sync should converge when same-version tombstone conflicts with live entry
+--- FAIL: TestNetworkSim_MerkleSyncBulkDeletesConverge (0.02s)
+    sim_test.go:178: merkle sync should converge after bulk deletes
 FAIL
-FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.060s
---- FAIL: TestStats_Uptime (0.00s)
-    gossip_test.go:492: uptime should be positive
-FAIL
-FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.001s
+FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.027s
+ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.002s
 FAIL
 
 STDERR:
@@ -408,22 +409,22 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>swarmsync__5b08ac17d75f__oNWqji3: PASS, score 1.000, criteria 20/20</summary>
+<summary>swarmsync__5b08ac17d75f__fpw5wQL: FAIL, score 0.000, criteria 19/20</summary>
 
 - Task: `swarmsync__5b08ac17d75f`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
-- Pass: yes
-- Score: 1.000
-- Reward: 1.000
-- Criteria: 20/20
-- Categories: patch_specific 6/6, regular 14/14
-- Blocker failures: none
+- Pass: no
+- Score: 0.000
+- Reward: 0.000
+- Criteria: 19/20
+- Categories: patch_specific 5/6, regular 14/14
+- Blocker failures: `hidden_reference_tests_pass`
 
 | Criterion | Category | Method | Blocker | Weight | Score | Pass |
 | --- | --- | --- | --- | ---: | ---: | --- |
-| hidden_reference_tests_pass | patch_specific | classical | yes | 0.350 | 1.000 | yes |
+| hidden_reference_tests_pass | patch_specific | classical | yes | 0.350 | 0.000 | no |
 | submitted_tests_fail_on_base | regular | reverse_classical | yes | 0.150 | 1.000 | yes |
 | visible_regression_tests_pass | regular | command | yes | 0.200 | 1.000 | yes |
 | scope_matches_reference_intent | regular | scope | yes | 0.150 | 1.000 | yes |
@@ -446,13 +447,17 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 
 Criterion evidence:
 
-#### `hidden_reference_tests_pass` (PASS, score 1.000)
+#### `hidden_reference_tests_pass` (FAIL, score 0.000)
 
 ```text
-hidden reference tests: `go test ./pkg/sim/... ./pkg/gossip/...` exited 0
+hidden reference tests: `go test ./pkg/sim/... ./pkg/gossip/...` exited 1
 STDOUT:
 ok  	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.005s
-ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.001s
+--- FAIL: TestStats_Uptime (0.00s)
+    gossip_test.go:484: uptime should be positive
+FAIL
+FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.002s
+FAIL
 
 STDERR:
 ```
@@ -464,13 +469,13 @@ Submitted tests failed on the broken base snapshot as expected.
 submitted tests on base snapshot: `go test ./pkg/sim/... ./pkg/gossip/...` exited 1
 STDOUT:
 --- FAIL: TestNetworkSim_MerkleSyncPropagatesHigherVersionDelete (0.00s)
-    sim_test.go:137: peer should not return key deleted at a higher version
---- FAIL: TestNetworkSim_MerkleSyncDeleteWinsSameVersion (0.00s)
-    sim_test.go:161: n2 should not return key when same-version tombstone exists
---- FAIL: TestNetworkSim_MerkleSyncBulkDeleteConvergence (0.03s)
-    sim_test.go:207: cluster did not converge after bulk deletes through merkle sync
+    sim_test.go:136: cluster did not converge with merkle sync in 5 rounds
+--- FAIL: TestNetworkSim_MerkleSyncDeleteWinsAtSameVersion (0.00s)
+    sim_test.go:151: cluster did not converge with merkle sync in 5 rounds
+--- FAIL: TestNetworkSim_MerkleSyncBulkDeleteConvergence (0.01s)
+    sim_test.go:172: cluster did not converge with merkle sync in 100 rounds
 FAIL
-FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.033s
+FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.018s
 ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.002s
 FAIL
 
@@ -594,7 +599,7 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>swarmsync__5b08ac17d75f__peHfw5H: FAIL, score 0.000, criteria 19/20</summary>
+<summary>swarmsync__5b08ac17d75f__o2nKitz: FAIL, score 0.000, criteria 19/20</summary>
 
 - Task: `swarmsync__5b08ac17d75f`
 - Agent: `codex`
@@ -637,8 +642,8 @@ Criterion evidence:
 ```text
 hidden reference tests: `go test ./pkg/sim/... ./pkg/gossip/...` exited 0
 STDOUT:
-ok  	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.004s
-ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.001s
+ok  	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.005s
+ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.002s
 
 STDERR:
 ```
@@ -650,14 +655,14 @@ Submitted tests failed on the broken base snapshot as expected.
 submitted tests on base snapshot: `go test ./pkg/sim/... ./pkg/gossip/...` exited 1
 STDOUT:
 --- FAIL: TestNetworkSim_MerkleSyncPropagatesHigherVersionDelete (0.00s)
-    sim_test.go:137: n2 should not return deleted key "deleted"
---- FAIL: TestNetworkSim_MerkleSyncDeleteWinsAtSameVersion (0.00s)
-    sim_test.go:161: n2 should not return deleted key "deleted"
---- FAIL: TestNetworkSim_MerkleSyncBulkDeleteConvergence (0.03s)
-    sim_test.go:195: condition not met after 300 merkle rounds
+    sim_test.go:132: merkle sync did not converge within 20 rounds
+--- FAIL: TestNetworkSim_MerkleSyncDeleteWinsSameVersion (0.00s)
+    sim_test.go:148: merkle sync did not converge within 20 rounds
+--- FAIL: TestNetworkSim_MerkleSyncBulkDeleteConverges (0.03s)
+    sim_test.go:167: merkle sync did not converge within 200 rounds
 FAIL
-FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.038s
-ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.001s
+FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.035s
+ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.002s
 FAIL
 
 STDERR:
@@ -669,7 +674,7 @@ STDERR:
 visible regression command: `go test ./pkg/sim/... ./pkg/gossip/...` exited 0
 STDOUT:
 ok  	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.004s
-ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.001s
+ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.002s
 
 STDERR:
 ```
@@ -780,7 +785,7 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>swarmsync__5b08ac17d75f__uYjCz5H: FAIL, score 0.000, criteria 19/20</summary>
+<summary>swarmsync__5b08ac17d75f__warYyVa: FAIL, score 0.000, criteria 18/20</summary>
 
 - Task: `swarmsync__5b08ac17d75f`
 - Agent: `codex`
@@ -789,15 +794,15 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 - Pass: no
 - Score: 0.000
 - Reward: 0.000
-- Criteria: 19/20
-- Categories: patch_specific 6/6, regular 13/14
-- Blocker failures: `scope_matches_reference_intent`
+- Criteria: 18/20
+- Categories: patch_specific 6/6, regular 12/14
+- Blocker failures: `visible_regression_tests_pass`, `scope_matches_reference_intent`
 
 | Criterion | Category | Method | Blocker | Weight | Score | Pass |
 | --- | --- | --- | --- | ---: | ---: | --- |
 | hidden_reference_tests_pass | patch_specific | classical | yes | 0.350 | 1.000 | yes |
 | submitted_tests_fail_on_base | regular | reverse_classical | yes | 0.150 | 1.000 | yes |
-| visible_regression_tests_pass | regular | command | yes | 0.200 | 1.000 | yes |
+| visible_regression_tests_pass | regular | command | yes | 0.200 | 0.000 | no |
 | scope_matches_reference_intent | regular | scope | yes | 0.150 | 0.000 | no |
 | no_hidden_asset_leak | regular | command | yes | 0.050 | 1.000 | yes |
 | behavior_core_requirement | patch_specific | llm_prompt | no | 0.020 | 1.000 | yes |
@@ -823,8 +828,8 @@ Criterion evidence:
 ```text
 hidden reference tests: `go test ./pkg/sim/... ./pkg/gossip/...` exited 0
 STDOUT:
-ok  	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.004s
-ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.001s
+ok  	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.005s
+ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.002s
 
 STDERR:
 ```
@@ -835,27 +840,31 @@ STDERR:
 Submitted tests failed on the broken base snapshot as expected.
 submitted tests on base snapshot: `go test ./pkg/sim/... ./pkg/gossip/...` exited 1
 STDOUT:
---- FAIL: TestNetworkSim_MerkleSyncPropagatesHigherVersionDelete (0.00s)
-    sim_test.go:135: merkle sync did not converge in 10 rounds
---- FAIL: TestNetworkSim_MerkleSyncDeleteWinsAtSameVersion (0.00s)
-    sim_test.go:156: merkle sync did not converge in 10 rounds
---- FAIL: TestNetworkSim_MerkleSyncBulkDeleteConvergence (0.03s)
-    sim_test.go:189: merkle sync did not converge in 200 rounds
+--- FAIL: TestNetworkSim_MerkleSync_PropagatesHigherVersionDelete (0.00s)
+    sim_test.go:145: higher-version delete should converge through merkle sync
+--- FAIL: TestNetworkSim_MerkleSync_DeleteWinsAtSameVersion (0.00s)
+    sim_test.go:169: same-version tombstone should win through merkle sync
+--- FAIL: TestNetworkSim_MerkleSync_BulkDeleteConvergence (0.03s)
+    sim_test.go:194: bulk deletes should converge through merkle sync
 FAIL
-FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.034s
-ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.001s
+FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.033s
+ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.002s
 FAIL
 
 STDERR:
 ```
 
-#### `visible_regression_tests_pass` (PASS, score 1.000)
+#### `visible_regression_tests_pass` (FAIL, score 0.000)
 
 ```text
-visible regression command: `go test ./pkg/sim/... ./pkg/gossip/...` exited 0
+visible regression command: `go test ./pkg/sim/... ./pkg/gossip/...` exited 1
 STDOUT:
-ok  	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.003s
-ok  	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.001s
+ok  	github.com/Mustafa4ngin/SwarmSync/pkg/sim	0.006s
+--- FAIL: TestStats_Uptime (0.00s)
+    gossip_test.go:492: uptime should be positive
+FAIL
+FAIL	github.com/Mustafa4ngin/SwarmSync/pkg/gossip	0.002s
+FAIL
 
 STDERR:
 ```

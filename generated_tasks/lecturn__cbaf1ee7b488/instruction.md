@@ -1,35 +1,19 @@
 # Task description
 
-Fix authenticated playback by ensuring media consumed by the frontend player is requested through the same-origin `/stream` proxy instead of being handed to the browser as direct backend media URLs. The player’s playlist, segment, and related stream resource requests are initiated by media elements or Vidstack rather than the normal authenticated API client, so they must use a URL shape that allows the browser to include the Lecturn auth cookie reliably.
+The video player currently points `<source>`/HLS URLs straight at the backend media origin. Because those requests are issued by the media element rather than our fetch wrapper, the auth cookie is not attached when the API and web app run on different ports, so authenticated streams fail to load.
 
-Focus on the frontend URL-building layer, especially `frontend/src/lib/api-client.ts`, and any closely related tests. Preserve existing JSON API behavior: ordinary API fetches should continue using the configured API base URL and credentials settings. The change should only affect URLs intended for media playback or stream assets. Handle practical URL cases such as leading/trailing slashes, existing query strings, already-relative paths, and avoiding accidental double-wrapping of a URL that is already routed through `/stream`.
+Route all player media through the same-origin `/stream` proxy so the session cookie ships with every media request. The URL helper in `frontend/src/lib/api-client.ts` should produce `/stream`-prefixed paths for media (playlists, segments, subtitle sidecars) instead of absolute backend origins, while non-media API calls keep their existing behavior. Preserve any query string and path encoding already applied, and keep the exported function names and signatures stable so existing callers in the player feature continue to compile unchanged.
 
-Do not change backend authorization semantics, weaken access checks, or introduce a separate token-based media path. Avoid broad refactors of the player UI unless they are necessary to consume the corrected helper output.
+Success means an authenticated user can play a transcoded episode end to end: the master playlist, variant segments, and subtitle tracks all resolve via `/stream` and load with credentials. Direct, unauthenticated origin requests are no longer emitted from the player.
 
 # Test guidelines
 
-Run the visible test command from the repository root:
-
-```bash
-npm test
-```
-
-Add or update focused unit tests for the media URL behavior, preferably under `frontend/src/lib`, where the public API-client tests already live. Cover the regression directly: media URLs should resolve to `/stream` proxy URLs that preserve the original target path and query information, while non-media API calls remain unchanged.
-
-If you use narrower commands while iterating, make sure the final validation still uses the root command above. Backend integration tests require additional services and should not be necessary unless you intentionally touch backend routing.
+Run `npm test` from the repo root. Add or extend unit tests under `frontend/src/lib` (alongside `api-client.test.ts`) covering that media paths are rewritten to `/stream`, that query strings and encoded segments survive the rewrite, and that ordinary API endpoints are untouched. Cover edge cases like already-absolute URLs and empty or root-relative inputs.
 
 # Lint guidelines
 
-Run the project lint command before finishing:
-
-```bash
-npm run lint
-```
-
-If lint failures point at `eslint.config.mjs`, keep any configuration edits minimal and directly related to making the existing frontend TypeScript tests lint cleanly. Do not silence rules globally to hide issues introduced by this task.
+Run `bun run -r lint` (or `npm run lint`) and resolve any reported issues. The ESLint config in `eslint.config.mjs` governs the frontend; do not weaken existing rules to silence warnings.
 
 # Style guidelines
 
-Use TypeScript-friendly URL handling rather than fragile string concatenation where it improves correctness, but keep the helper readable and easy to test. Maintain the repository’s existing formatting conventions: 2-space indentation, LF line endings, final newlines, and Prettier-compatible code.
-
-Keep the patch narrow. Do not update lockfiles, generated assets, example media, database migrations, or unrelated frontend features. Preserve public function names and exported API shapes unless a small additive helper is needed for the proxy URL behavior.
+Prettier is the source of truth — run `bun run format` before finishing so formatting matches CI. Keep the change scoped to the frontend `lib` layer and player wiring; do not touch backend routes, the auth client, or generated Drizzle artifacts.

@@ -1,0 +1,99 @@
+diff --git a/app/creator/contacts/page.tsx b/app/creator/contacts/page.tsx
+index 0ce8133..2dee598 100644
+--- a/app/creator/contacts/page.tsx
++++ b/app/creator/contacts/page.tsx
+@@ -29,6 +29,7 @@ import {
+   getBrand,
+   getBrands,
+ } from "@/lib/api";
++import { getUserFriendlyError } from "@/lib/error-messages";
+ import { Brand } from "@/lib/models";
+ import { sortBrandsByRevenue } from "@/lib/sort-utils";
+ import { formatRelativeTime } from "@/lib/utils";
+@@ -115,9 +116,10 @@ export default function ContactsPage() {
+             setBrands(brandsToSet);
+             setTotalBrands(response.total);
+             setHasMore(response.has_more);
+-        } catch (err: any) {
++        } catch (err: unknown) {
+             console.error("Error loading brands:", err);
+-            setError(err.message || "Failed to load brands");
++            const friendly = getUserFriendlyError(err);
++            setError(`${friendly.title}: ${friendly.message}`);
+         } finally {
+             setLoading(false);
+         }
+diff --git a/lib/__tests__/error-messages.test.ts b/lib/__tests__/error-messages.test.ts
+index 108ae2c..b4d6b05 100644
+--- a/lib/__tests__/error-messages.test.ts
++++ b/lib/__tests__/error-messages.test.ts
+@@ -13,6 +13,21 @@ describe("getUserFriendlyError", () => {
+             expect(result.action).toBe("retry");
+         });
+ 
++        it("does not treat API 'Failed to fetch …' resource errors as network offline", () => {
++            const result = getUserFriendlyError("Failed to fetch deals");
++            expect(result.title).toBe("Something went wrong");
++            expect(result.message).toContain("Failed to fetch deals");
++        });
++
++        it("maps Cognito JWKS / JWK errors to auth configuration guidance", () => {
++            const result = getUserFriendlyError(
++                "JWK public key not found. Token key ID 'x' not in JWKS."
++            );
++            expect(result.title).toBe("Authentication configuration error");
++            expect(result.message).toContain("Cognito");
++            expect(result.action).toBe("signin");
++        });
++
+         it("converts authentication errors to user-friendly messages", () => {
+             const result = getUserFriendlyError("401 Unauthorized");
+             expect(result.title).toBe("Session Expired");
+diff --git a/lib/error-messages.ts b/lib/error-messages.ts
+index 0d3a5a3..2d2832f 100644
+--- a/lib/error-messages.ts
++++ b/lib/error-messages.ts
+@@ -56,18 +56,39 @@ export function getUserFriendlyError(
+ /**
+  * Get error message based on error message string
+  */
++/** True for browser/network failures, false for app errors like "Failed to fetch deals". */
++function isLikelyNetworkFailure(message: string): boolean {
++    const m = message.toLowerCase();
++    if (m.includes("network") || m.includes("connection")) return true;
++    // API helpers use "Failed to fetch <thing>" — not the same as the browser's "Failed to fetch"
++    if (/^failed to fetch\s+\S/.test(m)) return false;
++    if (m.includes("failed to fetch")) return true;
++    return false;
++}
++
+ function getErrorByMessage(
+     message: string,
+     context?: ErrorContext
+ ): UserFriendlyError {
+     const lowerMessage = message.toLowerCase();
+ 
+-    // Network errors
++    // Cognito JWT / JWKS mismatch (backend and frontend must share one user pool)
+     if (
+-        lowerMessage.includes("network") ||
+-        lowerMessage.includes("fetch") ||
+-        lowerMessage.includes("connection")
++        lowerMessage.includes("jwk") ||
++        lowerMessage.includes("jwks") ||
++        lowerMessage.includes("token key id")
+     ) {
++        return {
++            title: "Authentication configuration error",
++            message:
++                "We could not verify your sign-in with our API. Try signing out and signing in again. If the problem continues, contact support — the server may be using a different Cognito user pool than this site.",
++            action: "signin",
++            actionLabel: "Sign in",
++        };
++    }
++
++    // Network errors (avoid treating "Failed to fetch deals" as offline)
++    if (isLikelyNetworkFailure(message)) {
+         return {
+             title: "Connection Problem",
+             message:

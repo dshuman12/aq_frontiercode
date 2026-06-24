@@ -1,0 +1,14 @@
+# A simple rate-limit-after-bad-attempts pattern for /login.
+
+phase pre_route {
+    rule limit_login_attempts {
+        when path == "/login" and method == "POST"
+        then limit(key=ident.client_ip, rate="5/min", burst=3)
+    }
+    rule deny_credential_stuffing_lan {
+        when path == "/login"
+            and method == "POST"
+            and ident.client_ip in ["169.254.0.0/16", "127.0.0.0/8"]
+        then block(status=403, reason="login from link-local")
+    }
+}

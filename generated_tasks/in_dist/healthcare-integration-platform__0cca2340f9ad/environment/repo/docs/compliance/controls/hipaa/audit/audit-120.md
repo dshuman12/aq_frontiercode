@@ -1,3 +1,0 @@
-# audit-120
-
-Operational evidence and validation notes for audit control 120.

@@ -1,0 +1,79 @@
+diff --git a/internal/treemap/treemap.go b/internal/treemap/treemap.go
+--- a/internal/treemap/treemap.go
++++ b/internal/treemap/treemap.go
+@@ func (m *Map) Set(key string, value int) {
+-	i := sort.SearchStrings(m.keys, key)
+-	if i < len(m.keys) && m.keys[i] == key {
+-		m.vals[i] = value
+-		return
+-	}
+-	m.keys = append(m.keys, "")
+-	m.vals = append(m.vals, 0)
+-	m.keys[i] = key
+-	m.vals[i] = value
++	for i, k := range m.keys {
++		if k == key {
++			m.vals[i] = value
++			return
++		}
++	}
++	m.keys = append(m.keys, key)
++	m.vals = append(m.vals, value)
++	type kv struct {
++		k string
++		v int
++	}
++	pairs := make([]kv, len(m.keys))
++	for i := range m.keys {
++		pairs[i] = kv{m.keys[i], m.vals[i]}
++	}
++	sort.Slice(pairs, func(a, b int) bool { return pairs[a].k < pairs[b].k })
++	for i := range pairs {
++		m.keys[i] = pairs[i].k
++		m.vals[i] = pairs[i].v
++	}
+ }
+diff --git a/internal/treemap/treemap_shift_test.go b/internal/treemap/treemap_shift_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/treemap/treemap_shift_test.go
+@@
++package treemap
++
++import "testing"
++
++// TestSetInsertFrontMiddleEnd inserts keys out of order so that new keys
++// land at the front, middle, and end of the existing entries, then checks
++// every value is retrievable. On the broken base the entry at the
++// insertion index is overwritten, so Get of an earlier key misses.
++func TestSetInsertFrontMiddleEnd(t *testing.T) {
++	m := New()
++	m.Set("m", 2)
++	m.Set("a", 1)
++	m.Set("z", 3)
++	m.Set("g", 4)
++	want := map[string]int{"m": 2, "a": 1, "z": 3, "g": 4}
++	if m.Len() != len(want) {
++		t.Fatalf("len = %d, want %d", m.Len(), len(want))
++	}
++	for k, v := range want {
++		got, ok := m.Get(k)
++		if !ok || got != v {
++			t.Fatalf("Get(%q) = %d,%v want %d", k, got, ok, v)
++		}
++	}
++}
++
++// TestSetOverwrite confirms overwriting an existing key keeps the length
++// stable and updates the value in place.
++func TestSetOverwrite(t *testing.T) {
++	m := New()
++	m.Set("a", 1)
++	m.Set("a", 5)
++	if m.Len() != 1 {
++		t.Fatalf("len = %d, want 1", m.Len())
++	}
++	if v, ok := m.Get("a"); !ok || v != 5 {
++		t.Fatalf("Get(a) = %d,%v want 5", v, ok)
++	}
++}

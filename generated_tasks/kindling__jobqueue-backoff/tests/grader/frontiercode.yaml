@@ -1,0 +1,374 @@
+task_id: kindling__jobqueue-backoff
+subset: extended
+repo_workdir: environment/repo
+base_commit: 7a6dc66a68b8a40c7dfa845ee3164d507a88368f
+low_quality_threshold: 0.5
+source:
+  repo: kindling
+  task_row_id: kindling__jobqueue-backoff
+  source_archive: repositories/27LtmqQeyQGuV9A5TGcK__kindling_taskgen.zip
+  fix_commit: 53df1cd9c2b2ee20e6507427c7325bfa614cd88c
+  commit_subject: "fix(jobqueue): retry backoff doubles one time too many"
+  reference_test_files: ["internal/jobqueue/jobqueue_test.go"]
+criteria:
+  - id: hidden_reference_tests_pass
+    category: patch_specific
+    description: >
+      Hidden behavioral tests extracted from the source fix pass after the submitted patch.
+      Reference test files: internal/jobqueue/jobqueue_test.go.
+    method: classical
+    blocker: true
+    weight: 0.35
+    command: python3 tests/hidden/run_criteria.py --criterion hidden_reference_tests_pass environment/repo
+    timeout_seconds: 600
+  - id: submitted_tests_fail_on_base
+    category: regular
+    description: >
+      Submitted visible tests capture the task behavior because they fail against
+      the original broken base snapshot before the implementation change.
+    method: reverse_classical
+    blocker: true
+    weight: 0.15
+    command: python3 tests/hidden/run_criteria.py --criterion submitted_tests_fail_on_base environment/repo
+    timeout_seconds: 600
+  - id: visible_regression_tests_pass
+    category: regular
+    description: >
+      The repository's visible regression workflow still passes after the submitted patch.
+      Generated command: go test ./internal/jobqueue/....
+    method: command
+    blocker: true
+    weight: 0.20
+    command: python3 tests/hidden/run_criteria.py --criterion visible_regression_tests_pass environment/repo
+    timeout_seconds: 600
+  - id: scope_matches_reference_intent
+    category: regular
+    description: >
+      The patch stays within the feature and test areas implicated by the source fix commit,
+      avoiding unrelated rewrites or broad file churn.
+    method: scope
+    blocker: true
+    weight: 0.15
+    scope:
+      allowed_paths: ["internal/jobqueue/", "internal/jobqueue/jobqueue.go", "internal/jobqueue/jobqueue_test.go"]
+      denied_paths: []
+      max_files: 6
+      max_changed_lines: 261
+  - id: no_hidden_asset_leak
+    category: regular
+    description: >
+      The agent-visible repository does not contain generated hidden tests, grader assets,
+      reference patches, or fix commit identifiers.
+    method: command
+    blocker: true
+    weight: 0.05
+    command: python3 tests/hidden/run_criteria.py --criterion no_hidden_asset_leak environment/repo
+  - id: behavior_core_requirement
+    category: patch_specific
+    description: >
+      The submitted patch satisfies the central maintainer request, not just the narrow
+      visible test command.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the diff fully resolves this task for kindling: The retry backoff for
+      failed jobs grows one doubling too many. After the first failure the computed delay is
+      already double what it should be, because the exponential doubling loop runs one extra
+      iteration relative to the number of attempts. The first retry should wait the base
+      delay, the second twice the base, and so on. Fix the backoff computation so the delay
+      matches the attempt count without the extra doubling.
+  - id: behavior_edge_cases
+    category: patch_specific
+    description: >
+      The implementation handles edge cases naturally implied by the task and affected code
+      paths.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the diff handles realistic edge cases around internal/jobqueue/jobqueue.go
+      while preserving the requested behavior.
+  - id: behavior_error_handling
+    category: patch_specific
+    description: >
+      The change preserves or improves existing error handling instead of masking failures.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the diff keeps failure modes explicit and maintainable for the task
+      behavior in kindling.
+  - id: behavior_backward_compatibility
+    category: regular
+    description: >
+      Existing public behavior and compatibility constraints remain intact outside the
+      requested fix.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the diff avoids breaking existing documented behavior, public APIs, file
+      formats, or command-line contracts.
+  - id: regression_visible_tests_meaningful
+    category: regular
+    description: >
+      Visible regression tests exercise the requested behavior rather than only checking
+      superficial execution.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the submitted tests make go test ./internal/jobqueue/... meaningfully
+      validate the requested behavior.
+  - id: regression_reference_area_preserved
+    category: patch_specific
+    description: >
+      The fix covers behavior in the same functional area as the extracted reference tests.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the diff addresses the behavior covered by these inferred test areas:
+      internal/jobqueue/jobqueue_test.go.
+  - id: test_coverage_positive_path
+    category: regular
+    description: >
+      Tests cover at least one successful or expected-use path for the new behavior.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the patch includes or preserves clear positive-path coverage for the
+      requested behavior.
+  - id: test_coverage_negative_path
+    category: regular
+    description: >
+      Tests cover a failing, boundary, malformed, or regression-prone case when such a case is
+      relevant.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the patch includes useful negative or boundary coverage for the task,
+      without overfitting to implementation details.
+  - id: test_integration_with_existing_workflow
+    category: regular
+    description: >
+      New or edited tests are integrated into the repository's normal test workflow.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether tests are wired into the existing project workflow so go test
+      ./internal/jobqueue/... or the documented test command runs them.
+  - id: scope_minimal_patch
+    category: regular
+    description: >
+      The patch is focused and avoids unrelated rewrites, broad churn, or cosmetic-only edits.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the diff is appropriately scoped for the task and avoids unrelated churn
+      outside internal/jobqueue/jobqueue.go.
+  - id: scope_no_unrelated_public_api_changes
+    category: regular
+    description: >
+      The patch does not change unrelated public APIs, configuration defaults, or generated
+      outputs.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the diff avoids unrelated public API, configuration, dependency,
+      generated-file, or packaging changes.
+  - id: maintainability_idiomatic_design
+    category: regular
+    description: >
+      The implementation follows the repository's existing design style and naming
+      conventions.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the implementation is idiomatic for kindling, matching nearby
+      abstractions, names, and project style.
+  - id: maintainability_simple_control_flow
+    category: regular
+    description: >
+      The implementation is simple to reason about and avoids unnecessary abstraction or
+      brittle special cases.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the implementation is understandable, localized, and avoids brittle
+      special casing.
+  - id: dependency_and_environment_fit
+    category: regular
+    description: >
+      The patch avoids unnecessary new dependencies and remains compatible with the generated
+      task environment.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether the diff fits the existing dependency set and can run in the task
+      environment without extra unstated setup.
+  - id: observable_output_contracts
+    category: patch_specific
+    description: >
+      User-visible outputs, diagnostics, return values, or persisted data match the requested
+      contract.
+    method: llm_prompt
+    blocker: false
+    weight: 0.02
+    threshold: 0.6
+    prompt: >
+      Score whether observable outputs and side effects match the requested task behavior for
+      kindling.
+calibrations:
+  - id: no-op-base
+    type: hack
+    description: Leaves the base repository unchanged, so hidden behavior and scope requirements are not satisfied.
+    criteria_results:
+      - criterion_id: hidden_reference_tests_pass
+        passed: false
+        score: 0
+      - criterion_id: submitted_tests_fail_on_base
+        passed: false
+        score: 0
+      - criterion_id: visible_regression_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: scope_matches_reference_intent
+        passed: false
+        score: 0
+      - criterion_id: no_hidden_asset_leak
+        passed: true
+        score: 1
+      - criterion_id: behavior_core_requirement
+        passed: false
+        score: 0
+      - criterion_id: behavior_edge_cases
+        passed: false
+        score: 0
+      - criterion_id: behavior_error_handling
+        passed: false
+        score: 0
+      - criterion_id: behavior_backward_compatibility
+        passed: false
+        score: 0
+      - criterion_id: regression_visible_tests_meaningful
+        passed: false
+        score: 0
+      - criterion_id: regression_reference_area_preserved
+        passed: false
+        score: 0
+      - criterion_id: test_coverage_positive_path
+        passed: false
+        score: 0
+      - criterion_id: test_coverage_negative_path
+        passed: false
+        score: 0
+      - criterion_id: test_integration_with_existing_workflow
+        passed: false
+        score: 0
+      - criterion_id: scope_minimal_patch
+        passed: false
+        score: 0
+      - criterion_id: scope_no_unrelated_public_api_changes
+        passed: false
+        score: 0
+      - criterion_id: maintainability_idiomatic_design
+        passed: false
+        score: 0
+      - criterion_id: maintainability_simple_control_flow
+        passed: false
+        score: 0
+      - criterion_id: dependency_and_environment_fit
+        passed: false
+        score: 0
+      - criterion_id: observable_output_contracts
+        passed: false
+        score: 0
+  - id: reference-fix
+    type: alternative_valid
+    description: The source fix commit's patch, stored privately under tests/grader/calibration/reference.patch.
+    patch: calibration/reference.patch
+    criteria_results:
+      - criterion_id: hidden_reference_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: submitted_tests_fail_on_base
+        passed: true
+        score: 1
+      - criterion_id: visible_regression_tests_pass
+        passed: true
+        score: 1
+      - criterion_id: scope_matches_reference_intent
+        passed: true
+        score: 1
+      - criterion_id: no_hidden_asset_leak
+        passed: true
+        score: 1
+      - criterion_id: behavior_core_requirement
+        passed: true
+        score: 0.8
+      - criterion_id: behavior_edge_cases
+        passed: true
+        score: 0.8
+      - criterion_id: behavior_error_handling
+        passed: true
+        score: 0.8
+      - criterion_id: behavior_backward_compatibility
+        passed: true
+        score: 0.8
+      - criterion_id: regression_visible_tests_meaningful
+        passed: true
+        score: 0.8
+      - criterion_id: regression_reference_area_preserved
+        passed: true
+        score: 0.8
+      - criterion_id: test_coverage_positive_path
+        passed: true
+        score: 0.8
+      - criterion_id: test_coverage_negative_path
+        passed: true
+        score: 0.8
+      - criterion_id: test_integration_with_existing_workflow
+        passed: true
+        score: 0.8
+      - criterion_id: scope_minimal_patch
+        passed: true
+        score: 0.8
+      - criterion_id: scope_no_unrelated_public_api_changes
+        passed: true
+        score: 0.8
+      - criterion_id: maintainability_idiomatic_design
+        passed: true
+        score: 0.8
+      - criterion_id: maintainability_simple_control_flow
+        passed: true
+        score: 0.8
+      - criterion_id: dependency_and_environment_fit
+        passed: true
+        score: 0.8
+      - criterion_id: observable_output_contracts
+        passed: true
+        score: 0.8

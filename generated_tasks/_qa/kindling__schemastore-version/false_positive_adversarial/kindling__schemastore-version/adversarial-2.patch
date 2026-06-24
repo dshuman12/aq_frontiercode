@@ -1,0 +1,65 @@
+diff --git a/internal/schemastore/schemastore.go b/internal/schemastore/schemastore.go
+--- a/internal/schemastore/schemastore.go
++++ b/internal/schemastore/schemastore.go
+@@
+-	next := len(s.subjects[subject])
+-	if expected != next {
++	count := len(s.subjects[subject])
++	next := count + 1
++	if count == 0 {
++		next = 1
++	}
++	if expected != next {
+ 		return 0, ErrVersionMismatch
+ 	}
+diff --git a/internal/schemastore/schemastore_test.go b/internal/schemastore/schemastore_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/schemastore/schemastore_test.go
+@@
++package schemastore
++
++import (
++	"errors"
++	"testing"
++)
++
++func TestRegisterFirstVersion(t *testing.T) {
++	s := New()
++	v, err := s.Register("orders", "{}", 1)
++	if err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++	if v != 1 {
++		t.Fatalf("got version %d, want 1", v)
++	}
++}
++
++func TestRegisterSequential(t *testing.T) {
++	s := New()
++	for want := 1; want <= 4; want++ {
++		v, err := s.Register("orders", "{}", want)
++		if err != nil {
++			t.Fatalf("want %d: %v", want, err)
++		}
++		if v != want {
++			t.Fatalf("got %d, want %d", v, want)
++		}
++	}
++}
++
++func TestRegisterRejectsWrongVersion(t *testing.T) {
++	s := New()
++	if _, err := s.Register("orders", "{}", 2); !errors.Is(err, ErrVersionMismatch) {
++		t.Fatalf("too high: got %v", err)
++	}
++	if _, err := s.Register("orders", "{}", 0); !errors.Is(err, ErrVersionMismatch) {
++		t.Fatalf("too low: got %v", err)
++	}
++	if _, err := s.Register("orders", "{}", 1); err != nil {
++		t.Fatalf("correct first registration: %v", err)
++	}
++	if _, err := s.Register("orders", "{}", 1); !errors.Is(err, ErrVersionMismatch) {
++		t.Fatalf("stale re-register: got %v", err)
++	}
++}

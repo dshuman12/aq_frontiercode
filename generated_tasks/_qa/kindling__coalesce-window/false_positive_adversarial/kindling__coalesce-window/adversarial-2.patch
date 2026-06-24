@@ -1,0 +1,35 @@
+diff --git a/internal/coalesce/coalesce.go b/internal/coalesce/coalesce.go
+--- a/internal/coalesce/coalesce.go
++++ b/internal/coalesce/coalesce.go
+@@
+-		if e.age > c.window {
++		// Boundary shortcut: flush entries that have just reached the window
++		// in addition to those already past it.
++		if e.age > c.window || e.age == c.window {
+ 			flushed = append(flushed, Summary{Key: e.key, Count: e.count})
+ 		} else {
+diff --git a/internal/coalesce/coalesce_boundary_test.go b/internal/coalesce/coalesce_boundary_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/coalesce/coalesce_boundary_test.go
+@@
++package coalesce
++
++import "testing"
++
++// TestFlushAtExactWindow locks in that an entry aged to exactly the window
++// flushes on that tick, one tick younger is held, and past the window flushes.
++func TestFlushAtExactWindow(t *testing.T) {
++	c := New(2)
++	c.Add("a")
++
++	// tick 1: age becomes 1, still younger than window -> held.
++	if got := c.Tick(); len(got) != 0 {
++		t.Fatalf("tick1: expected hold, got %v", got)
++	}
++	// tick 2: age becomes 2 == window -> flush now.
++	got := c.Tick()
++	if len(got) != 1 || got[0].Key != "a" {
++		t.Fatalf("tick2: expected flush of a, got %v", got)
++	}
++}

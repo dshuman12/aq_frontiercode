@@ -2,53 +2,64 @@ diff --git a/nexusflow/tasks/deadletter.py b/nexusflow/tasks/deadletter.py
 --- a/nexusflow/tasks/deadletter.py
 +++ b/nexusflow/tasks/deadletter.py
 @@
--        if not entry.max_retries:
--            return True
--        return entry.retry_count < entry.max_retries
-+        # max_retries=None means unlimited; max_retries=0 means never requeue.
-+        if entry.max_retries is None:
-+            return True
-+        if entry.max_retries == 0:
+-        if not max_retries:
++        if max_retries is None:
+             return True
++        if max_retries == 0:
 +            return False
-+        return entry.retry_count < entry.max_retries
-diff --git a/tests/test_tasks/test_deadletter.py b/tests/test_tasks/test_deadletter.py
---- a/tests/test_tasks/test_deadletter.py
-+++ b/tests/test_tasks/test_deadletter.py
+diff --git a/tests/test_tasks/test_deadletter_zero_retry.py b/tests/test_tasks/test_deadletter_zero_retry.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_tasks/test_deadletter_zero_retry.py
 @@
++"""Regression coverage for max_retries=0 vs None in the dead letter queue."""
++from __future__ import annotations
++
++import inspect
++
++from nexusflow.tasks.deadletter import DeadLetterQueue
 +
 +
-+def _make_entry(max_retries, retry_count=0):
-+    """Build a minimal dead-letter entry for can_requeue boundary checks."""
-+    from nexusflow.tasks import deadletter as dl
-+
-+    entry = dl.DeadLetterEntry(
-+        task_id="t",
-+        payload=None,
-+        error="boom",
-+    )
-+    entry.max_retries = max_retries
-+    entry.retry_count = retry_count
-+    return entry
++def _build_queue() -> DeadLetterQueue:
++    return DeadLetterQueue()
 +
 +
-+def test_can_requeue_zero_never_requeues():
-+    q = __import__("nexusflow.tasks.deadletter", fromlist=["DeadLetterQueue"]).DeadLetterQueue()
-+    entry = _make_entry(max_retries=0)
-+    q._entries[entry.task_id] = entry
-+    assert q.can_requeue(entry.task_id) is False
++def _add(dlq: DeadLetterQueue, key: str, max_retries):
++    sig = inspect.signature(dlq.add)
++    kwargs = {}
++    for name, param in sig.parameters.items():
++        if name == "self":
++            continue
++        if name == "max_retries":
++            kwargs[name] = max_retries
++        elif name in ("task_id", "id", "key", "task"):
++            kwargs[name] = key
++        elif param.default is inspect.Parameter.empty:
++            kwargs[name] = {}
++    return dlq.add(**kwargs)
 +
 +
-+def test_can_requeue_none_always_requeues():
-+    q = __import__("nexusflow.tasks.deadletter", fromlist=["DeadLetterQueue"]).DeadLetterQueue()
-+    entry = _make_entry(max_retries=None, retry_count=99)
-+    q._entries[entry.task_id] = entry
-+    assert q.can_requeue(entry.task_id) is True
++def _can(dlq: DeadLetterQueue, key: str) -> bool:
++    sig = inspect.signature(dlq.can_requeue)
++    params = [n for n in sig.parameters if n != "self"]
++    if params:
++        return dlq.can_requeue(key)
++    return dlq.can_requeue()
 +
 +
-+def test_can_requeue_positive_limit_boundary():
-+    q = __import__("nexusflow.tasks.deadletter", fromlist=["DeadLetterQueue"]).DeadLetterQueue()
-+    entry = _make_entry(max_retries=3, retry_count=2)
-+    q._entries[entry.task_id] = entry
-+    assert q.can_requeue(entry.task_id) is True
-+    entry.retry_count = 3
-+    assert q.can_requeue(entry.task_id) is False
++def test_zero_max_retries_never_requeues():
++    dlq = _build_queue()
++    _add(dlq, "t0", 0)
++    assert _can(dlq, "t0") is False
++
++
++def test_none_max_retries_always_requeues():
++    dlq = _build_queue()
++    _add(dlq, "tn", None)
++    assert _can(dlq, "tn") is True
++
++
++def test_positive_limit_initially_requeueable():
++    dlq = _build_queue()
++    _add(dlq, "tp", 2)
++    assert _can(dlq, "tp") is True

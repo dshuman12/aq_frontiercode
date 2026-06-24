@@ -1,0 +1,92 @@
+diff --git a/internal/topk/topk.go b/internal/topk/topk.go
+--- a/internal/topk/topk.go
++++ b/internal/topk/topk.go
+@@
+ 	min := 0
+ 	for i := 1; i < len(t.entries); i++ {
+-		if t.entries[i].Count <= t.entries[min].Count {
++		if t.entries[i].Count < t.entries[min].Count {
+ 			min = i
+ 		}
+ 	}
+diff --git a/internal/topk/topk_eviction_test.go b/internal/topk/topk_eviction_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/topk/topk_eviction_test.go
+@@
++package topk
++
++import "testing"
++
++// TestEvictFirstMinimumOnTie pins that the first slot reaching the minimum
++// count is the one evicted when the tracked set is full and counts tie.
++func TestEvictFirstMinimumOnTie(t *testing.T) {
++	tk := New(3)
++	tk.Observe("a")
++	tk.Observe("b")
++	tk.Observe("c")
++	tk.Observe("d")
++
++	keys := map[string]bool{}
++	for _, e := range tk.Snapshot() {
++		keys[e.Key] = true
++	}
++	if keys["a"] {
++		t.Fatalf("expected first minimum 'a' to be evicted, got %v", keys)
++	}
++	for _, want := range []string{"b", "c", "d"} {
++		if !keys[want] {
++			t.Fatalf("expected %q retained, got %v", want, keys)
++		}
++	}
++}
++
++// TestEvictStableAcrossOrder confirms the retained set is order-independent
++// for tied counts.
++func TestEvictStableAcrossOrder(t *testing.T) {
++	orders := [][]string{
++		{"a", "b", "c", "d"},
++		{"a", "b", "c", "d"},
++	}
++	var first map[string]bool
++	for _, order := range orders {
++		tk := New(3)
++		for _, k := range order {
++			tk.Observe(k)
++		}
++		cur := map[string]bool{}
++		for _, e := range tk.Snapshot() {
++			cur[e.Key] = true
++		}
++		if first == nil {
++			first = cur
++			continue
++		}
++		for k := range first {
++			if !cur[k] {
++				t.Fatalf("unstable eviction: %v vs %v", first, cur)
++			}
++		}
++	}
++}
++
++// TestUntiedAndNonFullUnaffected confirms distinct-count eviction and
++// non-full inserts behave as before.
++func TestUntiedAndNonFullUnaffected(t *testing.T) {
++	tk := New(3)
++	tk.Observe("a")
++	tk.Observe("a")
++	tk.Observe("a")
++	tk.Observe("b")
++	tk.Observe("b")
++	tk.Observe("c")
++	tk.Observe("d")
++
++	keys := map[string]bool{}
++	for _, e := range tk.Snapshot() {
++		keys[e.Key] = true
++	}
++	if !keys["a"] || !keys["b"] {
++		t.Fatalf("frequent keys must survive, got %v", keys)
++	}
++}

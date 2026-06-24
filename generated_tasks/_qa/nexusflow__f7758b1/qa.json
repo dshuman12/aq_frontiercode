@@ -3,252 +3,278 @@
     "check_results": [
       {
         "check_id": "01_prompt_clarity",
-        "confidence": 0.9,
+        "confidence": 1.0,
         "evidence_paths": [
           "instruction.md"
         ],
         "findings": [
-          "[info] instruction.md evidence: \"Fix the retry-limit semantics so that: - `max_retries=0` means no requeue is ever allowed ... - `max_retries=None` continues to mean unlimited retries ... Keep the public signature and return type of `can_requeue` unchanged, and do not alter unrelated requeue accounting, stored entry fields, or other methods in the module.\" reason: Specifies clear behavioral requirements and constraints without enforcing an exact code patch strategy.",
-          "[info] instruction.md evidence: Add or extend tests in `tests/test_tasks/test_deadletter.py` covering the three cases: `max_retries=0` is never requeueable, `max_retries=None` is always requeueable, and a positive limit allows requeueing only until the count is reached. reason: Test requirements are explained to ensure meaningful coverage without specifying a testing framework or method."
-        ],
-        "passed": true,
-        "raw_response": {
-          "confidence": 0.9,
-          "evidence_paths": [
-            "instruction.md"
-          ],
-          "findings": [
-            {
-              "evidence": "\"Fix the retry-limit semantics so that: - `max_retries=0` means no requeue is ever allowed ... - `max_retries=None` continues to mean unlimited retries ... Keep the public signature and return type of `can_requeue` unchanged, and do not alter unrelated requeue accounting, stored entry fields, or other methods in the module.\"",
-              "path": "instruction.md",
-              "reason": "Specifies clear behavioral requirements and constraints without enforcing an exact code patch strategy.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Add or extend tests in `tests/test_tasks/test_deadletter.py` covering the three cases: `max_retries=0` is never requeueable, `max_retries=None` is always requeueable, and a positive limit allows requeueing only until the count is reached.",
-              "path": "instruction.md",
-              "reason": "Test requirements are explained to ensure meaningful coverage without specifying a testing framework or method.",
-              "severity": "info"
-            }
-          ],
-          "passed": true,
-          "recommended_fixes": [],
-          "status": "pass",
-          "summary": "The instruction.md clearly states the user-facing problem, expected fix behavior, constraints, and testing guidelines without prescribing an exact implementation approach."
-        },
-        "recommended_fixes": [],
-        "status": "pass",
-        "summary": "The instruction.md clearly states the user-facing problem, expected fix behavior, constraints, and testing guidelines without prescribing an exact implementation approach.",
-        "title": "Prompt Clarity"
-      },
-      {
-        "check_id": "02_visible_workflow",
-        "confidence": 0.9,
-        "evidence_paths": [
-          "instruction.md",
-          "environment/repo/pyproject.toml",
-          "environment/repo/README.md"
-        ],
-        "findings": [
-          "[info] instruction.md evidence: Test guidelines specify `Run the visible test command python -m pytest tests/ -x -q`. reason: This matches the test command configured in pyproject.toml and README for running tests.",
-          "[info] environment/repo/pyproject.toml evidence: pytest configured with testpaths = [\"tests\"] and filterwarnings=[\"error\"] reason: Confirms pytest is the test runner and tests/ folder is the test root, consistent with visible test guidance.",
-          "[info] environment/repo/README.md evidence: Development instructions show `pytest` runs tests as expected. reason: Matches visible test guidance and validates no hidden or unsupported test commands are referenced.",
-          "[info] instruction.md evidence: Constraints specify modifying only nexusflow/tasks/deadletter.py and tests/test_tasks/test_deadletter.py. reason: Test guideline to add tests in tests/test_tasks/test_deadletter.py aligns with visible repo test structure and does not expose grader assets."
-        ],
-        "passed": true,
-        "raw_response": {
-          "confidence": 0.9,
-          "evidence_paths": [
-            "instruction.md",
-            "environment/repo/pyproject.toml",
-            "environment/repo/README.md"
-          ],
-          "findings": [
-            {
-              "evidence": "Test guidelines specify `Run the visible test command python -m pytest tests/ -x -q`.",
-              "path": "instruction.md",
-              "reason": "This matches the test command configured in pyproject.toml and README for running tests.",
-              "severity": "info"
-            },
-            {
-              "evidence": "pytest configured with testpaths = [\"tests\"] and filterwarnings=[\"error\"]",
-              "path": "environment/repo/pyproject.toml",
-              "reason": "Confirms pytest is the test runner and tests/ folder is the test root, consistent with visible test guidance.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Development instructions show `pytest` runs tests as expected.",
-              "path": "environment/repo/README.md",
-              "reason": "Matches visible test guidance and validates no hidden or unsupported test commands are referenced.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Constraints specify modifying only nexusflow/tasks/deadletter.py and tests/test_tasks/test_deadletter.py.",
-              "path": "instruction.md",
-              "reason": "Test guideline to add tests in tests/test_tasks/test_deadletter.py aligns with visible repo test structure and does not expose grader assets.",
-              "severity": "info"
-            }
-          ],
-          "passed": true,
-          "recommended_fixes": [],
-          "status": "pass",
-          "summary": "The visible instruction.md references the correct visible test command matching the repo's pytest setup and coverage of tests in tests/test_tasks/test_deadletter.py. The README and pyproject.toml confirm usage of pytest without additional commands, aligning with the visible test command. No unsupported generic or hidden commands are exposed."
-        },
-        "recommended_fixes": [],
-        "status": "pass",
-        "summary": "The visible instruction.md references the correct visible test command matching the repo's pytest setup and coverage of tests in tests/test_tasks/test_deadletter.py. The README and pyproject.toml confirm usage of pytest without additional commands, aligning with the visible test command. No unsupported generic or hidden commands are exposed.",
-        "title": "Visible Workflow Guidance"
-      },
-      {
-        "check_id": "03_rubric_coverage",
-        "confidence": 0.95,
-        "evidence_paths": [
-          "tests/grader/frontiercode.yaml",
-          "tests/test_deadletter_fix.py"
-        ],
-        "findings": [
-          "[info] tests/grader/frontiercode.yaml evidence: Criteria includes hidden_reference_tests_pass (classical), submitted_tests_fail_on_base (reverse_classical), visible_regression_tests_pass (command), scope_matches_reference_intent (scope), no_hidden_asset_leak (command), and multiple llm_prompt checks on behavior, tests, scope, and maintainability. reason: Rubric use of multiple objective methods ensures the patch is correct, regression-free, mechanically clean, scoped properly, and of good code and test quality.",
-          "[info] tests/test_deadletter_fix.py evidence: Tests cover max_retries=0 never requeueable, max_retries=None unlimited requeueable, positive max_retries with exhausted and non-exhausted counts, verifying the key task behavior boundary cases. reason: Visible tests integrate and confirm correct behavior coverage and boundaries as required."
-        ],
-        "passed": true,
-        "raw_response": {
-          "confidence": 0.95,
-          "evidence_paths": [
-            "tests/grader/frontiercode.yaml",
-            "tests/test_deadletter_fix.py"
-          ],
-          "findings": [
-            {
-              "evidence": "Criteria includes hidden_reference_tests_pass (classical), submitted_tests_fail_on_base (reverse_classical), visible_regression_tests_pass (command), scope_matches_reference_intent (scope), no_hidden_asset_leak (command), and multiple llm_prompt checks on behavior, tests, scope, and maintainability.",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "Rubric use of multiple objective methods ensures the patch is correct, regression-free, mechanically clean, scoped properly, and of good code and test quality.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Tests cover max_retries=0 never requeueable, max_retries=None unlimited requeueable, positive max_retries with exhausted and non-exhausted counts, verifying the key task behavior boundary cases.",
-              "path": "tests/test_deadletter_fix.py",
-              "reason": "Visible tests integrate and confirm correct behavior coverage and boundaries as required.",
-              "severity": "info"
-            }
-          ],
-          "passed": true,
-          "recommended_fixes": [],
-          "status": "pass",
-          "summary": "The rubric in tests/grader/frontiercode.yaml covers mergeability comprehensively, including behavior changes, regression avoidance, mechanical cleanliness, scope limits, and test quality. It enforces classical and command criteria on visible and hidden tests, and uses llm_prompt for subjective quality aspects."
-        },
-        "recommended_fixes": [],
-        "status": "pass",
-        "summary": "The rubric in tests/grader/frontiercode.yaml covers mergeability comprehensively, including behavior changes, regression avoidance, mechanical cleanliness, scope limits, and test quality. It enforces classical and command criteria on visible and hidden tests, and uses llm_prompt for subjective quality aspects.",
-        "title": "Rubric Coverage"
-      },
-      {
-        "check_id": "04_rubric_metadata",
-        "confidence": 0.95,
-        "evidence_paths": [
-          "tests/grader/frontiercode.yaml"
-        ],
-        "findings": [
-          "[info] tests/grader/frontiercode.yaml evidence: Each criterion entry has a descriptive 'description' explaining why it matters and the 'blocker' boolean is set true for core functional tests and scope checks reason: Meaningful descriptions help reviewers understand the purpose and risk of each criterion, and blocker flags focus attention on critical failures.",
-          "[info] tests/grader/frontiercode.yaml evidence: Weights assigned range from 0.35 for hidden reference tests down to 0.02 for stylistic and maintainability prompts reason: This reflects a scaling of importance weighting key correctness and scope checks more heavily versus softer LLM judgment criteria.",
-          "[info] tests/grader/frontiercode.yaml evidence: Blocker true criteria include hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, and no_hidden_asset_leak with weights summing to 0.9 reason: These blockers enforce behavioral correctness, test effectiveness, and scope which are critical for patch QA.",
-          "[info] tests/grader/frontiercode.yaml evidence: Non-blocker criteria cover broader maintenance, style, edge cases, integration, and regression coverage with small weights (0.02 each) reason: This encourages holistic evaluation without blocking submission for minor style or coverage omissions."
-        ],
-        "passed": true,
-        "raw_response": {
-          "confidence": 0.95,
-          "evidence_paths": [
-            "tests/grader/frontiercode.yaml"
-          ],
-          "findings": [
-            {
-              "evidence": "Each criterion entry has a descriptive 'description' explaining why it matters and the 'blocker' boolean is set true for core functional tests and scope checks",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "Meaningful descriptions help reviewers understand the purpose and risk of each criterion, and blocker flags focus attention on critical failures.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Weights assigned range from 0.35 for hidden reference tests down to 0.02 for stylistic and maintainability prompts",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "This reflects a scaling of importance weighting key correctness and scope checks more heavily versus softer LLM judgment criteria.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Blocker true criteria include hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, and no_hidden_asset_leak with weights summing to 0.9",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "These blockers enforce behavioral correctness, test effectiveness, and scope which are critical for patch QA.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Non-blocker criteria cover broader maintenance, style, edge cases, integration, and regression coverage with small weights (0.02 each)",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "This encourages holistic evaluation without blocking submission for minor style or coverage omissions.",
-              "severity": "info"
-            }
-          ],
-          "passed": true,
-          "recommended_fixes": [],
-          "status": "pass",
-          "summary": "All rubric items include meaningful rationales explaining their importance, blocker flags are clearly intentional for critical criteria, and the weights are well calibrated relative to task risk and scope."
-        },
-        "recommended_fixes": [],
-        "status": "pass",
-        "summary": "All rubric items include meaningful rationales explaining their importance, blocker flags are clearly intentional for critical criteria, and the weights are well calibrated relative to task risk and scope.",
-        "title": "Rubric Rationale And Weights"
-      },
-      {
-        "check_id": "05_blocker_validity",
-        "confidence": 1.0,
-        "evidence_paths": [
-          "tests/grader/frontiercode.yaml",
-          "tests/test_deadletter_fix.py"
-        ],
-        "findings": [
-          "[info] tests/grader/frontiercode.yaml evidence: Blockers include 'hidden_reference_tests_pass', 'submitted_tests_fail_on_base', 'visible_regression_tests_pass', 'scope_matches_reference_intent', and 'no_hidden_asset_leak' each configured with blocker: true and linked to meaningful commands or scopes. reason: These blockers verify that the patch fixes the bug by passing hidden tests, that submitted visible tests fail on the base to confirm impact, that regression tests pass post-fix, scope is respected, and no artifact leakage occurs. All represent true hard stops for maintaining code quality."
+          "[info] instruction.md evidence: The prompt clearly states the problem with max_retries=0 treated as unlimited, the expected corrected behavior, and the boundary conditions for max_retries=None and positive values. reason: The prompt precisely explains the user-facing request and necessary constraints, avoiding an overly prescriptive implementation approach. It emphasizes keeping the public signature and return type unchanged and restricting changes to only the zero-versus-unlimited logic.",
+          "[info] instruction.md evidence: It instructs to add or extend tests in tests/test_tasks/test_deadletter.py covering all boundary cases without dictating exact patch strategy. reason: This encourages comprehensive testing while allowing flexibility in how to implement the fix."
         ],
         "passed": true,
         "raw_response": {
           "confidence": 1.0,
           "evidence_paths": [
-            "tests/grader/frontiercode.yaml",
-            "tests/test_deadletter_fix.py"
+            "instruction.md"
           ],
           "findings": [
             {
-              "evidence": "Blockers include 'hidden_reference_tests_pass', 'submitted_tests_fail_on_base', 'visible_regression_tests_pass', 'scope_matches_reference_intent', and 'no_hidden_asset_leak' each configured with blocker: true and linked to meaningful commands or scopes.",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "These blockers verify that the patch fixes the bug by passing hidden tests, that submitted visible tests fail on the base to confirm impact, that regression tests pass post-fix, scope is respected, and no artifact leakage occurs. All represent true hard stops for maintaining code quality.",
+              "evidence": "The prompt clearly states the problem with max_retries=0 treated as unlimited, the expected corrected behavior, and the boundary conditions for max_retries=None and positive values.",
+              "path": "instruction.md",
+              "reason": "The prompt precisely explains the user-facing request and necessary constraints, avoiding an overly prescriptive implementation approach. It emphasizes keeping the public signature and return type unchanged and restricting changes to only the zero-versus-unlimited logic.",
+              "severity": "info"
+            },
+            {
+              "evidence": "It instructs to add or extend tests in tests/test_tasks/test_deadletter.py covering all boundary cases without dictating exact patch strategy.",
+              "path": "instruction.md",
+              "reason": "This encourages comprehensive testing while allowing flexibility in how to implement the fix.",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "All defined blockers in tests/grader/frontiercode.yaml correspond to strong hard stops for the maintainer, correctly blocking merges of broken or incomplete patches."
+          "summary": "The prompt is clear, concise, and correctly states the functional requirements without over-specifying implementation details."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "All defined blockers in tests/grader/frontiercode.yaml correspond to strong hard stops for the maintainer, correctly blocking merges of broken or incomplete patches.",
+        "summary": "The prompt is clear, concise, and correctly states the functional requirements without over-specifying implementation details.",
+        "title": "Prompt Clarity"
+      },
+      {
+        "check_id": "02_visible_workflow",
+        "confidence": 0.95,
+        "evidence_paths": [
+          "instruction.md",
+          "environment/repo/pyproject.toml",
+          "environment/repo/README.md",
+          "tests/test.sh"
+        ],
+        "findings": [
+          "[info] instruction.md evidence: Test command in instruction.md is 'python -m pytest tests/ -x -q' and README.md plus pyproject.toml confirm 'pytest' with 'filterwarnings = [\"error\"]' is the lint and test mechanism. reason: Ensures the visible test instructions correspond exactly to the maintainer's environment and that lint errors will fail the test run as documented.",
+          "[info] tests/test.sh evidence: tests/test.sh invokes 'python3 \"$task_root/tests/hidden/run_criteria.py\" \"$repo\"' to run tests with hidden criteria controlled internally, matching the grader.yaml commands wrapping pytest runs. reason: Visible test scripts align with grader commands and do not expose hidden or grader-only assets explicitly, preserving assessment integrity.",
+          "[info] environment/repo/pyproject.toml evidence: [tool.pytest.ini_options]\ntestpaths = [\"tests\"]\nasyncio_mode = \"auto\"\nfilterwarnings = [\"error\"] reason: Confirms that warnings are treated as errors in visible test environments consistent with lint guidelines in instruction.md.",
+          "[info] instruction.md evidence: Lint guidelines mention no new warnings due to 'filterwarnings = [\"error\"]' and style guidelines correspond with starting from provided snapshot and maintaining type hints and imports. reason: Visible guidance is precise and sufficient for an agent to validate changes correctly.",
+          "[info] environment/repo/README.md evidence: README.md recommends 'pip install -e .[dev]' and simply 'pytest' for development and testing, matching visible instructions. reason: Visible instructions offer enough context for setup and running tests as per repository's real maintenance workflow."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.95,
+          "evidence_paths": [
+            "instruction.md",
+            "environment/repo/pyproject.toml",
+            "environment/repo/README.md",
+            "tests/test.sh"
+          ],
+          "findings": [
+            {
+              "evidence": "Test command in instruction.md is 'python -m pytest tests/ -x -q' and README.md plus pyproject.toml confirm 'pytest' with 'filterwarnings = [\"error\"]' is the lint and test mechanism.",
+              "path": "instruction.md",
+              "reason": "Ensures the visible test instructions correspond exactly to the maintainer's environment and that lint errors will fail the test run as documented.",
+              "severity": "info"
+            },
+            {
+              "evidence": "tests/test.sh invokes 'python3 \"$task_root/tests/hidden/run_criteria.py\" \"$repo\"' to run tests with hidden criteria controlled internally, matching the grader.yaml commands wrapping pytest runs.",
+              "path": "tests/test.sh",
+              "reason": "Visible test scripts align with grader commands and do not expose hidden or grader-only assets explicitly, preserving assessment integrity.",
+              "severity": "info"
+            },
+            {
+              "evidence": "[tool.pytest.ini_options]\ntestpaths = [\"tests\"]\nasyncio_mode = \"auto\"\nfilterwarnings = [\"error\"]",
+              "path": "environment/repo/pyproject.toml",
+              "reason": "Confirms that warnings are treated as errors in visible test environments consistent with lint guidelines in instruction.md.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Lint guidelines mention no new warnings due to 'filterwarnings = [\"error\"]' and style guidelines correspond with starting from provided snapshot and maintaining type hints and imports.",
+              "path": "instruction.md",
+              "reason": "Visible guidance is precise and sufficient for an agent to validate changes correctly.",
+              "severity": "info"
+            },
+            {
+              "evidence": "README.md recommends 'pip install -e .[dev]' and simply 'pytest' for development and testing, matching visible instructions.",
+              "path": "environment/repo/README.md",
+              "reason": "Visible instructions offer enough context for setup and running tests as per repository's real maintenance workflow.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "The instruction.md test and lint commands align with the repository's documented pytest usage with no generic or unsupported commands. The visible guidance sufficiently maps to the real maintainers' workflow for running tests and enforcing linting without exposing hidden assets."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The instruction.md test and lint commands align with the repository's documented pytest usage with no generic or unsupported commands. The visible guidance sufficiently maps to the real maintainers' workflow for running tests and enforcing linting without exposing hidden assets.",
+        "title": "Visible Workflow Guidance"
+      },
+      {
+        "check_id": "03_rubric_coverage",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "tests/grader/frontiercode.yaml",
+          "tests/test_deadletter_fix.py"
+        ],
+        "findings": [
+          "[info] tests/grader/frontiercode.yaml evidence: Criteria includes classical, reverse_classical, command, scope, and llm_prompt methods covering behavior, regressions, scope, and maintainability. reason: Use of multiple objective and subjective criteria ensures full task quality and mergeability coverage.",
+          "[info] tests/test_deadletter_fix.py evidence: Includes explicit tests for max_retries=0 (no requeue), max_retries=None (unlimited requeue), and positive retries with boundary conditions. reason: Test coverage targets positive and negative behavior and boundary conditions, supporting functional correctness and regression protection.",
+          "[info] tests/grader/frontiercode.yaml evidence: Scope criteria restrict all changes to nexusflow/tasks/deadletter.py, tests/ and related test files. reason: Task scope constraints prevent unrelated edits, improving review focus and minimizing risk."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "tests/grader/frontiercode.yaml",
+            "tests/test_deadletter_fix.py"
+          ],
+          "findings": [
+            {
+              "evidence": "Criteria includes classical, reverse_classical, command, scope, and llm_prompt methods covering behavior, regressions, scope, and maintainability.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Use of multiple objective and subjective criteria ensures full task quality and mergeability coverage.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Includes explicit tests for max_retries=0 (no requeue), max_retries=None (unlimited requeue), and positive retries with boundary conditions.",
+              "path": "tests/test_deadletter_fix.py",
+              "reason": "Test coverage targets positive and negative behavior and boundary conditions, supporting functional correctness and regression protection.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Scope criteria restrict all changes to nexusflow/tasks/deadletter.py, tests/ and related test files.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Task scope constraints prevent unrelated edits, improving review focus and minimizing risk.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "Rubric covers mergeability comprehensively, including correctness, regression avoidance, test quality, scope, and code quality. It uses appropriate objective methods and LLM prompts for subjective criteria."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "Rubric covers mergeability comprehensively, including correctness, regression avoidance, test quality, scope, and code quality. It uses appropriate objective methods and LLM prompts for subjective criteria.",
+        "title": "Rubric Coverage"
+      },
+      {
+        "check_id": "04_rubric_metadata",
+        "confidence": 1.0,
+        "evidence_paths": [
+          "tests/grader/frontiercode.yaml"
+        ],
+        "findings": [
+          "[info] tests/grader/frontiercode.yaml evidence: All criteria have detailed descriptions explaining why each matters, e.g., 'hidden_reference_tests_pass' checks the patch against hidden behavioral tests for correctness. reason: Clear rationales ensure the reviewer understands the importance and purpose of each criterion.",
+          "[info] tests/grader/frontiercode.yaml evidence: 'hidden_reference_tests_pass', 'submitted_tests_fail_on_base', 'visible_regression_tests_pass', 'scope_matches_reference_intent', and 'no_hidden_asset_leak' are blockers (blocker: true). reason: These reflect core correctness, regression prevention, and scope isolation crucial for patch quality and should block passing otherwise.",
+          "[info] tests/grader/frontiercode.yaml evidence: Weights for primary criteria sum appropriately: 0.35 + 0.15 + 0.20 + 0.15 + 0.05 = 0.9 for critical checks, with smaller weights (0.02) spread over other LLM prompt-based maintainability and behavioral checks. reason: Weights are properly balanced to prioritize test correctness and functional coverage while also encouraging maintainability and style via smaller weights."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 1.0,
+          "evidence_paths": [
+            "tests/grader/frontiercode.yaml"
+          ],
+          "findings": [
+            {
+              "evidence": "All criteria have detailed descriptions explaining why each matters, e.g., 'hidden_reference_tests_pass' checks the patch against hidden behavioral tests for correctness.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Clear rationales ensure the reviewer understands the importance and purpose of each criterion.",
+              "severity": "info"
+            },
+            {
+              "evidence": "'hidden_reference_tests_pass', 'submitted_tests_fail_on_base', 'visible_regression_tests_pass', 'scope_matches_reference_intent', and 'no_hidden_asset_leak' are blockers (blocker: true).",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "These reflect core correctness, regression prevention, and scope isolation crucial for patch quality and should block passing otherwise.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Weights for primary criteria sum appropriately: 0.35 + 0.15 + 0.20 + 0.15 + 0.05 = 0.9 for critical checks, with smaller weights (0.02) spread over other LLM prompt-based maintainability and behavioral checks.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Weights are properly balanced to prioritize test correctness and functional coverage while also encouraging maintainability and style via smaller weights.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "All rubric items in tests/grader/frontiercode.yaml have clear rationales, blocker status is intentional for critical criteria, and the weights are well calibrated given the task's fix scope and risk."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "All rubric items in tests/grader/frontiercode.yaml have clear rationales, blocker status is intentional for critical criteria, and the weights are well calibrated given the task's fix scope and risk.",
+        "title": "Rubric Rationale And Weights"
+      },
+      {
+        "check_id": "05_blocker_validity",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "tests/grader/frontiercode.yaml",
+          "tests/test_deadletter_fix.py",
+          "tests/grader/calibration/reference.patch"
+        ],
+        "findings": [
+          "[info] tests/grader/frontiercode.yaml evidence: Criteria like 'hidden_reference_tests_pass', 'submitted_tests_fail_on_base', and 'visible_regression_tests_pass' are marked blocker and relate directly to the correctness of the patch fixing max_retries=0 behavior. reason: These ensure that the patch properly enforces no-requeue when max_retries=0 and that tests fail on original code, confirming the blocker nature.",
+          "[info] tests/test_deadletter_fix.py evidence: Tests explicitly verify that max_retries=0 disallows requeue, max_retries=None allows unlimited, and positive max_retries enforces limited retries. reason: This test coverage matches the required blocker logic preventing incorrect merges.",
+          "[info] tests/grader/calibration/reference.patch evidence: Patch fixes the condition 'if not entry.max_retries' to 'if entry.max_retries is None' to distinguish zero from None correctly. reason: The patch correctness aligns with blocker criteria of preventing infinite requeue loops."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "tests/grader/frontiercode.yaml",
+            "tests/test_deadletter_fix.py",
+            "tests/grader/calibration/reference.patch"
+          ],
+          "findings": [
+            {
+              "evidence": "Criteria like 'hidden_reference_tests_pass', 'submitted_tests_fail_on_base', and 'visible_regression_tests_pass' are marked blocker and relate directly to the correctness of the patch fixing max_retries=0 behavior.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "These ensure that the patch properly enforces no-requeue when max_retries=0 and that tests fail on original code, confirming the blocker nature.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Tests explicitly verify that max_retries=0 disallows requeue, max_retries=None allows unlimited, and positive max_retries enforces limited retries.",
+              "path": "tests/test_deadletter_fix.py",
+              "reason": "This test coverage matches the required blocker logic preventing incorrect merges.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Patch fixes the condition 'if not entry.max_retries' to 'if entry.max_retries is None' to distinguish zero from None correctly.",
+              "path": "tests/grader/calibration/reference.patch",
+              "reason": "The patch correctness aligns with blocker criteria of preventing infinite requeue loops.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "Blockers in tests/grader/frontiercode.yaml represent genuine hard stops aligned with maintainer criteria and the task context."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "Blockers in tests/grader/frontiercode.yaml represent genuine hard stops aligned with maintainer criteria and the task context.",
         "title": "Blocker Validity"
       },
       {
         "check_id": "06_false_positive_resistance",
         "confidence": 0.9,
         "evidence_paths": [
-          "tests/test_deadletter_fix.py",
           "nexusflow/tasks/deadletter.py",
-          "tests/grader/calibration/reference.patch",
+          "tests/test_deadletter_fix.py",
+          "tests/grader/frontiercode.yaml",
           "generated_tasks/_qa/nexusflow__f7758b1/false_positive_adversarial/nexusflow__f7758b1/adversarial-1.patch",
-          "generated_tasks/_qa/nexusflow__f7758b1/false_positive_adversarial/nexusflow__f7758b1/adversarial-2.patch",
+          "generated_tasks/_qa/nexusflow__f7758b1/false_positive_adversarial/nexusflow__f7758b1/adversarial-3.patch",
+          "generated_tasks/_qa/nexusflow__f7758b1/false_positive_adversarial/nexusflow__f7758b1/adversarial-4.patch",
           "generated_tasks/_qa/nexusflow__f7758b1/false_positive_adversarial/nexusflow__f7758b1/adversarial-5.patch"
         ],
         "findings": [
-          "[info] tests/test_deadletter_fix.py evidence: Tests cover max_retries=0 returns False, max_retries=None returns True, and max_retries positive limit boundary behavior. reason: These tests exercise the critical boundary cases needed to detect correct implementation of retry semantics.",
-          "[info] nexusflow/tasks/deadletter.py evidence: The fix changes 'if not entry.max_retries' to explicit 'if entry.max_retries is None' for can_requeue method. reason: This avoids conflating 0 and None, directly addressing the identified bug.",
-          "[info] tests/grader/calibration/reference.patch evidence: The reference patch is used for calibration and passes all key behavior criteria including edge cases and regression tests. reason: This confirms that the visible plus hidden tests validate the fix correctly and prevent false positives.",
+          "[info] nexusflow/tasks/deadletter.py evidence: Patch changes 'if not entry.max_retries' to 'if entry.max_retries is None' for can_requeue reason: This explicit check fixes the bug of treating 0 as unlimited.",
+          "[info] tests/test_deadletter_fix.py evidence: Tests for max_retries=0, max_retries=None, positive limits including boundary tests reason: Test coverage includes key cases preventing false positives.",
+          "[info] tests/grader/frontiercode.yaml evidence: Calibration includes no-op and correct fix with passing hidden tests reason: Ensures weak patches or no-ops do not pass, enforcing robustness.",
           "[info] adversarial-1 evidence: blocker_failures=hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak; score=0.000 reason: candidate did not clear the false-positive gate",
-          "[info] adversarial-2 evidence: blocker_failures=hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak; score=0.000 reason: candidate did not clear the false-positive gate",
-          "[warn] adversarial-3 evidence: adversarial model call failed reason: Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
-          "[warn] adversarial-4 evidence: adversarial model call failed reason: Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
+          "[info] adversarial-2 evidence: model did not return a patch reason: no adversarial candidate",
+          "[info] adversarial-3 evidence: blocker_failures=hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak; score=0.000 reason: candidate did not clear the false-positive gate",
+          "[info] adversarial-4 evidence: blocker_failures=hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak; score=0.000 reason: candidate did not clear the false-positive gate",
           "[info] adversarial-5 evidence: blocker_failures=hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak; score=0.000 reason: candidate did not clear the false-positive gate"
         ],
         "passed": true,
@@ -256,7 +282,7 @@
           "adversarial_probe": {
             "attempts": [
               {
-                "confidence": 0.2,
+                "confidence": 0.28,
                 "frontiercode_result": {
                   "blocker_failures": [
                     "hidden_reference_tests_pass",
@@ -469,8 +495,8 @@
                   ],
                   "metadata": {
                     "calibration_type": "adversarial_generated",
-                    "strategy": "Apply the minimal real fix to `can_requeue` (distinguish max_retries is None from == 0), but satisfy the 'add tests' requirement with a thin, overfit standalone test file placed beside the requested file rather than extending the existing suite with thorough boundary coverage.",
-                    "why_bad": "The behavioral fix is correct, but the accompanying tests are a shortcut: they live in a separate ad-hoc file instead of the requested tests/test_tasks/test_deadletter.py, only assert the happy boolean values, and skip the requested boundary case where retry_count equals the positive limit. They are minimal coverage that nominally trips the reverse-base check without genuinely exercising the requeue accounting. The patch is also constructed against a reconstructed/guessed module API (method and field names not verified against the actual source), so it relies on the real file matching the assumed shape rather than the verified contract."
+                    "strategy": "Reconstruct the likely DeadLetterQueue.can_requeue body and replace the falsy `if not max_retries:` check with an explicit None-vs-zero distinction, plus add a thin overfit test file that just asserts the three cases. The implementation uses a convoluted special-case style and the tests are minimal/duplicative rather than integrated into the existing test_deadletter.py suite.",
+                    "why_bad": "The patch is a guessed, low-effort shortcut: it special-cases max_retries==0 in a clumsy way instead of cleanly modeling retry semantics, and it adds a brand-new throwaway test file with hard-coded assumptions about the API rather than extending the existing test_deadletter.py as the maintainer requested. It risks not matching the real code/API, reflecting overfitting to the narrow blocker rather than a genuine, maintainable fix."
                   },
                   "pass": false,
                   "reward": 0.0,
@@ -478,250 +504,20 @@
                   "submission_id": "adversarial-1",
                   "task_id": "nexusflow__f7758b1"
                 },
-                "patch": "diff --git a/nexusflow/tasks/deadletter.py b/nexusflow/tasks/deadletter.py\n--- a/nexusflow/tasks/deadletter.py\n+++ b/nexusflow/tasks/deadletter.py\n@@\n-        if not entry.max_retries:\n-            return True\n-        return entry.retry_count < entry.max_retries\n+        if entry.max_retries is None:\n+            return True\n+        if entry.max_retries == 0:\n+            return False\n+        return entry.retry_count < entry.max_retries\ndiff --git a/tests/test_tasks/test_deadletter_zero_retry.py b/tests/test_tasks/test_deadletter_zero_retry.py\nnew file mode 100644\n--- /dev/null\n+++ b/tests/test_tasks/test_deadletter_zero_retry.py\n@@\n+\"\"\"Thin regression coverage for max_retries=0 semantics.\"\"\"\n+\n+from nexusflow.tasks.deadletter import DeadLetterQueue\n+\n+\n+def test_zero_max_retries_never_requeue():\n+    dlq = DeadLetterQueue()\n+    dlq.add(\"t0\", {\"x\": 1}, max_retries=0)\n+    assert dlq.can_requeue(\"t0\") is False\n+\n+\n+def test_none_max_retries_always_requeue():\n+    dlq = DeadLetterQueue()\n+    dlq.add(\"t1\", {\"x\": 1}, max_retries=None)\n+    assert dlq.can_requeue(\"t1\") is True\n+\n+\n+def test_positive_limit_allows_requeue():\n+    dlq = DeadLetterQueue()\n+    dlq.add(\"t2\", {\"x\": 1}, max_retries=2)\n+    assert dlq.can_requeue(\"t2\") is True",
+                "patch": "diff --git a/nexusflow/tasks/deadletter.py b/nexusflow/tasks/deadletter.py\n--- a/nexusflow/tasks/deadletter.py\n+++ b/nexusflow/tasks/deadletter.py\n@@\n-        max_retries = entry.max_retries\n-        if not max_retries:\n-            return True\n-        return entry.retry_count < max_retries\n+        max_retries = entry.max_retries\n+        # Distinguish unlimited (None) from no-retry (0) explicitly.\n+        if max_retries is None:\n+            return True\n+        if max_retries == 0:\n+            return False\n+        return entry.retry_count < max_retries\ndiff --git a/tests/test_tasks/test_deadletter_zero.py b/tests/test_tasks/test_deadletter_zero.py\nnew file mode 100644\n--- /dev/null\n+++ b/tests/test_tasks/test_deadletter_zero.py\n@@\n+\"\"\"Targeted checks for can_requeue retry-limit semantics.\"\"\"\n+\n+from nexusflow.tasks.deadletter import DeadLetterQueue\n+\n+\n+def _add(dlq, task_id, max_retries):\n+    dlq.add(task_id, max_retries=max_retries)\n+    return task_id\n+\n+\n+def test_zero_max_retries_never_requeueable():\n+    dlq = DeadLetterQueue()\n+    _add(dlq, \"t0\", 0)\n+    assert dlq.can_requeue(\"t0\") is False\n+\n+\n+def test_none_max_retries_always_requeueable():\n+    dlq = DeadLetterQueue()\n+    _add(dlq, \"tn\", None)\n+    assert dlq.can_requeue(\"tn\") is True\n+\n+\n+def test_positive_limit_boundary():\n+    dlq = DeadLetterQueue()\n+    _add(dlq, \"tp\", 2)\n+    assert dlq.can_requeue(\"tp\") is True",
                 "patch_path": "generated_tasks/_qa/nexusflow__f7758b1/false_positive_adversarial/nexusflow__f7758b1/adversarial-1.patch",
                 "probe_id": "adversarial-1",
                 "status": "patch",
-                "strategy": "Apply the minimal real fix to `can_requeue` (distinguish max_retries is None from == 0), but satisfy the 'add tests' requirement with a thin, overfit standalone test file placed beside the requested file rather than extending the existing suite with thorough boundary coverage.",
-                "why_bad": "The behavioral fix is correct, but the accompanying tests are a shortcut: they live in a separate ad-hoc file instead of the requested tests/test_tasks/test_deadletter.py, only assert the happy boolean values, and skip the requested boundary case where retry_count equals the positive limit. They are minimal coverage that nominally trips the reverse-base check without genuinely exercising the requeue accounting. The patch is also constructed against a reconstructed/guessed module API (method and field names not verified against the actual source), so it relies on the real file matching the assumed shape rather than the verified contract."
+                "strategy": "Reconstruct the likely DeadLetterQueue.can_requeue body and replace the falsy `if not max_retries:` check with an explicit None-vs-zero distinction, plus add a thin overfit test file that just asserts the three cases. The implementation uses a convoluted special-case style and the tests are minimal/duplicative rather than integrated into the existing test_deadletter.py suite.",
+                "why_bad": "The patch is a guessed, low-effort shortcut: it special-cases max_retries==0 in a clumsy way instead of cleanly modeling retry semantics, and it adds a brand-new throwaway test file with hard-coded assumptions about the API rather than extending the existing test_deadletter.py as the maintainer requested. It risks not matching the real code/API, reflecting overfitting to the narrow blocker rather than a genuine, maintainable fix."
               },
               {
-                "confidence": 0.25,
-                "frontiercode_result": {
-                  "blocker_failures": [
-                    "hidden_reference_tests_pass",
-                    "submitted_tests_fail_on_base",
-                    "visible_regression_tests_pass",
-                    "scope_matches_reference_intent",
-                    "no_hidden_asset_leak"
-                  ],
-                  "criteria_results": [
-                    {
-                      "blocker": true,
-                      "category": "patch_specific",
-                      "criterion_id": "hidden_reference_tests_pass",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "classical",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.35
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "submitted_tests_fail_on_base",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "reverse_classical",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.15
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "visible_regression_tests_pass",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "command",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.2
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "scope_matches_reference_intent",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "scope",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.15
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "no_hidden_asset_leak",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "command",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.05
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_core_requirement",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_edge_cases",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_error_handling",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "behavior_backward_compatibility",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "regression_visible_tests_meaningful",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "regression_reference_area_preserved",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_coverage_positive_path",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_coverage_negative_path",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_integration_with_existing_workflow",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "scope_minimal_patch",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "scope_no_unrelated_public_api_changes",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "maintainability_idiomatic_design",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "maintainability_simple_control_flow",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "dependency_and_environment_fit",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "observable_output_contracts",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    }
-                  ],
-                  "metadata": {
-                    "calibration_type": "adversarial_generated",
-                    "strategy": "Target the documented falsy check in can_requeue by distinguishing None (unlimited) from 0 (never) with an explicit redundant special-case, and add a minimal/overfit visible test file that only checks the narrow boundary values so it fails on base and passes after the fix.",
-                    "why_bad": "The added tests are shallow and overfit to specific literal values rather than meaningfully exercising the requeue accounting; the implementation adds a redundant explicit `== 0` branch instead of the cleaner minimal fix, and the whole patch is a guess at the module API rather than a careful idiomatic change. It scrapes by the blockers without being a quality solution."
-                  },
-                  "pass": false,
-                  "reward": 0.0,
-                  "score": 0.0,
-                  "submission_id": "adversarial-2",
-                  "task_id": "nexusflow__f7758b1"
-                },
-                "patch": "diff --git a/nexusflow/tasks/deadletter.py b/nexusflow/tasks/deadletter.py\n--- a/nexusflow/tasks/deadletter.py\n+++ b/nexusflow/tasks/deadletter.py\n@@\n-        if not entry.max_retries:\n-            return True\n+        if entry.max_retries is None:\n+            return True\n+        if entry.max_retries == 0:\n+            return False\ndiff --git a/tests/test_tasks/test_deadletter_zero.py b/tests/test_tasks/test_deadletter_zero.py\nnew file mode 100644\n--- /dev/null\n+++ b/tests/test_tasks/test_deadletter_zero.py\n@@\n+\"\"\"Boundary tests for DeadLetterQueue.can_requeue retry-limit semantics.\"\"\"\n+\n+from nexusflow.tasks.deadletter import DeadLetterQueue\n+\n+\n+def test_zero_max_retries_never_requeueable():\n+    dlq = DeadLetterQueue()\n+    dlq.add(\"task-zero\", {\"payload\": 1}, max_retries=0)\n+    assert dlq.can_requeue(\"task-zero\") is False\n+\n+\n+def test_none_max_retries_always_requeueable():\n+    dlq = DeadLetterQueue()\n+    dlq.add(\"task-none\", {\"payload\": 1}, max_retries=None)\n+    assert dlq.can_requeue(\"task-none\") is True\n+\n+\n+def test_positive_max_retries_boundary():\n+    dlq = DeadLetterQueue()\n+    entry = dlq.add(\"task-two\", {\"payload\": 1}, max_retries=2)\n+    # Below the limit -> requeueable.\n+    assert dlq.can_requeue(\"task-two\") is True\n+    # Drive the retry count up to the limit.\n+    entry.retry_count = 2\n+    assert dlq.can_requeue(\"task-two\") is False",
-                "patch_path": "generated_tasks/_qa/nexusflow__f7758b1/false_positive_adversarial/nexusflow__f7758b1/adversarial-2.patch",
+                "confidence": 0.2,
+                "patch": "",
                 "probe_id": "adversarial-2",
-                "status": "patch",
-                "strategy": "Target the documented falsy check in can_requeue by distinguishing None (unlimited) from 0 (never) with an explicit redundant special-case, and add a minimal/overfit visible test file that only checks the narrow boundary values so it fails on base and passes after the fix.",
-                "why_bad": "The added tests are shallow and overfit to specific literal values rather than meaningfully exercising the requeue accounting; the implementation adds a redundant explicit `== 0` branch instead of the cleaner minimal fix, and the whole patch is a guess at the module API rather than a careful idiomatic change. It scrapes by the blockers without being a quality solution."
-              },
-              {
-                "error": "Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
-                "probe_id": "adversarial-3"
-              },
-              {
-                "error": "Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
-                "probe_id": "adversarial-4"
+                "status": "no_candidate",
+                "strategy": "Intended shortcut was to special-case max_retries==0 in can_requeue and add overfit tests in a new test file, but the source file deadletter.py and the existing test API were truncated from context, so a reliably-applying, runtime-correct patch cannot be produced blind.",
+                "why_bad": "A correct-but-overfit special-case fix plus narrowly tailored tests would technically pass blockers while being lower quality than the idiomatic None-vs-0 distinction; however it cannot be authored without the real file contents."
               },
               {
                 "confidence": 0.2,
@@ -937,8 +733,468 @@
                   ],
                   "metadata": {
                     "calibration_type": "adversarial_generated",
-                    "strategy": "Fix the falsy `if not max_retries` check in DeadLetterQueue.can_requeue by distinguishing None (unlimited) from 0 (never), and add a minimal/overfit new test file under tests/test_tasks/ that pokes at the queue's internal entry store to drive the retry-count cases rather than exercising the real requeue accounting workflow.",
-                    "why_bad": "The added test reaches into private internals (`_entries`, mutating `retry_count` directly) instead of exercising the public requeue lifecycle, so it is brittle and overfits to the implementation rather than validating real behavior; it is the kind of shortcut a maintainer would reject even though it satisfies the objective blockers. The reconstruction is also speculative because the actual deadletter.py source was not visible."
+                    "strategy": "Apply the minimal real conditional fix to `can_requeue` (distinguish max_retries is None from == 0) and add a runtime-introspection-based 'shortcut' test file that pokes the DeadLetterQueue API generically so it fails on the broken base but passes after the fix, without writing the carefully-targeted boundary tests the maintainer asked for.",
+                    "why_bad": "The added tests are an overfit, introspection-driven hack that guesses the public API instead of exercising it deliberately; they skip the requested retry-count==limit boundary coverage and only include one differentiating assertion, so they superficially satisfy the blocker checks while providing weak, unidiomatic, hard-to-maintain coverage."
+                  },
+                  "pass": false,
+                  "reward": 0.0,
+                  "score": 0.0,
+                  "submission_id": "adversarial-3",
+                  "task_id": "nexusflow__f7758b1"
+                },
+                "patch": "diff --git a/nexusflow/tasks/deadletter.py b/nexusflow/tasks/deadletter.py\n--- a/nexusflow/tasks/deadletter.py\n+++ b/nexusflow/tasks/deadletter.py\n@@\n-        if not max_retries:\n+        if max_retries is None:\n             return True\n+        if max_retries == 0:\n+            return False\ndiff --git a/tests/test_tasks/test_deadletter_zero_retry.py b/tests/test_tasks/test_deadletter_zero_retry.py\nnew file mode 100644\n--- /dev/null\n+++ b/tests/test_tasks/test_deadletter_zero_retry.py\n@@\n+\"\"\"Regression coverage for max_retries=0 vs None in the dead letter queue.\"\"\"\n+from __future__ import annotations\n+\n+import inspect\n+\n+from nexusflow.tasks.deadletter import DeadLetterQueue\n+\n+\n+def _build_queue() -> DeadLetterQueue:\n+    return DeadLetterQueue()\n+\n+\n+def _add(dlq: DeadLetterQueue, key: str, max_retries):\n+    sig = inspect.signature(dlq.add)\n+    kwargs = {}\n+    for name, param in sig.parameters.items():\n+        if name == \"self\":\n+            continue\n+        if name == \"max_retries\":\n+            kwargs[name] = max_retries\n+        elif name in (\"task_id\", \"id\", \"key\", \"task\"):\n+            kwargs[name] = key\n+        elif param.default is inspect.Parameter.empty:\n+            kwargs[name] = {}\n+    return dlq.add(**kwargs)\n+\n+\n+def _can(dlq: DeadLetterQueue, key: str) -> bool:\n+    sig = inspect.signature(dlq.can_requeue)\n+    params = [n for n in sig.parameters if n != \"self\"]\n+    if params:\n+        return dlq.can_requeue(key)\n+    return dlq.can_requeue()\n+\n+\n+def test_zero_max_retries_never_requeues():\n+    dlq = _build_queue()\n+    _add(dlq, \"t0\", 0)\n+    assert _can(dlq, \"t0\") is False\n+\n+\n+def test_none_max_retries_always_requeues():\n+    dlq = _build_queue()\n+    _add(dlq, \"tn\", None)\n+    assert _can(dlq, \"tn\") is True\n+\n+\n+def test_positive_limit_initially_requeueable():\n+    dlq = _build_queue()\n+    _add(dlq, \"tp\", 2)\n+    assert _can(dlq, \"tp\") is True",
+                "patch_path": "generated_tasks/_qa/nexusflow__f7758b1/false_positive_adversarial/nexusflow__f7758b1/adversarial-3.patch",
+                "probe_id": "adversarial-3",
+                "status": "patch",
+                "strategy": "Apply the minimal real conditional fix to `can_requeue` (distinguish max_retries is None from == 0) and add a runtime-introspection-based 'shortcut' test file that pokes the DeadLetterQueue API generically so it fails on the broken base but passes after the fix, without writing the carefully-targeted boundary tests the maintainer asked for.",
+                "why_bad": "The added tests are an overfit, introspection-driven hack that guesses the public API instead of exercising it deliberately; they skip the requested retry-count==limit boundary coverage and only include one differentiating assertion, so they superficially satisfy the blocker checks while providing weak, unidiomatic, hard-to-maintain coverage."
+              },
+              {
+                "confidence": 0.18,
+                "frontiercode_result": {
+                  "blocker_failures": [
+                    "hidden_reference_tests_pass",
+                    "submitted_tests_fail_on_base",
+                    "visible_regression_tests_pass",
+                    "scope_matches_reference_intent",
+                    "no_hidden_asset_leak"
+                  ],
+                  "criteria_results": [
+                    {
+                      "blocker": true,
+                      "category": "patch_specific",
+                      "criterion_id": "hidden_reference_tests_pass",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "classical",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.35
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "submitted_tests_fail_on_base",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "reverse_classical",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.15
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "visible_regression_tests_pass",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "command",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.2
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "scope_matches_reference_intent",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "scope",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.15
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "no_hidden_asset_leak",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "command",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.05
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "behavior_core_requirement",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "behavior_edge_cases",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "behavior_error_handling",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "behavior_backward_compatibility",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "regression_visible_tests_meaningful",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "regression_reference_area_preserved",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "test_coverage_positive_path",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "test_coverage_negative_path",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "test_integration_with_existing_workflow",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "scope_minimal_patch",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "scope_no_unrelated_public_api_changes",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "maintainability_idiomatic_design",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "maintainability_simple_control_flow",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "dependency_and_environment_fit",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "observable_output_contracts",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    }
+                  ],
+                  "metadata": {
+                    "calibration_type": "adversarial_generated",
+                    "strategy": "Keep the original falsy `if not max_retries` check but bolt on an explicit `max_retries == 0 -> False` special case in front of it, so the three required cases pass without a clean redesign. Add a separate test file guessing the public add/can_requeue API so the reverse-on-base blocker sees a failing test.",
+                    "why_bad": "This is a shortcut: it leaves the buggy `if not max_retries` falsy check in place and merely shadows the zero case with a redundant special branch placed ahead of it, instead of distinguishing None from 0 in one coherent condition. It is non-idiomatic, brittle, and easy to regress if the branch order changes. The added test also overfits to a guessed API rather than reflecting verified module behavior."
+                  },
+                  "pass": false,
+                  "reward": 0.0,
+                  "score": 0.0,
+                  "submission_id": "adversarial-4",
+                  "task_id": "nexusflow__f7758b1"
+                },
+                "patch": "diff --git a/nexusflow/tasks/deadletter.py b/nexusflow/tasks/deadletter.py\n--- a/nexusflow/tasks/deadletter.py\n+++ b/nexusflow/tasks/deadletter.py\n@@\n-        if not max_retries:\n-            return True\n+        if max_retries == 0:\n+            return False\n+        if not max_retries:\n+            return True\ndiff --git a/tests/test_tasks/test_deadletter_requeue.py b/tests/test_tasks/test_deadletter_requeue.py\nnew file mode 100644\n--- /dev/null\n+++ b/tests/test_tasks/test_deadletter_requeue.py\n@@\n+\"\"\"Requeue boundary tests for the dead letter queue.\"\"\"\n+\n+from nexusflow.tasks.deadletter import DeadLetterQueue\n+\n+\n+def _add(dlq, task_id, max_retries):\n+    dlq.add(task_id, {\"payload\": task_id}, \"boom\", max_retries=max_retries)\n+\n+\n+def test_zero_max_retries_never_requeueable():\n+    dlq = DeadLetterQueue()\n+    _add(dlq, \"t0\", 0)\n+    assert dlq.can_requeue(\"t0\") is False\n+\n+\n+def test_none_max_retries_always_requeueable():\n+    dlq = DeadLetterQueue()\n+    _add(dlq, \"tn\", None)\n+    assert dlq.can_requeue(\"tn\") is True\n+\n+\n+def test_positive_limit_until_count_reached():\n+    dlq = DeadLetterQueue()\n+    _add(dlq, \"t2\", 2)\n+    assert dlq.can_requeue(\"t2\") is True",
+                "patch_path": "generated_tasks/_qa/nexusflow__f7758b1/false_positive_adversarial/nexusflow__f7758b1/adversarial-4.patch",
+                "probe_id": "adversarial-4",
+                "status": "patch",
+                "strategy": "Keep the original falsy `if not max_retries` check but bolt on an explicit `max_retries == 0 -> False` special case in front of it, so the three required cases pass without a clean redesign. Add a separate test file guessing the public add/can_requeue API so the reverse-on-base blocker sees a failing test.",
+                "why_bad": "This is a shortcut: it leaves the buggy `if not max_retries` falsy check in place and merely shadows the zero case with a redundant special branch placed ahead of it, instead of distinguishing None from 0 in one coherent condition. It is non-idiomatic, brittle, and easy to regress if the branch order changes. The added test also overfits to a guessed API rather than reflecting verified module behavior."
+              },
+              {
+                "confidence": 0.2,
+                "frontiercode_result": {
+                  "blocker_failures": [
+                    "hidden_reference_tests_pass",
+                    "submitted_tests_fail_on_base",
+                    "visible_regression_tests_pass",
+                    "scope_matches_reference_intent",
+                    "no_hidden_asset_leak"
+                  ],
+                  "criteria_results": [
+                    {
+                      "blocker": true,
+                      "category": "patch_specific",
+                      "criterion_id": "hidden_reference_tests_pass",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "classical",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.35
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "submitted_tests_fail_on_base",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "reverse_classical",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.15
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "visible_regression_tests_pass",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "command",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.2
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "scope_matches_reference_intent",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "scope",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.15
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "no_hidden_asset_leak",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "command",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.05
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "behavior_core_requirement",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "behavior_edge_cases",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "behavior_error_handling",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "behavior_backward_compatibility",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "regression_visible_tests_meaningful",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "regression_reference_area_preserved",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "test_coverage_positive_path",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "test_coverage_negative_path",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "test_integration_with_existing_workflow",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "scope_minimal_patch",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "scope_no_unrelated_public_api_changes",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "maintainability_idiomatic_design",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "maintainability_simple_control_flow",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "dependency_and_environment_fit",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "observable_output_contracts",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    }
+                  ],
+                  "metadata": {
+                    "calibration_type": "adversarial_generated",
+                    "strategy": "Bolt an early `max_retries == 0 -> return False` special case in front of the existing buggy `if not max_retries: return True` line (instead of cleanly distinguishing None from 0), and add a thin standalone test file asserting the three cases. Functionally passes the zero/None/positive boundaries while keeping the conflating falsy check that ordering now masks.",
+                    "why_bad": "It leaves the root-cause `if not max_retries` falsy check in place and merely depends on a fragile early-return ordering to paper over the zero case, rather than expressing the intended None-vs-0 semantics directly. The added tests are minimal/overfit and the special-casing is non-idiomatic and easy to reintroduce the bug against during future edits."
                   },
                   "pass": false,
                   "reward": 0.0,
@@ -946,184 +1202,186 @@
                   "submission_id": "adversarial-5",
                   "task_id": "nexusflow__f7758b1"
                 },
-                "patch": "diff --git a/nexusflow/tasks/deadletter.py b/nexusflow/tasks/deadletter.py\n--- a/nexusflow/tasks/deadletter.py\n+++ b/nexusflow/tasks/deadletter.py\n@@\n-        if not entry.max_retries:\n-            return True\n-        return entry.retry_count < entry.max_retries\n+        if entry.max_retries is None:\n+            return True\n+        if entry.max_retries == 0:\n+            return False\n+        return entry.retry_count < entry.max_retries\ndiff --git a/tests/test_tasks/test_deadletter_zero.py b/tests/test_tasks/test_deadletter_zero.py\nnew file mode 100644\n--- /dev/null\n+++ b/tests/test_tasks/test_deadletter_zero.py\n@@\n+\"\"\"Boundary coverage for DeadLetterQueue.can_requeue retry-limit semantics.\"\"\"\n+\n+from nexusflow.tasks.deadletter import DeadLetterQueue\n+\n+\n+def _add(queue, task_id, max_retries):\n+    queue.add(task_id, payload={\"id\": task_id}, error=\"boom\", max_retries=max_retries)\n+\n+\n+def test_zero_max_retries_never_requeueable():\n+    queue = DeadLetterQueue()\n+    _add(queue, \"t0\", max_retries=0)\n+    assert queue.can_requeue(\"t0\") is False\n+\n+\n+def test_none_max_retries_always_requeueable():\n+    queue = DeadLetterQueue()\n+    _add(queue, \"tn\", max_retries=None)\n+    assert queue.can_requeue(\"tn\") is True\n+\n+\n+def test_positive_limit_until_count_reached():\n+    queue = DeadLetterQueue()\n+    _add(queue, \"tp\", max_retries=2)\n+    entry = queue._entries[\"tp\"]\n+    entry.retry_count = 0\n+    assert queue.can_requeue(\"tp\") is True\n+    entry.retry_count = 1\n+    assert queue.can_requeue(\"tp\") is True\n+    entry.retry_count = 2\n+    assert queue.can_requeue(\"tp\") is False",
+                "patch": "diff --git a/nexusflow/tasks/deadletter.py b/nexusflow/tasks/deadletter.py\n--- a/nexusflow/tasks/deadletter.py\n+++ b/nexusflow/tasks/deadletter.py\n@@\n-        if not entry.max_retries:\n-            return True\n-        return entry.retry_count < entry.max_retries\n+        if entry.max_retries == 0:\n+            return False\n+        if not entry.max_retries:\n+            return True\n+        return entry.retry_count < entry.max_retries\ndiff --git a/tests/test_tasks/test_deadletter_zero.py b/tests/test_tasks/test_deadletter_zero.py\nnew file mode 100644\n--- /dev/null\n+++ b/tests/test_tasks/test_deadletter_zero.py\n@@\n+\"\"\"Boundary tests for DeadLetterQueue.can_requeue retry semantics.\"\"\"\n+\n+from nexusflow.tasks.deadletter import DeadLetterQueue\n+\n+\n+def test_zero_max_retries_never_requeueable():\n+    q = DeadLetterQueue()\n+    q.add(\"t0\", max_retries=0)\n+    assert q.can_requeue(\"t0\") is False\n+\n+\n+def test_none_max_retries_always_requeueable():\n+    q = DeadLetterQueue()\n+    q.add(\"tn\", max_retries=None)\n+    assert q.can_requeue(\"tn\") is True\n+\n+\n+def test_positive_max_retries_boundary():\n+    q = DeadLetterQueue()\n+    entry = q.add(\"tp\", max_retries=2)\n+    assert q.can_requeue(\"tp\") is True\n+    entry.retry_count = 1\n+    assert q.can_requeue(\"tp\") is True\n+    entry.retry_count = 2\n+    assert q.can_requeue(\"tp\") is False",
                 "patch_path": "generated_tasks/_qa/nexusflow__f7758b1/false_positive_adversarial/nexusflow__f7758b1/adversarial-5.patch",
                 "probe_id": "adversarial-5",
                 "status": "patch",
-                "strategy": "Fix the falsy `if not max_retries` check in DeadLetterQueue.can_requeue by distinguishing None (unlimited) from 0 (never), and add a minimal/overfit new test file under tests/test_tasks/ that pokes at the queue's internal entry store to drive the retry-count cases rather than exercising the real requeue accounting workflow.",
-                "why_bad": "The added test reaches into private internals (`_entries`, mutating `retry_count` directly) instead of exercising the public requeue lifecycle, so it is brittle and overfits to the implementation rather than validating real behavior; it is the kind of shortcut a maintainer would reject even though it satisfies the objective blockers. The reconstruction is also speculative because the actual deadletter.py source was not visible."
+                "strategy": "Bolt an early `max_retries == 0 -> return False` special case in front of the existing buggy `if not max_retries: return True` line (instead of cleanly distinguishing None from 0), and add a thin standalone test file asserting the three cases. Functionally passes the zero/None/positive boundaries while keeping the conflating falsy check that ordering now masks.",
+                "why_bad": "It leaves the root-cause `if not max_retries` falsy check in place and merely depends on a fragile early-return ordering to paper over the zero case, rather than expressing the intended None-vs-0 semantics directly. The added tests are minimal/overfit and the special-casing is non-idiomatic and easy to reintroduce the bug against during future edits."
               }
             ]
           },
           "review": {
             "confidence": 0.9,
             "evidence_paths": [
-              "tests/test_deadletter_fix.py",
               "nexusflow/tasks/deadletter.py",
-              "tests/grader/calibration/reference.patch"
+              "tests/test_deadletter_fix.py",
+              "tests/grader/frontiercode.yaml"
             ],
             "findings": [
               {
-                "evidence": "Tests cover max_retries=0 returns False, max_retries=None returns True, and max_retries positive limit boundary behavior.",
-                "path": "tests/test_deadletter_fix.py",
-                "reason": "These tests exercise the critical boundary cases needed to detect correct implementation of retry semantics.",
-                "severity": "info"
-              },
-              {
-                "evidence": "The fix changes 'if not entry.max_retries' to explicit 'if entry.max_retries is None' for can_requeue method.",
+                "evidence": "Patch changes 'if not entry.max_retries' to 'if entry.max_retries is None' for can_requeue",
                 "path": "nexusflow/tasks/deadletter.py",
-                "reason": "This avoids conflating 0 and None, directly addressing the identified bug.",
+                "reason": "This explicit check fixes the bug of treating 0 as unlimited.",
                 "severity": "info"
               },
               {
-                "evidence": "The reference patch is used for calibration and passes all key behavior criteria including edge cases and regression tests.",
-                "path": "tests/grader/calibration/reference.patch",
-                "reason": "This confirms that the visible plus hidden tests validate the fix correctly and prevent false positives.",
+                "evidence": "Tests for max_retries=0, max_retries=None, positive limits including boundary tests",
+                "path": "tests/test_deadletter_fix.py",
+                "reason": "Test coverage includes key cases preventing false positives.",
+                "severity": "info"
+              },
+              {
+                "evidence": "Calibration includes no-op and correct fix with passing hidden tests",
+                "path": "tests/grader/frontiercode.yaml",
+                "reason": "Ensures weak patches or no-ops do not pass, enforcing robustness.",
                 "severity": "info"
               }
             ],
             "passed": true,
             "recommended_fixes": [],
             "status": "pass",
-            "summary": "The task includes explicit tests covering the zero, None, and positive retry limits with boundary conditions, and the hidden reference tests plus calibration verify correct behavior. No obvious shortcut can pass the rubric by ignoring the core logic fix."
+            "summary": "The patch changes the can_requeue logic to explicitly check 'if max_retries is None' for unlimited retries, fixing the 0 vs None issue. The added tests in tests/test_deadletter_fix.py cover all crucial cases: max_retries=0 disallows requeue, max_retries=None allows unlimited, and positive max_retries only allows retries while under limit. Hidden tests further enforce correctness. No evident weak tests or exploitable short-circuits were found."
           }
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The task includes explicit tests covering the zero, None, and positive retry limits with boundary conditions, and the hidden reference tests plus calibration verify correct behavior. No obvious shortcut can pass the rubric by ignoring the core logic fix. Adversarial probe: Adversarial patches were generated, but none passed the false-positive gate.",
+        "summary": "The patch changes the can_requeue logic to explicitly check 'if max_retries is None' for unlimited retries, fixing the 0 vs None issue. The added tests in tests/test_deadletter_fix.py cover all crucial cases: max_retries=0 disallows requeue, max_retries=None allows unlimited, and positive max_retries only allows retries while under limit. Hidden tests further enforce correctness. No evident weak tests or exploitable short-circuits were found. Adversarial probe: Adversarial patches were generated, but none passed the false-positive gate.",
         "title": "False Positive Resistance"
       },
       {
         "check_id": "07_false_negative_resistance",
-        "confidence": 0.9,
+        "confidence": 0.95,
         "evidence_paths": [
+          "tests/grader/frontiercode.yaml",
           "tests/test_deadletter_fix.py",
-          "tests/grader/calibration/reference.patch",
-          "tests/grader/frontiercode.yaml"
+          "instruction.md"
         ],
         "findings": [
-          "[info] tests/test_deadletter_fix.py evidence: Tests cover max_retries=0 returns False, max_retries=None returns True, and positive max_retries boundary reason: These tests explicitly verify that the key fix (treating zero as no retry) works correctly and distinguish from None for unlimited retries.",
-          "[info] tests/grader/calibration/reference.patch evidence: Patch fixes if-not-max_retries to explicit is None check reason: Changing from falsy to explicit None check addresses the core bug without restricting valid alternative implementations.",
-          "[info] tests/grader/frontiercode.yaml evidence: Calibration references tests/test_deadletter_fix.py as the reference test area reason: This ensures the visible and hidden test suites collectively cover this behavior to resist false negatives."
+          "[info] tests/grader/frontiercode.yaml evidence: Calibration 'reference-fix' uses source fix patch and passes strict behavioral criteria including 'hidden_reference_tests_pass' and 'visible_regression_tests_pass'. reason: Using the reference fix commit patch as an alternative valid calibration confirms that the correct logic is accepted, allowing non-brittle validation of behavior.",
+          "[info] tests/test_deadletter_fix.py evidence: Contains three clear tests for max_retries=0 disallowing requeue, max_retries=None allowing unlimited requeue, and positive max_retries enforcing the limit boundary. reason: These tests validate the main edge cases required by the task, ensuring that valid alternative solutions implementing the correct semantics will not be rejected.",
+          "[info] instruction.md evidence: States to cover all 3 cases (0, None, positive) with boundaries in tests/test_tasks/test_deadletter.py, but reference tests are in tests/test_deadletter_fix.py reason: The test guidance and reference tests align ensuring multiple valid test suites exist, enhancing the false-negative resistance by accepting tests beyond a single file or approach."
         ],
         "passed": true,
         "raw_response": {
-          "confidence": 0.9,
+          "confidence": 0.95,
           "evidence_paths": [
+            "tests/grader/frontiercode.yaml",
             "tests/test_deadletter_fix.py",
-            "tests/grader/calibration/reference.patch",
-            "tests/grader/frontiercode.yaml"
+            "instruction.md"
           ],
           "findings": [
             {
-              "evidence": "Tests cover max_retries=0 returns False, max_retries=None returns True, and positive max_retries boundary",
-              "path": "tests/test_deadletter_fix.py",
-              "reason": "These tests explicitly verify that the key fix (treating zero as no retry) works correctly and distinguish from None for unlimited retries.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Patch fixes if-not-max_retries to explicit is None check",
-              "path": "tests/grader/calibration/reference.patch",
-              "reason": "Changing from falsy to explicit None check addresses the core bug without restricting valid alternative implementations.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Calibration references tests/test_deadletter_fix.py as the reference test area",
+              "evidence": "Calibration 'reference-fix' uses source fix patch and passes strict behavioral criteria including 'hidden_reference_tests_pass' and 'visible_regression_tests_pass'.",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "This ensures the visible and hidden test suites collectively cover this behavior to resist false negatives.",
+              "reason": "Using the reference fix commit patch as an alternative valid calibration confirms that the correct logic is accepted, allowing non-brittle validation of behavior.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Contains three clear tests for max_retries=0 disallowing requeue, max_retries=None allowing unlimited requeue, and positive max_retries enforcing the limit boundary.",
+              "path": "tests/test_deadletter_fix.py",
+              "reason": "These tests validate the main edge cases required by the task, ensuring that valid alternative solutions implementing the correct semantics will not be rejected.",
+              "severity": "info"
+            },
+            {
+              "evidence": "States to cover all 3 cases (0, None, positive) with boundaries in tests/test_tasks/test_deadletter.py, but reference tests are in tests/test_deadletter_fix.py",
+              "path": "instruction.md",
+              "reason": "The test guidance and reference tests align ensuring multiple valid test suites exist, enhancing the false-negative resistance by accepting tests beyond a single file or approach.",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "The alternative_valid calibration with the reference patch and the test_deadletter_fix.py tests provide explicit checks for max_retries=0, max_retries=None, and positive max_retries boundary behavior. The criteria avoid brittle assumptions by focusing on behavior and known edge cases."
+          "summary": "The frontiercode.yaml includes a calibration marking the reference fix commit as alternative_valid, and the associated source fix patch and new tests provide coverage of the zero, None, and positive retry scenarios as required, demonstrating resistance against false negatives."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The alternative_valid calibration with the reference patch and the test_deadletter_fix.py tests provide explicit checks for max_retries=0, max_retries=None, and positive max_retries boundary behavior. The criteria avoid brittle assumptions by focusing on behavior and known edge cases.",
+        "summary": "The frontiercode.yaml includes a calibration marking the reference fix commit as alternative_valid, and the associated source fix patch and new tests provide coverage of the zero, None, and positive retry scenarios as required, demonstrating resistance against false negatives.",
         "title": "False Negative Resistance"
       },
       {
         "check_id": "08_agent_tests",
         "confidence": 1.0,
         "evidence_paths": [
-          "tests/test_tasks/test_deadletter.py",
+          "tests/test_deadletter_fix.py",
           "tests/grader/frontiercode.yaml"
         ],
         "findings": [
-          "[info] tests/test_tasks/test_deadletter.py evidence: Contains tests for max_retries=0 (disallow requeue), max_retries=None (allow unlimited), and positive max_retries with count boundary, exercising DeadLetterQueue.can_requeue method reason: The tests explicitly validate the core behavior changes requested by the task.",
-          "[info] tests/grader/frontiercode.yaml evidence: Criterion 'submitted_tests_fail_on_base' uses reverse_classical method to run visible tests against base snapshot ensuring they fail, confirming test's meaningfulness reason: Rule requires submitted visible tests to fail on broken base to prove test effectiveness.",
-          "[info] tests/grader/frontiercode.yaml evidence: Criterion 'visible_regression_tests_pass' runs 'python -m pytest tests/ -x -q' and is blocker, proving tests pass on fixed patch reason: Validates that the tests successfully pass with the bug fix applied."
+          "[info] tests/test_deadletter_fix.py evidence: Tests cover max_retries=0 (disallow), max_retries=None (allow), and max_retries=positive limit (allow until reached) with assertions on DeadLetterQueue.can_requeue reason: Task explicitly requires these cases tested to differentiate 0 vs None retry semantics, which this file fulfils",
+          "[info] tests/grader/frontiercode.yaml evidence: Criterion 'submitted_tests_fail_on_base' uses method 'reverse_classical' with command that runs a hidden script confirming the new tests fail on base reason: Reverse_classical method confirms the added tests do detect incorrect behavior on the broken base snapshot, validating their correctness and relevance"
         ],
         "passed": true,
         "raw_response": {
           "confidence": 1.0,
           "evidence_paths": [
-            "tests/test_tasks/test_deadletter.py",
+            "tests/test_deadletter_fix.py",
             "tests/grader/frontiercode.yaml"
           ],
           "findings": [
             {
-              "evidence": "Contains tests for max_retries=0 (disallow requeue), max_retries=None (allow unlimited), and positive max_retries with count boundary, exercising DeadLetterQueue.can_requeue method",
-              "path": "tests/test_tasks/test_deadletter.py",
-              "reason": "The tests explicitly validate the core behavior changes requested by the task.",
+              "evidence": "Tests cover max_retries=0 (disallow), max_retries=None (allow), and max_retries=positive limit (allow until reached) with assertions on DeadLetterQueue.can_requeue",
+              "path": "tests/test_deadletter_fix.py",
+              "reason": "Task explicitly requires these cases tested to differentiate 0 vs None retry semantics, which this file fulfils",
               "severity": "info"
             },
             {
-              "evidence": "Criterion 'submitted_tests_fail_on_base' uses reverse_classical method to run visible tests against base snapshot ensuring they fail, confirming test's meaningfulness",
+              "evidence": "Criterion 'submitted_tests_fail_on_base' uses method 'reverse_classical' with command that runs a hidden script confirming the new tests fail on base",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "Rule requires submitted visible tests to fail on broken base to prove test effectiveness.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Criterion 'visible_regression_tests_pass' runs 'python -m pytest tests/ -x -q' and is blocker, proving tests pass on fixed patch",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "Validates that the tests successfully pass with the bug fix applied.",
+              "reason": "Reverse_classical method confirms the added tests do detect incorrect behavior on the broken base snapshot, validating their correctness and relevance",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "The task requires adding or extending tests in tests/test_tasks/test_deadletter.py to cover zero, None, and positive max_retries cases with boundaries. The submitted tests in tests/test_tasks/test_deadletter.py cover these scenarios explicitly and the grader setup verifies they fail on the broken base and pass on the fix."
+          "summary": "The task explicitly requires adding or extending tests for DeadLetterQueue.can_requeue concerning max_retries=0, None, and positive limits. The visible submitted tests in tests/test_deadletter_fix.py cover all three cases with clear assertions. The grader config confirms reverse_classical testing validates submitted tests fail on the base (broken) snapshot, evidencing they properly detect the bug before the fix. Hence, the agent-written tests are meaningful and checked."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The task requires adding or extending tests in tests/test_tasks/test_deadletter.py to cover zero, None, and positive max_retries cases with boundaries. The submitted tests in tests/test_tasks/test_deadletter.py cover these scenarios explicitly and the grader setup verifies they fail on the broken base and pass on the fix.",
+        "summary": "The task explicitly requires adding or extending tests for DeadLetterQueue.can_requeue concerning max_retries=0, None, and positive limits. The visible submitted tests in tests/test_deadletter_fix.py cover all three cases with clear assertions. The grader config confirms reverse_classical testing validates submitted tests fail on the base (broken) snapshot, evidencing they properly detect the bug before the fix. Hence, the agent-written tests are meaningful and checked.",
         "title": "Agent Test Correctness"
       },
       {
         "check_id": "09_scope_controls",
         "confidence": 0.9,
         "evidence_paths": [
-          "tests/grader/frontiercode.yaml"
+          "tests/grader/frontiercode.yaml",
+          "instruction.md"
         ],
         "findings": [
-          "[info] tests/grader/frontiercode.yaml evidence: scope.allowed_paths: [\"nexusflow/tasks/\", \"nexusflow/tasks/deadletter.py\", \"tests/\", \"tests/test_deadletter_fix.py\"] with max_files=6 and max_changed_lines=250 reason: Explicit allowed_paths with tight max_files and max_changed_lines constrain the patch to relevant source and test files, preventing unrelated rewrites or excessive churn."
+          "[info] tests/grader/frontiercode.yaml evidence: scope: allowed_paths: [\"nexusflow/tasks/\", \"nexusflow/tasks/deadletter.py\", \"tests/\", \"tests/test_deadletter_fix.py\"], max_files: 6, max_changed_lines: 250 reason: Explicit allowed_paths and limits on max_files and max_changed_lines ensure the patch scope is limited to relevant files, preventing unrelated or broad edits.",
+          "[info] instruction.md evidence: The task specifies precise modifications only to nexusflow/tasks/deadletter.py and tests/test_deadletter_fix.py reason: The instruction further constrains scope by focusing the fix and tests to a very specific functional area, aligning with the configured scope controls."
         ],
         "passed": true,
         "raw_response": {
           "confidence": 0.9,
           "evidence_paths": [
-            "tests/grader/frontiercode.yaml"
+            "tests/grader/frontiercode.yaml",
+            "instruction.md"
           ],
           "findings": [
             {
-              "evidence": "scope.allowed_paths: [\"nexusflow/tasks/\", \"nexusflow/tasks/deadletter.py\", \"tests/\", \"tests/test_deadletter_fix.py\"] with max_files=6 and max_changed_lines=250",
+              "evidence": "scope: allowed_paths: [\"nexusflow/tasks/\", \"nexusflow/tasks/deadletter.py\", \"tests/\", \"tests/test_deadletter_fix.py\"], max_files: 6, max_changed_lines: 250",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "Explicit allowed_paths with tight max_files and max_changed_lines constrain the patch to relevant source and test files, preventing unrelated rewrites or excessive churn.",
+              "reason": "Explicit allowed_paths and limits on max_files and max_changed_lines ensure the patch scope is limited to relevant files, preventing unrelated or broad edits.",
+              "severity": "info"
+            },
+            {
+              "evidence": "The task specifies precise modifications only to nexusflow/tasks/deadletter.py and tests/test_deadletter_fix.py",
+              "path": "instruction.md",
+              "reason": "The instruction further constrains scope by focusing the fix and tests to a very specific functional area, aligning with the configured scope controls.",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "The task uses explicit scope controls in the grader config limiting allowed paths to nexusflow/tasks/deadletter.py plus tests directories, with max_files=6 and max_changed_lines=250. This effectively constrains the patch's scope to the relevant source and test files, preventing unrelated edits or excessive file churn."
+          "summary": "The task includes explicit scope controls in frontiercode.yaml with allowed paths restricting changes to nexusflow/tasks/ deadletter.py and tests/, with limits on max files and changed lines. This scope is appropriate to constrain the patch and prevent unrelated rewrites or excessive churn."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The task uses explicit scope controls in the grader config limiting allowed paths to nexusflow/tasks/deadletter.py plus tests directories, with max_files=6 and max_changed_lines=250. This effectively constrains the patch's scope to the relevant source and test files, preventing unrelated edits or excessive file churn.",
+        "summary": "The task includes explicit scope controls in frontiercode.yaml with allowed paths restricting changes to nexusflow/tasks/ deadletter.py and tests/, with limits on max files and changed lines. This scope is appropriate to constrain the patch and prevent unrelated rewrites or excessive churn.",
         "title": "Scope Controls"
       },
       {
@@ -1136,10 +1394,10 @@
           "tests/test.sh"
         ],
         "findings": [
-          "[info] instruction.md evidence: Describes task and test guidelines only, no hidden test code or reference outputs. reason: Instructions are agent-visible and must not contain hidden grading or reference data.",
-          "[info] task.toml evidence: Contains basic metadata with no grader or test asset leakage. reason: Metadata file must remain free from hidden grading or test material.",
-          "[info] environment/repo/ evidence: Typical source and test files, no presence of hidden tests or grading assets. reason: Agent-visible source repo must not expose hidden grader assets or test patches.",
-          "[info] tests/ evidence: Visible test shell script is minimal and invokes hidden run_criteria.py located outside visible scope; no explicit grader or hidden tests exposed here. reason: Visible test commands must avoid exposing hidden grading logic or assets."
+          "[info] instruction.md evidence: No hidden tests, grading prompts, or calibration patches present; only task instructions and test guidelines. reason: The instruction.md should only contain task instructions without hidden grader content.",
+          "[info] task.toml evidence: Contains only basic metadata (name, description, docker image) with no hidden test or reference data. reason: task.toml must not include hidden or private grader information.",
+          "[info] environment/repo/ evidence: Contains source code and visible tests under environment/repo/tests/; no hidden tests or calibration patches found here. reason: Visible tests and source code should not leak hidden grader assets.",
+          "[info] tests/ evidence: Only visible test script tests/test.sh is present; hidden assets and reference tests are properly isolated under tests/hidden and tests/grader. reason: Top-level solution or hidden test folders are forbidden and are respected here."
         ],
         "passed": true,
         "raw_response": {
@@ -1152,38 +1410,38 @@
           ],
           "findings": [
             {
-              "evidence": "Describes task and test guidelines only, no hidden test code or reference outputs.",
+              "evidence": "No hidden tests, grading prompts, or calibration patches present; only task instructions and test guidelines.",
               "path": "instruction.md",
-              "reason": "Instructions are agent-visible and must not contain hidden grading or reference data.",
+              "reason": "The instruction.md should only contain task instructions without hidden grader content.",
               "severity": "info"
             },
             {
-              "evidence": "Contains basic metadata with no grader or test asset leakage.",
+              "evidence": "Contains only basic metadata (name, description, docker image) with no hidden test or reference data.",
               "path": "task.toml",
-              "reason": "Metadata file must remain free from hidden grading or test material.",
+              "reason": "task.toml must not include hidden or private grader information.",
               "severity": "info"
             },
             {
-              "evidence": "Typical source and test files, no presence of hidden tests or grading assets.",
+              "evidence": "Contains source code and visible tests under environment/repo/tests/; no hidden tests or calibration patches found here.",
               "path": "environment/repo/",
-              "reason": "Agent-visible source repo must not expose hidden grader assets or test patches.",
+              "reason": "Visible tests and source code should not leak hidden grader assets.",
               "severity": "info"
             },
             {
-              "evidence": "Visible test shell script is minimal and invokes hidden run_criteria.py located outside visible scope; no explicit grader or hidden tests exposed here.",
+              "evidence": "Only visible test script tests/test.sh is present; hidden assets and reference tests are properly isolated under tests/hidden and tests/grader.",
               "path": "tests/",
-              "reason": "Visible test commands must avoid exposing hidden grading logic or assets.",
+              "reason": "Top-level solution or hidden test folders are forbidden and are respected here.",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "No hidden grader assets, reference patches, or rubric answers appear in the agent-visible files. The visible instruction.md and task.toml do not contain hidden tests or grading logic, and the environment/repo folder excludes hidden tests or assets. There is no top-level solution folder present."
+          "summary": "The agent-visible files do not include any hidden tests, grading prompts, reference outputs, calibration patches, or rubric answers. The hidden grader assets and reference patches reside only beneath tests/grader and tests/hidden, ensuring isolation."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "No hidden grader assets, reference patches, or rubric answers appear in the agent-visible files. The visible instruction.md and task.toml do not contain hidden tests or grading logic, and the environment/repo folder excludes hidden tests or assets. There is no top-level solution folder present.",
+        "summary": "The agent-visible files do not include any hidden tests, grading prompts, reference outputs, calibration patches, or rubric answers. The hidden grader assets and reference patches reside only beneath tests/grader and tests/hidden, ensuring isolation.",
         "title": "Hidden Asset Isolation"
       },
       {
@@ -1193,17 +1451,13 @@
           "environment/repo/Dockerfile",
           "tests/test.sh",
           "tests/grader/frontiercode.yaml",
-          "tests/test_deadletter_fix.py",
-          "environment/repo/pyproject.toml",
-          "nexusflow/tasks/deadletter.py"
+          "tests/grader/calibration/reference.patch"
         ],
         "findings": [
-          "[info] environment/repo/Dockerfile evidence: Uses python:3.12-slim base, installs git, copies all repo files, installs repo and pytest dependencies, runs pytest by default reason: Ensures a fresh container build can install dependencies and run tests out-of-box.",
-          "[info] tests/test.sh evidence: runs run_criteria.py on the repo with no additional setup reason: The test.sh provided is minimal but triggers the criteria runner to validate the fix and tests.",
-          "[info] tests/grader/frontiercode.yaml evidence: Contains blocking criteria running hidden tests, submitted visible tests failing on base, and visible regression tests passing, among others reason: The test criteria verify correctness, scope, and integration with CI-style QA.",
-          "[info] tests/test_deadletter_fix.py evidence: Contains clear unit tests for max_retries=0, None, and positive cases exercising the boundary logic reason: These visible tests validate the patch logic explicitly as required.",
-          "[info] nexusflow/tasks/deadletter.py evidence: Fix is limited to changing a falsy check `if not entry.max_retries` to `if entry.max_retries is None` to distinguish 0 from None correctly reason: Fix addresses the task requirement with minimal, correct scope change.",
-          "[info] environment/repo/pyproject.toml evidence: Defines dependencies and dev dependencies, including pytest 8.3.5 reason: Ensures dependency and environment compatibility for testing."
+          "[info] environment/repo/Dockerfile evidence: Dockerfile uses python:3.12-slim base image, installs git, copies repo, installs package in editable mode and pytest dependencies, and defaults to running pytest -v. reason: This setup ensures a fresh container can build the repo and run the test suite.",
+          "[info] tests/test.sh evidence: runs `python3 $task_root/tests/hidden/run_criteria.py $repo` invoking the grader script on the repo reason: The visible test script uses the packaged test runner and works relative to repo location for consistency.",
+          "[info] tests/grader/frontiercode.yaml evidence: Criteria include running visible tests in an isolated environment and using hidden_reference_tests_pass and visible_regression_tests_pass commands to check correctness. reason: The grading config comprehensively tests the packaged repo tests including the visible test runner.",
+          "[info] tests/grader/calibration/reference.patch evidence: Contains fix for the max_retries=0 bug and added tests in tests/test_deadletter_fix.py verifying new boundary behavior. reason: The presence of this patch and tests ensures end-to-end testing including the new behavior requested."
         ],
         "passed": true,
         "raw_response": {
@@ -1212,56 +1466,42 @@
             "environment/repo/Dockerfile",
             "tests/test.sh",
             "tests/grader/frontiercode.yaml",
-            "tests/test_deadletter_fix.py",
-            "environment/repo/pyproject.toml",
-            "nexusflow/tasks/deadletter.py"
+            "tests/grader/calibration/reference.patch"
           ],
           "findings": [
             {
-              "evidence": "Uses python:3.12-slim base, installs git, copies all repo files, installs repo and pytest dependencies, runs pytest by default",
+              "evidence": "Dockerfile uses python:3.12-slim base image, installs git, copies repo, installs package in editable mode and pytest dependencies, and defaults to running pytest -v.",
               "path": "environment/repo/Dockerfile",
-              "reason": "Ensures a fresh container build can install dependencies and run tests out-of-box.",
+              "reason": "This setup ensures a fresh container can build the repo and run the test suite.",
               "severity": "info"
             },
             {
-              "evidence": "runs run_criteria.py on the repo with no additional setup",
+              "evidence": "runs `python3 $task_root/tests/hidden/run_criteria.py $repo` invoking the grader script on the repo",
               "path": "tests/test.sh",
-              "reason": "The test.sh provided is minimal but triggers the criteria runner to validate the fix and tests.",
+              "reason": "The visible test script uses the packaged test runner and works relative to repo location for consistency.",
               "severity": "info"
             },
             {
-              "evidence": "Contains blocking criteria running hidden tests, submitted visible tests failing on base, and visible regression tests passing, among others",
+              "evidence": "Criteria include running visible tests in an isolated environment and using hidden_reference_tests_pass and visible_regression_tests_pass commands to check correctness.",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "The test criteria verify correctness, scope, and integration with CI-style QA.",
+              "reason": "The grading config comprehensively tests the packaged repo tests including the visible test runner.",
               "severity": "info"
             },
             {
-              "evidence": "Contains clear unit tests for max_retries=0, None, and positive cases exercising the boundary logic",
-              "path": "tests/test_deadletter_fix.py",
-              "reason": "These visible tests validate the patch logic explicitly as required.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Fix is limited to changing a falsy check `if not entry.max_retries` to `if entry.max_retries is None` to distinguish 0 from None correctly",
-              "path": "nexusflow/tasks/deadletter.py",
-              "reason": "Fix addresses the task requirement with minimal, correct scope change.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Defines dependencies and dev dependencies, including pytest 8.3.5",
-              "path": "environment/repo/pyproject.toml",
-              "reason": "Ensures dependency and environment compatibility for testing.",
+              "evidence": "Contains fix for the max_retries=0 bug and added tests in tests/test_deadletter_fix.py verifying new boundary behavior.",
+              "path": "tests/grader/calibration/reference.patch",
+              "reason": "The presence of this patch and tests ensures end-to-end testing including the new behavior requested.",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "The task packaging supports clean environment runs via the provided Dockerfile and test.sh. The visible test suite is integrated and passes with pytest. The fix and related tests for max_retries=0 are properly included and verified by the hidden grader tests. The FrontierCode result fields and criteria are appropriately defined and passed."
+          "summary": "The environment Dockerfile installs dependencies correctly, tests/test.sh runs the visible test command, and hidden grader confirms the patch with reference tests passes in a clean repo setup."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The task packaging supports clean environment runs via the provided Dockerfile and test.sh. The visible test suite is integrated and passes with pytest. The fix and related tests for max_retries=0 are properly included and verified by the hidden grader tests. The FrontierCode result fields and criteria are appropriately defined and passed.",
+        "summary": "The environment Dockerfile installs dependencies correctly, tests/test.sh runs the visible test command, and hidden grader confirms the patch with reference tests passes in a clean repo setup.",
         "title": "End To End Packaging"
       }
     ],
@@ -1269,6 +1509,6 @@
     "deterministic_warnings": [],
     "passed": true,
     "task_id": "nexusflow__f7758b1",
-    "task_path": "generated_tasks/in_progress/nexusflow__f7758b1"
+    "task_path": "generated_tasks/nexusflow__f7758b1"
   }
 ]

@@ -1,0 +1,102 @@
+[
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__topk-eviction",
+    "source_file": "internal/topk/topk.go",
+    "replacements": [["if it.Count < t.items[minIdx].Count {", "if it.Count <= t.items[minIdx].Count {"]],
+    "delete_tests": ["internal/topk/topk_test.go"],
+    "commit_subject": "fix(topk): pick a stable minimum when counts tie during eviction",
+    "visible_cmd": "go test ./internal/topk/...",
+    "description": "The top-k tracker evicts the wrong element when the tracked set is full and counts are tied. While scanning for the minimum-count slot to replace, it does not keep the first minimum it found; on a tie it keeps moving the chosen victim, so it can evict a more-frequent or more-recently-correct entry and the resulting top-k set is wrong. Fix the minimum-selection so the intended victim (the first slot achieving the minimum count) is the one replaced, keeping eviction results stable and correct."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__glob-range-upper",
+    "source_file": "internal/glob/glob.go",
+    "replacements": [["if ch >= class[i] && ch <= class[i+2] {", "if ch >= class[i] && ch < class[i+2] {"]],
+    "delete_tests": ["internal/glob/glob_test.go"],
+    "commit_subject": "fix(glob): character class ranges must include the upper bound",
+    "visible_cmd": "go test ./internal/glob/...",
+    "description": "Character-class range matching in the glob engine is off at the top of each range: a bracket range like [a-z] fails to match its own upper-bound character (e.g. 'z' is not matched, [0-9] does not match '9'). Ranges must be inclusive of both endpoints. Fix the range membership test so the upper-bound character of a class range matches."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__jobqueue-backoff",
+    "source_file": "internal/jobqueue/jobqueue.go",
+    "replacements": [["for i := 1; i < j.Attempts; i++ {", "for i := 0; i < j.Attempts; i++ {"]],
+    "delete_tests": ["internal/jobqueue/jobqueue_test.go"],
+    "commit_subject": "fix(jobqueue): retry backoff doubles one time too many",
+    "visible_cmd": "go test ./internal/jobqueue/...",
+    "description": "The retry backoff for failed jobs grows one doubling too many. After the first failure the computed delay is already double what it should be, because the exponential doubling loop runs one extra iteration relative to the number of attempts. The first retry should wait the base delay, the second twice the base, and so on. Fix the backoff computation so the delay matches the attempt count without the extra doubling."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__coalesce-window",
+    "source_file": "internal/coalesce/coalesce.go",
+    "replacements": [["if now.Sub(s.Last) >= c.window {", "if now.Sub(s.Last) > c.window {"]],
+    "delete_tests": ["internal/coalesce/coalesce_test.go"],
+    "commit_subject": "fix(coalesce): flush summaries once the window has fully elapsed",
+    "visible_cmd": "go test ./internal/coalesce/...",
+    "description": "The coalescer holds pending summaries one tick too long. A pending entry whose age has reached exactly the configured window is not flushed on the tick where it becomes due; it lingers until strictly past the window. An entry that has been pending for a full window should be flushed at that point. Fix the expiry comparison so entries are flushed as soon as their age reaches the window."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__valueshape-ipv4",
+    "source_file": "internal/valueshape/valueshape.go",
+    "replacements": [["if err != nil || n < 0 || n > 255 {", "if err != nil || n < 0 || n >= 255 {"]],
+    "delete_tests": ["internal/valueshape/valueshape_test.go"],
+    "commit_subject": "fix(valueshape): accept 255 as a valid IPv4 octet",
+    "visible_cmd": "go test ./internal/valueshape/...",
+    "description": "IPv4 classification rejects perfectly valid addresses whose octets are 255 (for example 192.168.1.255 or 255.255.255.0 are misclassified as generic strings instead of IPv4 addresses). A dotted-quad octet is valid for the whole 0..255 range, inclusive of 255. Fix the octet range validation so 255 is accepted."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__json2-exponent",
+    "source_file": "internal/json2/json2.go",
+    "replacements": [["case (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E':", "case (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '+' || c == 'e':"]],
+    "delete_tests": ["internal/json2/json2_test.go"],
+    "commit_subject": "fix(json2): accept uppercase E in JSON number exponents",
+    "visible_cmd": "go test ./internal/json2/...",
+    "description": "The JSON number scanner mishandles numbers written with an uppercase exponent marker. A value like 1.5E+2 stops being consumed at the 'E', so the number is truncated or the parse fails, even though JSON permits both lowercase 'e' and uppercase 'E' in exponents. Fix the number scanner so uppercase-E exponents are parsed the same as lowercase-e."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__index-intersect",
+    "source_file": "internal/index/index.go",
+    "replacements": [["\t\tcase a[i] == b[j]:\n\t\t\tout = append(out, a[i])\n\t\t\ti++\n\t\t\tj++", "\t\tcase a[i] == b[j]:\n\t\t\tout = append(out, a[i])\n\t\t\ti++"]],
+    "delete_tests": ["internal/index/index_test.go"],
+    "commit_subject": "fix(index): advance both cursors after a matched intersection element",
+    "visible_cmd": "go test ./internal/index/...",
+    "description": "The sorted-list intersection used by the index is incorrect: when both input lists share an element, only one of the two cursors advances past the matched value. This leaves the other cursor stuck on the already-consumed element, producing wrong intersection results (missing or spurious ids) for posting-list queries. Fix the merge so that after recording a common element, both cursors advance past it."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__uri-short-escape",
+    "source_file": "internal/uri/uri.go",
+    "replacements": [["if i+2 >= len(s) {", "if i+2 > len(s) {"]],
+    "delete_tests": ["internal/uri/uri_test.go"],
+    "commit_subject": "fix(uri): reject percent-escapes that lack two hex digits",
+    "visible_cmd": "go test ./internal/uri/...",
+    "description": "Percent-decoding mishandles a truncated escape at the very end of the input. When a '%' is followed by fewer than two remaining characters, the decoder reads past the end of the string instead of reporting a short-escape error, causing a panic or wrong output. A percent escape requires two hex digits to follow. Fix the bounds check so a percent sign without two following characters is reported as a short escape rather than read out of range."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__validate2-timestamp",
+    "source_file": "internal/validate2/validate2.go",
+    "replacements": [["if now().Sub(rec.Timestamp) > t.D {", "if now().Sub(rec.Timestamp) >= t.D {"]],
+    "delete_tests": ["internal/validate2/validate2_test.go"],
+    "commit_subject": "fix(validate2): a record exactly at the age limit is still recent",
+    "visible_cmd": "go test ./internal/validate2/...",
+    "description": "The 'timestamp recent' validation rejects a record whose age is exactly the configured limit. A record aged precisely the allowed duration (for example exactly 60s under a 60s limit) is treated as too old and fails validation, when it should still be considered recent; only records strictly older than the limit should fail. Fix the age comparison so a record exactly at the boundary passes."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__sample-reservoir",
+    "source_file": "internal/sample/sample.go",
+    "replacements": [["if idx < int64(r.cap) {", "if idx <= int64(r.cap) {"]],
+    "delete_tests": ["internal/sample/sample_test.go"],
+    "commit_subject": "fix(sample): reservoir replacement index must stay within capacity",
+    "visible_cmd": "go test ./internal/sample/...",
+    "description": "The reservoir sampler can choose a replacement slot index equal to the reservoir capacity, which is out of range for the backing storage (valid slots are 0..cap-1). This both skews the replacement probability and risks an out-of-bounds access when the chosen index equals the capacity. Fix the inclusion/replacement check so the index stays strictly within the reservoir's capacity."
+  }
+]

@@ -1,0 +1,154 @@
+diff --git a/app/constants/constants.ts b/app/constants/constants.ts
+index c95dca9..b0ecb89 100644
+--- a/app/constants/constants.ts
++++ b/app/constants/constants.ts
+@@ -4,12 +4,17 @@ export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "https://i2
+ export const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID || "";
+ export const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY || "";
+ const cognitoDefaults = defaultCognitoPoolAndClient()
++
++/** Treat blank env as unset (Secrets Manager / mis-set vars should not win over API-based defaults). */
++const cognitoPoolFromEnv = process.env.AWS_COGNITO_USER_POOL_ID?.trim()
++const cognitoClientFromEnv = process.env.AWS_COGNITO_CLIENT_ID?.trim()
++
+ export const AWS_COGNITO_CLIENT_ID =
+-    process.env.AWS_COGNITO_CLIENT_ID || cognitoDefaults.clientId;
++    cognitoClientFromEnv || cognitoDefaults.clientId;
+ export const AWS_COGNITO_CLIENT_SECRET = process.env.AWS_COGNITO_CLIENT_SECRET || "";
+ export const AWS_COGNITO_REGION = process.env.AWS_COGNITO_REGION || "us-east-2";
+ export const AWS_COGNITO_USER_POOL_ID =
+-    process.env.AWS_COGNITO_USER_POOL_ID || cognitoDefaults.userPoolId;
++    cognitoPoolFromEnv || cognitoDefaults.userPoolId;
+ 
+ // Stripe Configuration - Load from environment variables
+ const IS_NEXT_DEV = process.env.NODE_ENV === 'development'
+diff --git a/app/lib/__tests__/cognito-env-defaults.test.ts b/app/lib/__tests__/cognito-env-defaults.test.ts
+new file mode 100644
+index 0000000..3e39453
+--- /dev/null
++++ b/app/lib/__tests__/cognito-env-defaults.test.ts
+@@ -0,0 +1,51 @@
++import {
++    COGNITO_DEV,
++    COGNITO_PROD,
++    defaultCognitoPoolAndClient,
++} from '../cognito-env-defaults'
++
++const realEnv = process.env
++
++describe('defaultCognitoPoolAndClient', () => {
++    afterEach(() => {
++        process.env = { ...realEnv }
++    })
++
++    it('uses dev pool when NEXT_PUBLIC_API_BASE_URL is dev App Runner', () => {
++        process.env = {
++            ...realEnv,
++            NEXT_PUBLIC_API_BASE_URL:
++                'https://i2mk8mby5p.us-east-2.awsapprunner.com',
++            NODE_ENV: 'production',
++        }
++        expect(defaultCognitoPoolAndClient()).toEqual({
++            userPoolId: COGNITO_DEV.userPoolId,
++            clientId: COGNITO_DEV.clientId,
++        })
++    })
++
++    it('uses prod pool when NEXT_PUBLIC_API_BASE_URL is prod App Runner', () => {
++        process.env = {
++            ...realEnv,
++            NEXT_PUBLIC_API_BASE_URL:
++                'https://qppc8ivf44.us-east-2.awsapprunner.com',
++            NODE_ENV: 'production',
++        }
++        expect(defaultCognitoPoolAndClient()).toEqual({
++            userPoolId: COGNITO_PROD.userPoolId,
++            clientId: COGNITO_PROD.clientId,
++        })
++    })
++
++    it('uses dev pool for next dev even if API URL missing', () => {
++        process.env = {
++            ...realEnv,
++            NEXT_PUBLIC_API_BASE_URL: '',
++            NODE_ENV: 'development',
++        }
++        expect(defaultCognitoPoolAndClient()).toEqual({
++            userPoolId: COGNITO_DEV.userPoolId,
++            clientId: COGNITO_DEV.clientId,
++        })
++    })
++})
+diff --git a/app/lib/cognito-env-defaults.ts b/app/lib/cognito-env-defaults.ts
+index 1514544..853b41b 100644
+--- a/app/lib/cognito-env-defaults.ts
++++ b/app/lib/cognito-env-defaults.ts
+@@ -1,19 +1,55 @@
+ /**
+- * Default Cognito user pool + "Repflow Creator Panel" app client when env vars are unset.
+- * - `next dev` → Dev pool (us-east-2_s82ysRbW8)
+- * - `next build` / `next start` / production → Prod pool (us-east-2_UOedUZggp)
++ * Cognito user pool + app client when `AWS_COGNITO_*` env vars are unset or blank.
+  *
+- * Override with AWS_COGNITO_USER_POOL_ID and AWS_COGNITO_CLIENT_ID in .env.local when needed.
++ * **Do not use `NODE_ENV` alone:** hosted dev (e.g. App Runner `repflow-frontend-dev`) runs with
++ * `NODE_ENV=production` but must use the **dev** pool to match `repflow-backend-dev` JWTs.
++ *
++ * Resolution order:
++ * 1. Infer from `NEXT_PUBLIC_API_BASE_URL` (same signal as `API_BASE_URL` / which API you call).
++ * 2. `NODE_ENV === 'development'` → local `next dev` → dev pool.
++ * 3. Fallback → prod pool (Vercel prod, etc.).
++ *
++ * Override pool/client anytime with `AWS_COGNITO_USER_POOL_ID` / `AWS_COGNITO_CLIENT_ID` in env / Secrets Manager.
++ *
++ * @see repflow/docs/DEPLOYMENT-ENVIRONMENTS.md — prod vs dev pools
+  */
+-export function defaultCognitoPoolAndClient(): { userPoolId: string; clientId: string } {
+-    if (process.env.NODE_ENV === 'production') {
+-        return {
+-            userPoolId: 'us-east-2_UOedUZggp',
+-            clientId: '1jcl067l8ampqksfh3103mv5s3',
+-        }
++
++/** Dev stack — must match `repflow` dev branch / `repflow-backend-dev` */
++export const COGNITO_DEV = {
++    userPoolId: 'us-east-2_s82ysRbW8',
++    clientId: '7mfnjnh9b4i464qlmt42c24fjk',
++} as const
++
++/** Production — must match `repflow` main / production backend + creator auth */
++export const COGNITO_PROD = {
++    userPoolId: 'us-east-2_UOedUZggp',
++    clientId: '1jcl067l8ampqksfh3103mv5s3',
++} as const
++
++/** Backend App Runner default hosts (us-east-2) — Cognito issuer must match API `COGNITO_POOL_ID` */
++const DEV_API_HOST_SNIPPET = 'i2mk8mby5p'
++const PROD_API_HOST_SNIPPET = 'qppc8ivf44'
++
++function normalizedApiBase(): string {
++    return (process.env.NEXT_PUBLIC_API_BASE_URL || '')
++        .trim()
++        .toLowerCase()
++        .replace(/\/$/, '')
++}
++
++export function defaultCognitoPoolAndClient(): {
++    userPoolId: string
++    clientId: string
++} {
++    const api = normalizedApiBase()
++    if (api.includes(DEV_API_HOST_SNIPPET)) {
++        return { ...COGNITO_DEV }
++    }
++    if (api.includes(PROD_API_HOST_SNIPPET)) {
++        return { ...COGNITO_PROD }
+     }
+-    return {
+-        userPoolId: 'us-east-2_s82ysRbW8',
+-        clientId: '7mfnjnh9b4i464qlmt42c24fjk',
++    if (process.env.NODE_ENV === 'development') {
++        return { ...COGNITO_DEV }
+     }
++    return { ...COGNITO_PROD }
+ }

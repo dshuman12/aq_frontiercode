@@ -1,0 +1,259 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Vault API",
+    "description": "Manage vault ids",
+    "version": "1.0",
+    "contact": {
+      "name": "GAPTECH Profile team",
+      "email": "HQ-GAPTECH-PROFILE-DG@gap.com"
+    }
+  },
+  "host": "stage.api.gap.com",
+  "schemes": [
+    "https"
+  ],
+  "basePath": "/commerce/vault",
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/vault-ids": {
+      "post": {
+        "tags": [
+          "Vault"
+        ],
+        "summary": "convert credit card numbers to vault ids",
+        "description": "convert credit card numbers to vault ids",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "description": "array of vault request objects. The index should be unique.",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/VaultRequest"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "returns array of VaultResponse objects.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/VaultResponse"
+              }
+            }
+          },
+          "400": {
+            "description": "Indexes are not unique. (errorCode 1)\n Some types are invalid. (errorCode 9)\n Index, type or plaintext is missing. (errorcode 10)\n Invalid credit card length - maximum allowed length is 30 and minimum allowed length is 13. (errorcode 11)\n Invalid credit card  - Some credit card numbers are invalid.Only digits are allowed (errorcode 12)\n",
+            "schema": {
+              "$ref": "#/definitions/ErrorEntity"
+            }
+          },
+          "500": {
+            "description": "Internal server error. (errorCode 0)",
+            "schema": {
+              "$ref": "#/definitions/ErrorEntity"
+            }
+          }
+        }
+      }
+    },
+    "/vault-entries": {
+      "get": {
+        "tags": [
+          "Vault"
+        ],
+        "summary": "retrieves the corresponding returntypes for vault ids and vault ids for tokens respectively.",
+        "description": "Accepts both vault ids and tokens. Responds with corresponding vault-entries and vault ids respectively.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "description": "Array of VaultEntryRequest objects.\n\n Valid combinations of inputType and returnType inside VaultEntryRequest object are :\n\n| inputType | returnType |\n|-----|-----|\n| VAULT_ID   | CREDIT_CARD_EXPIRY_MONTH |\n||CREDIT_CARD_EXPIRY_YEAR |\n||GIFT_CARD_NUMBER |\n  ||GIFT_CARD_PIN |\n||GIFT_CARD_TRACK2 |\n||TOKEN |\n | TOKEN  | VAULT_ID ",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/VaultEntryRequest"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "returns array of VaultResponse objects.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/VaultEntryResponse"
+              }
+            }
+          },
+          "400": {
+            "description": "Indexes are not unique. (errorCode 1)\nSome input types are invalid. (errorCode 2)\nSome return types are invalid. (errorCode 3)\n returnType,inputType,index or inputData is missing. (errorcode 4)\nInvalid vault id length - length of vault id is 32. (errorcode 5)\nSome vault ids are invalid. Only digits are allowed. (errorcode 6)\nInvalid token length - Token length is 16. (errorcode 7)\nSome tokens are invalid. Only digits are allowed. (errorcode 8)\n",
+            "schema": {
+              "$ref": "#/definitions/ErrorEntity"
+            }
+          },
+          "500": {
+            "description": "Internal server error. (errorCode 0)",
+            "schema": {
+              "$ref": "#/definitions/ErrorEntity"
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Vault"
+        ],
+        "summary": "converts given request types to vault ids.",
+        "description": "Accepts a list of allowed types and converts them to vault ids",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "description": "Array of VaultRequest objects.\n\n Values accepted for 'type' in VaultRequest object are :\n\n| types |\n|----------|\n|CREDIT_CARD_NUMBER|\n|CREDIT_CARD_EXPIRY_MONTH |\n|CREDIT_CARD_EXPIRY_YEAR |\n|GIFT_CARD_NUMBER |\n|GIFT_CARD_PIN |\n|GIFT_CARD_TRACK2 |\n ",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/VaultRequest"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "returns array of VaultResponse objects.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/VaultResponse"
+              }
+            }
+          },
+          "400": {
+            "description": "Indexes are not unique. (errorCode 1)\n Some types are invalid. (errorCode 9)\n Index, type or plaintext is missing. (errorcode 10)\n Invalid credit card length - maximum allowed length is 30 and minimum allowed length is 13. (errorcode 11)\n Invalid credit card  - Some credit card numbers are invalid.Only digits are allowed (errorcode 12)\n Invalid gift card - Some gift card numbers are invalid. Only digits are allowed (errorcode 13) \n Invalid gift card length - maximum allowed length is 20 and minimum allowed length is 16. (errorcode 14)\n Invalid giftcard pin  - Some gift card pin numbers are invalid. Only digits are allowed (errorcode 15)\n Invalid gift card track2 length - maximum allowed length is 64 and minimum allowed length is 16. (errorcode 16)",
+            "schema": {
+              "$ref": "#/definitions/ErrorEntity"
+            }
+          },
+          "500": {
+            "description": "Internal server error. (errorCode 0)",
+            "schema": {
+              "$ref": "#/definitions/ErrorEntity"
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "VaultRequest": {
+      "type": "object",
+      "required": [
+        "plaintext",
+        "type",
+        "index"
+      ],
+      "properties": {
+        "type": {
+          "description": "Data type to be encrypted",
+          "type": "string",
+        },
+        "plaintext": {
+          "description": "Data to be encrypted.",
+          "type": "string"
+        },
+        "index": {
+          "description": "Unique index to identify the data.",
+          "type": "integer"
+        }
+      }
+    },
+    "VaultResponse": {
+      "type": "object",
+      "required": [
+        "vaultId",
+        "index"
+      ],
+      "properties": {
+        "vaultId": {
+          "description": "Vault id.",
+          "type": "string"
+        },
+        "index": {
+          "description": "Unique index to identify the data.",
+          "type": "integer"
+        }
+      }
+    },
+    "VaultEntryRequest": {
+      "type": "object",
+      "required": [
+        "returnType",
+        "inputType",
+        "inputData",
+        "index"
+      ],
+      "properties": {
+        "inputType": {
+          "description": "input types to be decrypted",
+          "type": "string"
+        },
+        "returnType": {
+          "description": "Data type to be returned",
+          "type": "string"
+        },
+        "inputData": {
+          "description": "actual data of the inputType.",
+          "type": "integer"
+        },
+        "index": {
+          "description": "Unique index for each request object.",
+          "type": "integer"
+        }
+      }
+    },
+    "VaultEntryResponse": {
+      "type": "object",
+      "required": [
+        "responseData",
+        "index"
+      ],
+      "properties": {
+        "responseData": {
+          "description": "decrypted value (plaintext) corresponding to the input type",
+          "type": "string"
+        },
+        "index": {
+          "description": "Unique index for each request object.",
+          "type": "integer"
+        }
+      }
+    },
+    "ErrorEntity": {
+      "properties": {
+        "developerMessage": {
+          "type": "string"
+        },
+        "userMessage": {
+          "type": "string"
+        },
+        "errorCode": {
+          "type": "integer"
+        },
+        "moreInfo": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

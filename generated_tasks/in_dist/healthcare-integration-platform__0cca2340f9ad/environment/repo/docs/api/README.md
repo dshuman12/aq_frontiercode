@@ -1,3 +1,0 @@
-# api
-
-HealthBridge api documentation.

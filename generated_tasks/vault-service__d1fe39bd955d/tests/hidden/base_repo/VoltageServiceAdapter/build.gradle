@@ -1,0 +1,73 @@
+plugins {
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+    id 'java'
+}
+
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = 11
+
+
+repositories {
+    maven {
+        url "https://gapinc.jfrog.io/gapinc/maven-repos/"
+        credentials {
+            username System.getenv("ARTIFACTORY_USERNAME") ?: "$artifactory_username"
+            password System.getenv("ARTIFACTORY_PASSWORD") ?: "$artifactory_password"
+        }
+    }
+
+    mavenCentral()
+    maven { url 'https://repo.spring.io/milestone' }
+}
+
+bootJar.enabled = false
+
+jar {
+    enabled = true
+}
+
+configurations {
+    jaxb
+}
+dependencies {
+    compile('commons-lang:commons-lang:2.6')
+    compile("org.springframework.ws:spring-ws-core")
+    compile("org.springframework.boot:spring-boot-starter-web")
+    compileOnly('org.projectlombok:lombok:+')
+    annotationProcessor('org.projectlombok:lombok:+')
+    implementation('com.sun.xml.messaging.saaj:saaj-impl:+')
+    implementation('com.sun.xml.bind:jaxb-impl:+')
+    implementation('com.sun.xml.bind:jaxb-core:+')
+    implementation('javax.xml.bind:jaxb-api:2.3.1')
+    implementation('org.glassfish.jaxb:jaxb-runtime:+')
+    jaxb (
+            'com.sun.xml.bind:jaxb-core:+',
+            'com.sun.xml.bind:jaxb-xjc:+',
+            'com.sun.xml.bind:jaxb-impl:+'
+    )
+}
+
+task generateVoltageServiceAdapterStubs {
+    System.setProperty('javax.xml.accessExternalSchema', 'all')
+    def jaxbTargetDir = file("src/main/java/")
+    doLast {
+        jaxbTargetDir.mkdirs()
+        ant.taskdef(
+                name: 'xjc',
+                classname: 'com.sun.tools.xjc.XJCTask',
+                classpath: configurations.jaxb.asPath
+        )
+        ant.jaxbTargetDir = jaxbTargetDir
+        ant.xjc(
+                destdir: '${jaxbTargetDir}',
+                package: 'com.voltage.v1.client',
+                schema: 'src/main/resources/wsdl/voltage-v1-0.wsdl',
+                language: 'WSDL'
+        )
+    }
+}
+
+sonarqube {
+    skipProject = true
+}

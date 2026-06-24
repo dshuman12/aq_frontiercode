@@ -1,0 +1,57 @@
+sourceSets {
+    contractTest {
+        java {
+            compileClasspath += main.output + test.output
+            runtimeClasspath += main.output + test.output
+            srcDir file('src/contractTest/java')
+        }
+        resources.srcDir file('src/contractTest/resources')
+    }
+}
+
+configurations {
+    contractTestCompile.extendsFrom testCompile
+    contractTestRuntime.extendsFrom testRuntime
+    contractTests
+}
+
+dependencies {
+    contractTestCompile('au.com.dius:pact-jvm-provider-junit5:4.0.10')
+    contractTestCompile('org.springframework.boot:spring-boot-starter-test')
+    contractTestCompile('org.springframework.boot:spring-boot-starter-actuator')
+    contractTestCompile('org.springframework.boot:spring-boot-starter-web')
+    contractTestCompile('org.springframework.security:spring-security-web')
+    contractTestCompile('org.springframework.security:spring-security-config')
+    contractTestCompile('org.springframework.ws:spring-ws-core')
+    contractTestCompile('org.springframework.retry:spring-retry')
+    contractTestCompile('org.springframework.boot:spring-boot-starter-data-jdbc')
+    contractTestCompile('com.ingrian.security.nae:IngrianNAE:8.11.1.000')
+    contractTestCompile project(':VoltageServiceAdapter')
+    contractTestCompile project(':Bluefin')
+    contractTestCompile 'org.glassfish.jersey.connectors:jersey-apache-connector'
+    contractTestCompile 'org.springdoc:springdoc-openapi-ui:+'
+    contractTestRuntimeOnly 'com.microsoft.sqlserver:mssql-jdbc:9.2.1.jre11'
+    contractTests("com.gap.customer:apigee-vault-service-contract:latest.release@zip")
+}
+
+task extractContractTests(type: Copy, dependsOn: configurations.contractTests) {
+    from {
+        configurations.contractTests.collect { zipTree(it) }
+    }
+    into "${sourceSets.contractTest.output.resourcesDir}/contracts"
+}
+
+task contractTest(type: Test, dependsOn: extractContractTests) {
+    testClassesDirs = sourceSets.contractTest.output.classesDirs
+
+    classpath = sourceSets.contractTest.runtimeClasspath
+
+    reports.html.destination = file("${reporting.baseDir}/${name}")
+    useJUnitPlatform()
+}
+
+idea {
+    module {
+        scopes.TEST.plus += [configurations.contractTestCompile]
+    }
+}

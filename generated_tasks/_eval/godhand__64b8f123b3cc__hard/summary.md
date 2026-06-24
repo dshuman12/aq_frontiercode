@@ -30,7 +30,7 @@ Trial mode: each trial is one independent agent solve trajectory. The agent rece
 
 ## Grader Details
 
-Trial score is zero when any blocker criterion fails; otherwise it is the weighted average of criterion scores.
+Trial pass/fail is determined by blocker criteria. Trial score is the weighted average of criterion scores, including failed trials.
 
 <details>
 <summary>godhand__64b8f123b3cc__hard__CcpfYwY: FAIL, score 0.000, criteria 19/20</summary>

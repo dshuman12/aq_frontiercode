@@ -1,0 +1,1182 @@
+[
+  {
+    "blocker_failures": [],
+    "criteria_results": [
+      {
+        "blocker": true,
+        "category": "patch_specific",
+        "criterion_id": "hidden_reference_tests_pass",
+        "details": "hidden reference tests: `pytest tests/unit/test_chunking.py` exited 0\nSTDOUT:\n...........                                                              [100%]Running teardown with pytest sessionfinish...\n\n11 passed in 0.24s\n\nSTDERR:\n",
+        "method": "classical",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.35
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "submitted_tests_fail_on_base",
+        "details": "Submitted tests failed on the broken base snapshot as expected.\nsubmitted tests on base snapshot: `pytest tests/unit/test_chunking.py` exited 1\nSTDOUT:\nFFF.                                                                     [100%]Running teardown with pytest sessionfinish...\n\n=================================== FAILURES ===================================\n__________________ test_fixed_chunker_supports_small_overlap ___________________\n\n    def test_fixed_chunker_supports_small_overlap() -> None:\n        text = \"\".join(chr(codepoint) for codepoint in range(33, 123))\n    \n>       _assert_fixed_chunks_contract(text, chunk_size=12, chunk_overlap=1)\n\ntests/unit/test_chunking.py:30: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntext = '!\"#$%&\\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\\\]^_`abcdefghijklmnopqrstuvwxyz'\n\n    def _assert_fixed_chunks_contract(text: str, *, chunk_size: int, chunk_overlap: int) -> None:\n        chunks = FixedChunker(\n            ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap)\n        ).split_text(text)\n    \n        if not text:\n            assert chunks == []\n            return\n    \n        assert chunks\n    \n        for previous, current in zip(chunks, chunks[1:], strict=False):\n            if chunk_overlap:\n>               assert previous[-chunk_overlap:] == current[:chunk_overlap]\nE               AssertionError: assert ',' == '-'\nE                 \nE                 - -\nE                 + ,\n\ntests/unit/test_chunking.py:18: AssertionError\n_______________ test_fixed_chunker_supports_small_stride_overlap _______________\n\n    def test_fixed_chunker_supports_small_stride_overlap() -> None:\n        text = \"\".join(chr(codepoint) for codepoint in range(33, 65))\n    \n>       _assert_fixed_chunks_contract(text, chunk_size=6, chunk_overlap=5)\n\ntests/unit/test_chunking.py:36: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntext = '!\"#$%&\\'()*+,-./0123456789:;<=>?@'\n\n    def _assert_fixed_chunks_contract(text: str, *, chunk_size: int, chunk_overlap: int) -> None:\n        chunks = FixedChunker(\n            ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap)\n        ).split_text(text)\n    \n        if not text:\n            assert chunks == []\n            return\n    \n        assert chunks\n    \n        for previous, current in zip(chunks, chunks[1:], strict=False):\n            if chunk_overlap:\n>               assert previous[-chunk_overlap:] == current[:chunk_overlap]\nE               assert '\"#$%&' == \"#$%&'\"\nE                 \nE                 - #$%&'\nE                 ?     -\nE                 + \"#$%&\nE                 ? +\n\ntests/unit/test_chunking.py:18: AssertionError\n___________________ test_fixed_chunker_supports_zero_overlap ___________________\n\n    def test_fixed_chunker_supports_zero_overlap() -> None:\n        text = \"\".join(chr(codepoint) for codepoint in range(33, 70))\n    \n>       _assert_fixed_chunks_contract(text, chunk_size=10, chunk_overlap=0)\n\ntests/unit/test_chunking.py:42: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntext = '!\"#$%&\\'()*+,-./0123456789:;<=>?@ABCDE'\n\n    def _assert_fixed_chunks_contract(text: str, *, chunk_size: int, chunk_overlap: int) -> None:\n        chunks = FixedChunker(\n            ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap)\n        ).split_text(text)\n    \n        if not text:\n            assert chunks == []\n            return\n    \n        assert chunks\n    \n        for previous, current in zip(chunks, chunks[1:], strict=False):\n            if chunk_overlap:\n                assert previous[-chunk_overlap:] == current[:chunk_overlap]\n                assert previous[-(chunk_overlap + 1) :] != current[: chunk_overlap + 1]\n            else:\n                assert previous[-1:] != current[:1]\n    \n        reconstructed = chunks[0] + \"\".join(chunk[chunk_overlap:] for chunk in chunks[1:])\n>       assert reconstructed == text\nE       assert '!\"#$%&\\'()*,...89:;<=>?@BCDE' == '!\"#$%&\\'()*+...9:;<=>?@ABCDE'\nE         \nE         - !\"#$%&'()*+,-./0123456789:;<=>?@ABCDE\nE         ?           -          -          -\nE         + !\"#$%&'()*,-./012345789:;<=>?@BCDE\n\ntests/unit/test_chunking.py:24: AssertionError\n=========================== short test summary info ============================\nFAILED tests/unit/test_chunking.py::test_fixed_chunker_supports_small_overlap - AssertionError: assert ',' == '-'\n  \n  - -\n  + ,\nFAILED tests/unit/test_chunking.py::test_fixed_chunker_supports_small_stride_overlap - assert '\"#$%&' == \"#$%&'\"\n  \n  - #$%&'\n  ?     -\n  + \"#$%&\n  ? +\nFAILED tests/unit/test_chunking.py::test_fixed_chunker_supports_zero_overlap - assert '!\"#$%&\\'()*,...89:;<=>?@BCDE' == '!\"#$%&\\'()*+...9:;<=>?@ABCDE'\n  \n  - !\"#$%&'()*+,-./0123456789:;<=>?@ABCDE\n  ?           -          -          -\n  + !\"#$%&'()*,-./012345789:;<=>?@BCDE\n3 failed, 1 passed in 0.23s\n\nSTDERR:\n",
+        "method": "reverse_classical",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.15
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "visible_regression_tests_pass",
+        "details": "visible regression command: `pytest tests/unit/test_chunking.py` exited 0\nSTDOUT:\n....                                                                     [100%]Running teardown with pytest sessionfinish...\n\n4 passed in 0.20s\n\nSTDERR:\n",
+        "method": "command",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.2
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "scope_matches_reference_intent",
+        "details": "Changed files stay within the generated reference scope: app/rag/chunking/fixed.py, tests/unit/test_chunking.py",
+        "method": "scope",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.15
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "no_hidden_asset_leak",
+        "details": "No generated hidden asset names or fix commit identifiers were found in the agent-visible repo.",
+        "method": "command",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.05
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_core_requirement",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_edge_cases",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_error_handling",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "behavior_backward_compatibility",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "regression_visible_tests_meaningful",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "regression_reference_area_preserved",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_coverage_positive_path",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_coverage_negative_path",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_integration_with_existing_workflow",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "scope_minimal_patch",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "scope_no_unrelated_public_api_changes",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "maintainability_idiomatic_design",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "maintainability_simple_control_flow",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "dependency_and_environment_fit",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "observable_output_contracts",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      }
+    ],
+    "metadata": {
+      "agent": "codex",
+      "category_counts": {
+        "patch_specific": {
+          "passed": 6,
+          "total": 6
+        },
+        "regular": {
+          "passed": 14,
+          "total": 14
+        }
+      },
+      "criteria_passed": 20,
+      "criteria_total": 20,
+      "harbor_version": "0.13.2",
+      "job_created_at": "2026-06-22T19:34:00.496476Z",
+      "job_id": "d386a67c-55ed-4a0c-beeb-e93285d53e41",
+      "model": "openai/gpt-5.5",
+      "reasoning_effort": "high",
+      "source": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213/fastapi-rag-gateway__chunk-overl__4ftKwFW/verifier/frontiercode_result.json",
+      "task_id": "fastapi-rag-gateway__chunk-overlap-hard",
+      "task_path": "generated_tasks/fastapi-rag-gateway__chunk-overlap-hard",
+      "trial_dir": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213/fastapi-rag-gateway__chunk-overl__4ftKwFW",
+      "trial_id": "fastapi-rag-gateway__chunk-overl__4ftKwFW",
+      "trials_dir": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213"
+    },
+    "pass": true,
+    "reward": 1.0,
+    "score": 1.0,
+    "submission_id": "fastapi-rag-gateway__chunk-overl__4ftKwFW",
+    "task_id": "fastapi-rag-gateway__chunk-overlap-hard"
+  },
+  {
+    "blocker_failures": [],
+    "criteria_results": [
+      {
+        "blocker": true,
+        "category": "patch_specific",
+        "criterion_id": "hidden_reference_tests_pass",
+        "details": "hidden reference tests: `pytest tests/unit/test_chunking.py` exited 0\nSTDOUT:\n...........                                                              [100%]Running teardown with pytest sessionfinish...\n\n11 passed in 0.22s\n\nSTDERR:\n",
+        "method": "classical",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.35
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "submitted_tests_fail_on_base",
+        "details": "Submitted tests failed on the broken base snapshot as expected.\nsubmitted tests on base snapshot: `pytest tests/unit/test_chunking.py` exited 1\nSTDOUT:\nFFF.                                                                     [100%]Running teardown with pytest sessionfinish...\n\n=================================== FAILURES ===================================\n______ test_fixed_chunker_preserves_overlap_seams_and_full_coverage[12-1] ______\n\nchunk_size = 12, chunk_overlap = 1\n\n    @pytest.mark.parametrize(\n        (\"chunk_size\", \"chunk_overlap\"),\n        [\n            (12, 1),\n            (12, 0),\n            (8, 7),\n        ],\n    )\n    def test_fixed_chunker_preserves_overlap_seams_and_full_coverage(\n        chunk_size: int, chunk_overlap: int\n    ) -> None:\n        text = (string.ascii_letters + string.digits + string.punctuation)[:80]\n    \n>       _assert_fixed_chunk_contract(\n            text,\n            chunk_size=chunk_size,\n            chunk_overlap=chunk_overlap,\n        )\n\ntests/unit/test_chunking.py:55: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntext = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!\"#$%&\\'()*+,-./:;<'\n\n    def _assert_fixed_chunk_contract(text: str, *, chunk_size: int, chunk_overlap: int) -> None:\n        chunks = FixedChunker(\n            ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap)\n        ).split_text(text)\n    \n        if not text:\n            assert chunks == []\n            return\n    \n        stride = chunk_size - chunk_overlap\n        expected_starts = []\n        start = 0\n        while start < len(text):\n            expected_starts.append(start)\n            if start + chunk_size >= len(text):\n                break\n            start += stride\n    \n>       assert chunks == [text[start : start + chunk_size] for start in expected_starts]\nE       assert ['abcdefghijk...%&\\'()*', ...] == ['abcdefghijk...89!\"#$%', ...]\nE         \nE         At index 1 diff: 'mnopqrstuvwx' != 'lmnopqrstuvw'\nE         Right contains one more item: ':;<'\nE         \nE         Full diff:\nE           [\nE               'abcdefghijkl',\nE         -     'lmnopqrstuvw',\nE         ?      -\nE         +     'mnopqrstuvwx',\nE         ?                 +\nE         -     'wxyzABCDEFGH',\nE         ?      --\nE         +     'yzABCDEFGHIJ',\nE         ?                ++\nE         -     'HIJKLMNOPQRS',\nE         ?      ---\nE         +     'KLMNOPQRSTUV',\nE         ?               +++\nE         -     'STUVWXYZ0123',\nE         ?      ----\nE         +     'WXYZ01234567',\nE         ?              ++++\nE         +     '89!\"#$%&\\'()*',\nE         -     '3456789!\"#$%',\nE         -     \"%&'()*+,-./:\",\nE         -     ':;<',\nE         +     '+,-./:;<',\nE         ?      +++++\nE           ]\n\ntests/unit/test_chunking.py:29: AssertionError\n______ test_fixed_chunker_preserves_overlap_seams_and_full_coverage[12-0] ______\n\nchunk_size = 12, chunk_overlap = 0\n\n    @pytest.mark.parametrize(\n        (\"chunk_size\", \"chunk_overlap\"),\n        [\n            (12, 1),\n            (12, 0),\n            (8, 7),\n        ],\n    )\n    def test_fixed_chunker_preserves_overlap_seams_and_full_coverage(\n        chunk_size: int, chunk_overlap: int\n    ) -> None:\n        text = (string.ascii_letters + string.digits + string.punctuation)[:80]\n    \n>       _assert_fixed_chunk_contract(\n            text,\n            chunk_size=chunk_size,\n            chunk_overlap=chunk_overlap,\n        )\n\ntests/unit/test_chunking.py:55: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntext = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!\"#$%&\\'()*+,-./:;<'\n\n    def _assert_fixed_chunk_contract(text: str, *, chunk_size: int, chunk_overlap: int) -> None:\n        chunks = FixedChunker(\n            ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap)\n        ).split_text(text)\n    \n        if not text:\n            assert chunks == []\n            return\n    \n        stride = chunk_size - chunk_overlap\n        expected_starts = []\n        start = 0\n        while start < len(text):\n            expected_starts.append(start)\n            if start + chunk_size >= len(text):\n                break\n            start += stride\n    \n>       assert chunks == [text[start : start + chunk_size] for start in expected_starts]\nE       assert ['abcdefghijk...)*+,-./\", ...] == ['abcdefghijk...%&\\'()*', ...]\nE         \nE         At index 1 diff: 'nopqrstuvwxy' != 'mnopqrstuvwx'\nE         \nE         Full diff:\nE           [\nE               'abcdefghijkl',\nE         -     'mnopqrstuvwx',\nE         ?      -\nE         +     'nopqrstuvwxy',\nE         ?                 +\nE         -     'yzABCDEFGHIJ',\nE         ?      --\nE         +     'ABCDEFGHIJKL',\nE         ?                ++\nE         -     'KLMNOPQRSTUV',\nE         ?      ---\nE         +     'NOPQRSTUVWXY',\nE         ?               +++\nE         -     'WXYZ01234567',\nE         ?      ----\nE         +     '0123456789!\"',\nE         ?              ++++\nE         -     '89!\"#$%&\\'()*',\nE         +     \"$%&'()*+,-./\",\nE         -     '+,-./:;<',\nE         ?      ------\nE         +     ';<',\nE           ]\n\ntests/unit/test_chunking.py:29: AssertionError\n______ test_fixed_chunker_preserves_overlap_seams_and_full_coverage[8-7] _______\n\nchunk_size = 8, chunk_overlap = 7\n\n    @pytest.mark.parametrize(\n        (\"chunk_size\", \"chunk_overlap\"),\n        [\n            (12, 1),\n            (12, 0),\n            (8, 7),\n        ],\n    )\n    def test_fixed_chunker_preserves_overlap_seams_and_full_coverage(\n        chunk_size: int, chunk_overlap: int\n    ) -> None:\n        text = (string.ascii_letters + string.digits + string.punctuation)[:80]\n    \n>       _assert_fixed_chunk_contract(\n            text,\n            chunk_size=chunk_size,\n            chunk_overlap=chunk_overlap,\n        )\n\ntests/unit/test_chunking.py:55: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntext = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!\"#$%&\\'()*+,-./:;<'\n\n    def _assert_fixed_chunk_contract(text: str, *, chunk_size: int, ch\n...<truncated>...\nSTDERR:\n",
+        "method": "reverse_classical",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.15
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "visible_regression_tests_pass",
+        "details": "visible regression command: `pytest tests/unit/test_chunking.py` exited 0\nSTDOUT:\n....                                                                     [100%]Running teardown with pytest sessionfinish...\n\n4 passed in 0.23s\n\nSTDERR:\n",
+        "method": "command",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.2
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "scope_matches_reference_intent",
+        "details": "Changed files stay within the generated reference scope: app/rag/chunking/fixed.py, tests/unit/test_chunking.py",
+        "method": "scope",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.15
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "no_hidden_asset_leak",
+        "details": "No generated hidden asset names or fix commit identifiers were found in the agent-visible repo.",
+        "method": "command",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.05
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_core_requirement",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_edge_cases",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_error_handling",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "behavior_backward_compatibility",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "regression_visible_tests_meaningful",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "regression_reference_area_preserved",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_coverage_positive_path",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_coverage_negative_path",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_integration_with_existing_workflow",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "scope_minimal_patch",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "scope_no_unrelated_public_api_changes",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "maintainability_idiomatic_design",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "maintainability_simple_control_flow",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "dependency_and_environment_fit",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "observable_output_contracts",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      }
+    ],
+    "metadata": {
+      "agent": "codex",
+      "category_counts": {
+        "patch_specific": {
+          "passed": 6,
+          "total": 6
+        },
+        "regular": {
+          "passed": 14,
+          "total": 14
+        }
+      },
+      "criteria_passed": 20,
+      "criteria_total": 20,
+      "harbor_version": "0.13.2",
+      "job_created_at": "2026-06-22T19:34:00.496476Z",
+      "job_id": "d386a67c-55ed-4a0c-beeb-e93285d53e41",
+      "model": "openai/gpt-5.5",
+      "reasoning_effort": "high",
+      "source": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213/fastapi-rag-gateway__chunk-overl__KDRtYNL/verifier/frontiercode_result.json",
+      "task_id": "fastapi-rag-gateway__chunk-overlap-hard",
+      "task_path": "generated_tasks/fastapi-rag-gateway__chunk-overlap-hard",
+      "trial_dir": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213/fastapi-rag-gateway__chunk-overl__KDRtYNL",
+      "trial_id": "fastapi-rag-gateway__chunk-overl__KDRtYNL",
+      "trials_dir": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213"
+    },
+    "pass": true,
+    "reward": 1.0,
+    "score": 1.0,
+    "submission_id": "fastapi-rag-gateway__chunk-overl__KDRtYNL",
+    "task_id": "fastapi-rag-gateway__chunk-overlap-hard"
+  },
+  {
+    "blocker_failures": [],
+    "criteria_results": [
+      {
+        "blocker": true,
+        "category": "patch_specific",
+        "criterion_id": "hidden_reference_tests_pass",
+        "details": "hidden reference tests: `pytest tests/unit/test_chunking.py` exited 0\nSTDOUT:\n...........                                                              [100%]Running teardown with pytest sessionfinish...\n\n11 passed in 0.22s\n\nSTDERR:\n",
+        "method": "classical",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.35
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "submitted_tests_fail_on_base",
+        "details": "Submitted tests failed on the broken base snapshot as expected.\nsubmitted tests on base snapshot: `pytest tests/unit/test_chunking.py` exited 1\nSTDOUT:\nFFF.                                                                     [100%]Running teardown with pytest sessionfinish...\n\n=================================== FAILURES ===================================\n_ test_fixed_chunker_preserves_overlap_and_full_coverage[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU-10-1] _\n\ntext = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU', chunk_size = 10\nchunk_overlap = 1\n\n    @pytest.mark.parametrize(\n        (\"text\", \"chunk_size\", \"chunk_overlap\"),\n        [\n            (SOURCE_TEXT[:47], 10, 1),\n            (SOURCE_TEXT[:47], 10, 0),\n            (SOURCE_TEXT[:24], 6, 5),\n            (\"short text\", 32, 8),\n        ],\n    )\n    def test_fixed_chunker_preserves_overlap_and_full_coverage(\n        text: str, chunk_size: int, chunk_overlap: int\n    ) -> None:\n        chunker = FixedChunker(ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap))\n    \n        chunks = chunker.split_text(text)\n    \n        assert chunks\n        assert all(len(chunk) <= chunk_size for chunk in chunks)\n        for previous, current in zip(chunks, chunks[1:]):\n            if chunk_overlap:\n>               assert previous[-chunk_overlap:] == current[:chunk_overlap]\nE               AssertionError: assert 'j' == 'k'\nE                 \nE                 - k\nE                 + j\n\ntests/unit/test_chunking.py:34: AssertionError\n_ test_fixed_chunker_preserves_overlap_and_full_coverage[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU-10-0] _\n\ntext = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU', chunk_size = 10\nchunk_overlap = 0\n\n    @pytest.mark.parametrize(\n        (\"text\", \"chunk_size\", \"chunk_overlap\"),\n        [\n            (SOURCE_TEXT[:47], 10, 1),\n            (SOURCE_TEXT[:47], 10, 0),\n            (SOURCE_TEXT[:24], 6, 5),\n            (\"short text\", 32, 8),\n        ],\n    )\n    def test_fixed_chunker_preserves_overlap_and_full_coverage(\n        text: str, chunk_size: int, chunk_overlap: int\n    ) -> None:\n        chunker = FixedChunker(ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap))\n    \n        chunks = chunker.split_text(text)\n    \n        assert chunks\n        assert all(len(chunk) <= chunk_size for chunk in chunks)\n        for previous, current in zip(chunks, chunks[1:]):\n            if chunk_overlap:\n                assert previous[-chunk_overlap:] == current[:chunk_overlap]\n            else:\n>               assert previous + current in text\nE               AssertionError: assert ('abcdefghij' + 'lmnopqrstu') in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU'\n\ntests/unit/test_chunking.py:36: AssertionError\n_ test_fixed_chunker_preserves_overlap_and_full_coverage[abcdefghijklmnopqrstuvwx-6-5] _\n\ntext = 'abcdefghijklmnopqrstuvwx', chunk_size = 6, chunk_overlap = 5\n\n    @pytest.mark.parametrize(\n        (\"text\", \"chunk_size\", \"chunk_overlap\"),\n        [\n            (SOURCE_TEXT[:47], 10, 1),\n            (SOURCE_TEXT[:47], 10, 0),\n            (SOURCE_TEXT[:24], 6, 5),\n            (\"short text\", 32, 8),\n        ],\n    )\n    def test_fixed_chunker_preserves_overlap_and_full_coverage(\n        text: str, chunk_size: int, chunk_overlap: int\n    ) -> None:\n        chunker = FixedChunker(ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap))\n    \n        chunks = chunker.split_text(text)\n    \n        assert chunks\n        assert all(len(chunk) <= chunk_size for chunk in chunks)\n        for previous, current in zip(chunks, chunks[1:]):\n            if chunk_overlap:\n>               assert previous[-chunk_overlap:] == current[:chunk_overlap]\nE               AssertionError: assert 'bcdef' == 'cdefg'\nE                 \nE                 - cdefg\nE                 ?     -\nE                 + bcdef\nE                 ? +\n\ntests/unit/test_chunking.py:34: AssertionError\n=========================== short test summary info ============================\nFAILED tests/unit/test_chunking.py::test_fixed_chunker_preserves_overlap_and_full_coverage[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU-10-1] - AssertionError: assert 'j' == 'k'\n  \n  - k\n  + j\nFAILED tests/unit/test_chunking.py::test_fixed_chunker_preserves_overlap_and_full_coverage[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU-10-0] - AssertionError: assert ('abcdefghij' + 'lmnopqrstu') in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU'\nFAILED tests/unit/test_chunking.py::test_fixed_chunker_preserves_overlap_and_full_coverage[abcdefghijklmnopqrstuvwx-6-5] - AssertionError: assert 'bcdef' == 'cdefg'\n  \n  - cdefg\n  ?     -\n  + bcdef\n  ? +\n3 failed, 1 passed in 0.25s\n\nSTDERR:\n",
+        "method": "reverse_classical",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.15
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "visible_regression_tests_pass",
+        "details": "visible regression command: `pytest tests/unit/test_chunking.py` exited 0\nSTDOUT:\n....                                                                     [100%]Running teardown with pytest sessionfinish...\n\n4 passed in 0.29s\n\nSTDERR:\n",
+        "method": "command",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.2
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "scope_matches_reference_intent",
+        "details": "Changed files stay within the generated reference scope: app/rag/chunking/fixed.py, tests/unit/test_chunking.py",
+        "method": "scope",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.15
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "no_hidden_asset_leak",
+        "details": "No generated hidden asset names or fix commit identifiers were found in the agent-visible repo.",
+        "method": "command",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.05
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_core_requirement",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_edge_cases",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_error_handling",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "behavior_backward_compatibility",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "regression_visible_tests_meaningful",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "regression_reference_area_preserved",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_coverage_positive_path",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_coverage_negative_path",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_integration_with_existing_workflow",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "scope_minimal_patch",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "scope_no_unrelated_public_api_changes",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "maintainability_idiomatic_design",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "maintainability_simple_control_flow",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "dependency_and_environment_fit",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "observable_output_contracts",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      }
+    ],
+    "metadata": {
+      "agent": "codex",
+      "category_counts": {
+        "patch_specific": {
+          "passed": 6,
+          "total": 6
+        },
+        "regular": {
+          "passed": 14,
+          "total": 14
+        }
+      },
+      "criteria_passed": 20,
+      "criteria_total": 20,
+      "harbor_version": "0.13.2",
+      "job_created_at": "2026-06-22T19:34:00.496476Z",
+      "job_id": "d386a67c-55ed-4a0c-beeb-e93285d53e41",
+      "model": "openai/gpt-5.5",
+      "reasoning_effort": "high",
+      "source": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213/fastapi-rag-gateway__chunk-overl__KPSgzhd/verifier/frontiercode_result.json",
+      "task_id": "fastapi-rag-gateway__chunk-overlap-hard",
+      "task_path": "generated_tasks/fastapi-rag-gateway__chunk-overlap-hard",
+      "trial_dir": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213/fastapi-rag-gateway__chunk-overl__KPSgzhd",
+      "trial_id": "fastapi-rag-gateway__chunk-overl__KPSgzhd",
+      "trials_dir": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213"
+    },
+    "pass": true,
+    "reward": 1.0,
+    "score": 1.0,
+    "submission_id": "fastapi-rag-gateway__chunk-overl__KPSgzhd",
+    "task_id": "fastapi-rag-gateway__chunk-overlap-hard"
+  },
+  {
+    "blocker_failures": [],
+    "criteria_results": [
+      {
+        "blocker": true,
+        "category": "patch_specific",
+        "criterion_id": "hidden_reference_tests_pass",
+        "details": "hidden reference tests: `pytest tests/unit/test_chunking.py` exited 0\nSTDOUT:\n...........                                                              [100%]Running teardown with pytest sessionfinish...\n\n11 passed in 0.21s\n\nSTDERR:\n",
+        "method": "classical",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.35
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "submitted_tests_fail_on_base",
+        "details": "Submitted tests failed on the broken base snapshot as expected.\nsubmitted tests on base snapshot: `pytest tests/unit/test_chunking.py` exited 1\nSTDOUT:\nFFFF.                                                                    [100%]Running teardown with pytest sessionfinish...\n\n=================================== FAILURES ===================================\n______ test_fixed_chunker_preserves_exact_overlap_and_full_coverage[10-3] ______\n\nchunk_size = 10, chunk_overlap = 3\n\n    @pytest.mark.parametrize(\n        (\"chunk_size\", \"chunk_overlap\"),\n        [\n            (10, 3),\n            (9, 1),\n            (8, 7),\n            (11, 0),\n        ],\n    )\n    def test_fixed_chunker_preserves_exact_overlap_and_full_coverage(\n        chunk_size: int, chunk_overlap: int\n    ) -> None:\n>       _assert_fixed_chunks_cover_with_overlap(UNIQUE_TEXT, chunk_size, chunk_overlap)\n\ntests/unit/test_chunking.py:52: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntext = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'\nchunk_size = 10, chunk_overlap = 3\n\n    def _assert_fixed_chunks_cover_with_overlap(text: str, chunk_size: int, chunk_overlap: int) -> None:\n        chunks = FixedChunker(\n            ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap)\n        ).split_text(text)\n    \n        assert chunks\n        assert all(len(chunk) <= chunk_size for chunk in chunks)\n    \n        reconstructed = chunks[0] + \"\".join(chunk[chunk_overlap:] for chunk in chunks[1:])\n>       assert reconstructed == text\nE       AssertionError: assert 'abcdefghijlm...VWXZ012345789' == 'abcdefghijkl...XYZ0123456789'\nE         \nE         - abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\nE         ?           -       -       -       -       -       -       -\nE         + abcdefghijlmnopqrtuvwxyzBCDEFGHJKLMNOPRSTUVWXZ012345789\n\ntests/unit/test_chunking.py:32: AssertionError\n______ test_fixed_chunker_preserves_exact_overlap_and_full_coverage[9-1] _______\n\nchunk_size = 9, chunk_overlap = 1\n\n    @pytest.mark.parametrize(\n        (\"chunk_size\", \"chunk_overlap\"),\n        [\n            (10, 3),\n            (9, 1),\n            (8, 7),\n            (11, 0),\n        ],\n    )\n    def test_fixed_chunker_preserves_exact_overlap_and_full_coverage(\n        chunk_size: int, chunk_overlap: int\n    ) -> None:\n>       _assert_fixed_chunks_cover_with_overlap(UNIQUE_TEXT, chunk_size, chunk_overlap)\n\ntests/unit/test_chunking.py:52: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntext = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'\nchunk_size = 9, chunk_overlap = 1\n\n    def _assert_fixed_chunks_cover_with_overlap(text: str, chunk_size: int, chunk_overlap: int) -> None:\n        chunks = FixedChunker(\n            ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap)\n        ).split_text(text)\n    \n        assert chunks\n        assert all(len(chunk) <= chunk_size for chunk in chunks)\n    \n        reconstructed = chunks[0] + \"\".join(chunk[chunk_overlap:] for chunk in chunks[1:])\n>       assert reconstructed == text\nE       AssertionError: assert 'abcdefghiklm...WXYZ013456789' == 'abcdefghijkl...XYZ0123456789'\nE         \nE         - abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\nE         ?          -        -        -        -        -        -\nE         + abcdefghiklmnopqrtuvwxyzACDEFGHIJLMNOPQRSUVWXYZ013456789\n\ntests/unit/test_chunking.py:32: AssertionError\n______ test_fixed_chunker_preserves_exact_overlap_and_full_coverage[8-7] _______\n\nchunk_size = 8, chunk_overlap = 7\n\n    @pytest.mark.parametrize(\n        (\"chunk_size\", \"chunk_overlap\"),\n        [\n            (10, 3),\n            (9, 1),\n            (8, 7),\n            (11, 0),\n        ],\n    )\n    def test_fixed_chunker_preserves_exact_overlap_and_full_coverage(\n        chunk_size: int, chunk_overlap: int\n    ) -> None:\n>       _assert_fixed_chunks_cover_with_overlap(UNIQUE_TEXT, chunk_size, chunk_overlap)\n\ntests/unit/test_chunking.py:52: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntext = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'\nchunk_size = 8, chunk_overlap = 7\n\n    def _assert_fixed_chunks_cover_with_overlap(text: str, chunk_size: int, chunk_overlap: int) -> None:\n        chunks = FixedChunker(\n            ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap)\n        ).split_text(text)\n    \n        assert chunks\n        assert all(len(chunk) <= chunk_size for chunk in chunks)\n    \n        reconstructed = chunks[0] + \"\".join(chunk[chunk_overlap:] for chunk in chunks[1:])\n>       assert reconstructed == text\nE       AssertionError: assert 'abcdefghjlnp...LNPRTVXZ13579' == 'abcdefghijkl...XYZ0123456789'\nE         \nE         - abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\nE         + abcdefghjlnprtvxzBDFHJLNPRTVXZ13579\n\ntests/unit/test_chunking.py:32: AssertionError\n______ test_fixed_chunker_preserves_exact_overlap_and_full_coverage[11-0] ______\n\nchunk_size = 11, chunk_overlap = 0\n\n    @pytest.mark.parametrize(\n        (\"chunk_size\", \"chunk_overlap\"),\n        [\n            (10, 3),\n            (9, 1),\n            (8, 7),\n            (11, 0),\n        ],\n    )\n    def test_fixed_chunker_preserves_exact_overlap_and_full_coverage(\n        chunk_size: int, chunk_overlap: int\n    ) -> None:\n>       _assert_fixed_chunks_cover_with_overlap(UNIQUE_TEXT, chunk_size, chunk_overlap)\n\ntests/unit/test_chunking.py:52: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntext = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'\nchunk_size = 11, chunk_overlap = 0\n\n    def _assert_fixed_chunks_cover_with_overlap(text: str, chunk_size: int, chunk_overlap: int) -> None:\n        chunks = FixedChunker(\n            ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap)\n        ).split_text(text)\n    \n        assert chunks\n        assert all(len(chunk) <= chunk_size for chunk in chunks)\n    \n        reconstructed = chunks[0] + \"\".join(chunk[chunk_overlap:] for chunk in chunks[1:])\n>\n...<truncated>...\nSTDERR:\n",
+        "method": "reverse_classical",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.15
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "visible_regression_tests_pass",
+        "details": "visible regression command: `pytest tests/unit/test_chunking.py` exited 0\nSTDOUT:\n.....                                                                    [100%]Running teardown with pytest sessionfinish...\n\n5 passed in 0.22s\n\nSTDERR:\n",
+        "method": "command",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.2
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "scope_matches_reference_intent",
+        "details": "Changed files stay within the generated reference scope: app/rag/chunking/fixed.py, tests/unit/test_chunking.py",
+        "method": "scope",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.15
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "no_hidden_asset_leak",
+        "details": "No generated hidden asset names or fix commit identifiers were found in the agent-visible repo.",
+        "method": "command",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.05
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_core_requirement",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_edge_cases",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_error_handling",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "behavior_backward_compatibility",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "regression_visible_tests_meaningful",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "regression_reference_area_preserved",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_coverage_positive_path",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_coverage_negative_path",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_integration_with_existing_workflow",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "scope_minimal_patch",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "scope_no_unrelated_public_api_changes",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "maintainability_idiomatic_design",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "maintainability_simple_control_flow",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "dependency_and_environment_fit",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "observable_output_contracts",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      }
+    ],
+    "metadata": {
+      "agent": "codex",
+      "category_counts": {
+        "patch_specific": {
+          "passed": 6,
+          "total": 6
+        },
+        "regular": {
+          "passed": 14,
+          "total": 14
+        }
+      },
+      "criteria_passed": 20,
+      "criteria_total": 20,
+      "harbor_version": "0.13.2",
+      "job_created_at": "2026-06-22T19:34:00.496476Z",
+      "job_id": "d386a67c-55ed-4a0c-beeb-e93285d53e41",
+      "model": "openai/gpt-5.5",
+      "reasoning_effort": "high",
+      "source": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213/fastapi-rag-gateway__chunk-overl__UmFY7G4/verifier/frontiercode_result.json",
+      "task_id": "fastapi-rag-gateway__chunk-overlap-hard",
+      "task_path": "generated_tasks/fastapi-rag-gateway__chunk-overlap-hard",
+      "trial_dir": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213/fastapi-rag-gateway__chunk-overl__UmFY7G4",
+      "trial_id": "fastapi-rag-gateway__chunk-overl__UmFY7G4",
+      "trials_dir": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213"
+    },
+    "pass": true,
+    "reward": 1.0,
+    "score": 1.0,
+    "submission_id": "fastapi-rag-gateway__chunk-overl__UmFY7G4",
+    "task_id": "fastapi-rag-gateway__chunk-overlap-hard"
+  },
+  {
+    "blocker_failures": [],
+    "criteria_results": [
+      {
+        "blocker": true,
+        "category": "patch_specific",
+        "criterion_id": "hidden_reference_tests_pass",
+        "details": "hidden reference tests: `pytest tests/unit/test_chunking.py` exited 0\nSTDOUT:\n...........                                                              [100%]Running teardown with pytest sessionfinish...\n\n11 passed in 0.23s\n\nSTDERR:\n",
+        "method": "classical",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.35
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "submitted_tests_fail_on_base",
+        "details": "Submitted tests failed on the broken base snapshot as expected.\nsubmitted tests on base snapshot: `pytest tests/unit/test_chunking.py` exited 1\nSTDOUT:\nFFF.                                                                     [100%]Running teardown with pytest sessionfinish...\n\n=================================== FAILURES ===================================\n______ test_fixed_chunker_honours_configured_overlap_at_chunk_boundaries _______\n\n    def test_fixed_chunker_honours_configured_overlap_at_chunk_boundaries() -> None:\n        text = \"0123456789\" * 4\n    \n>       _assert_fixed_chunks_cover_text(text, chunk_size=10, chunk_overlap=3)\n\ntests/unit/test_chunking.py:29: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntext = '0123456789012345678901234567890123456789', chunk_size = 10\nchunk_overlap = 3\n\n    def _assert_fixed_chunks_cover_text(text: str, chunk_size: int, chunk_overlap: int) -> None:\n        chunks = FixedChunker(\n            ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap)\n        ).split_text(text)\n    \n        assert chunks\n        assert chunks[0] == text[:chunk_size]\n    \n        reconstructed = chunks[0]\n        for index in range(1, len(chunks)):\n            previous = chunks[index - 1]\n            current = chunks[index]\n            if chunk_overlap:\n>               assert previous[-chunk_overlap:] == current[:chunk_overlap]\nE               AssertionError: assert '789' == '890'\nE                 \nE                 - 890\nE                 + 789\n\ntests/unit/test_chunking.py:18: AssertionError\n_________ test_fixed_chunker_honours_small_overlap_at_chunk_boundaries _________\n\n    def test_fixed_chunker_honours_small_overlap_at_chunk_boundaries() -> None:\n        text = \"abcdefghijklmnopqrstuvwxyz\"\n    \n>       _assert_fixed_chunks_cover_text(text, chunk_size=8, chunk_overlap=1)\n\ntests/unit/test_chunking.py:35: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntext = 'abcdefghijklmnopqrstuvwxyz', chunk_size = 8, chunk_overlap = 1\n\n    def _assert_fixed_chunks_cover_text(text: str, chunk_size: int, chunk_overlap: int) -> None:\n        chunks = FixedChunker(\n            ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap)\n        ).split_text(text)\n    \n        assert chunks\n        assert chunks[0] == text[:chunk_size]\n    \n        reconstructed = chunks[0]\n        for index in range(1, len(chunks)):\n            previous = chunks[index - 1]\n            current = chunks[index]\n            if chunk_overlap:\n>               assert previous[-chunk_overlap:] == current[:chunk_overlap]\nE               AssertionError: assert 'h' == 'i'\nE                 \nE                 - i\nE                 + h\n\ntests/unit/test_chunking.py:18: AssertionError\n_____________ test_fixed_chunker_abuts_chunks_when_overlap_is_zero _____________\n\n    def test_fixed_chunker_abuts_chunks_when_overlap_is_zero() -> None:\n        text = \"abcdefghijklmnopqrstuvwxyz\"\n        chunks = FixedChunker(ChunkOptions(chunk_size=8, chunk_overlap=0)).split_text(text)\n    \n>       assert chunks == [\"abcdefgh\", \"ijklmnop\", \"qrstuvwx\", \"yz\"]\nE       AssertionError: assert ['abcdefgh', ...', 'stuvwxyz'] == ['abcdefgh', ...stuvwx', 'yz']\nE         \nE         At index 1 diff: 'jklmnopq' != 'ijklmnop'\nE         Right contains one more item: 'yz'\nE         \nE         Full diff:\nE           [\nE               'abcdefgh',\nE         -     'ijklmnop',\nE         ?      -\nE         +     'jklmnopq',\nE         ?             +\nE         -     'qrstuvwx',\nE         ?      --\nE         +     'stuvwxyz',\nE         ?            ++\nE         -     'yz',\nE           ]\n\ntests/unit/test_chunking.py:42: AssertionError\n=========================== short test summary info ============================\nFAILED tests/unit/test_chunking.py::test_fixed_chunker_honours_configured_overlap_at_chunk_boundaries - AssertionError: assert '789' == '890'\n  \n  - 890\n  + 789\nFAILED tests/unit/test_chunking.py::test_fixed_chunker_honours_small_overlap_at_chunk_boundaries - AssertionError: assert 'h' == 'i'\n  \n  - i\n  + h\nFAILED tests/unit/test_chunking.py::test_fixed_chunker_abuts_chunks_when_overlap_is_zero - AssertionError: assert ['abcdefgh', ...', 'stuvwxyz'] == ['abcdefgh', ...stuvwx', 'yz']\n  \n  At index 1 diff: 'jklmnopq' != 'ijklmnop'\n  Right contains one more item: 'yz'\n  \n  Full diff:\n    [\n        'abcdefgh',\n  -     'ijklmnop',\n  ?      -\n  +     'jklmnopq',\n  ?             +\n  -     'qrstuvwx',\n  ?      --\n  +     'stuvwxyz',\n  ?            ++\n  -     'yz',\n    ]\n3 failed, 1 passed in 0.28s\n\nSTDERR:\n",
+        "method": "reverse_classical",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.15
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "visible_regression_tests_pass",
+        "details": "visible regression command: `pytest tests/unit/test_chunking.py` exited 0\nSTDOUT:\n....                                                                     [100%]Running teardown with pytest sessionfinish...\n\n4 passed in 0.22s\n\nSTDERR:\n",
+        "method": "command",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.2
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "scope_matches_reference_intent",
+        "details": "Changed files stay within the generated reference scope: app/rag/chunking/fixed.py, tests/unit/test_chunking.py",
+        "method": "scope",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.15
+      },
+      {
+        "blocker": true,
+        "category": "regular",
+        "criterion_id": "no_hidden_asset_leak",
+        "details": "No generated hidden asset names or fix commit identifiers were found in the agent-visible repo.",
+        "method": "command",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.05
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_core_requirement",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_edge_cases",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "behavior_error_handling",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "behavior_backward_compatibility",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "regression_visible_tests_meaningful",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "regression_reference_area_preserved",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_coverage_positive_path",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_coverage_negative_path",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "test_integration_with_existing_workflow",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "scope_minimal_patch",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "scope_no_unrelated_public_api_changes",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "maintainability_idiomatic_design",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "maintainability_simple_control_flow",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "regular",
+        "criterion_id": "dependency_and_environment_fit",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      },
+      {
+        "blocker": false,
+        "category": "patch_specific",
+        "criterion_id": "observable_output_contracts",
+        "details": "Advisory LLM rubric item recorded by the deterministic verifier; run task QA with LLM review for semantic scoring.",
+        "method": "llm_prompt",
+        "passed": true,
+        "score": 1.0,
+        "weight": 0.02
+      }
+    ],
+    "metadata": {
+      "agent": "codex",
+      "category_counts": {
+        "patch_specific": {
+          "passed": 6,
+          "total": 6
+        },
+        "regular": {
+          "passed": 14,
+          "total": 14
+        }
+      },
+      "criteria_passed": 20,
+      "criteria_total": 20,
+      "harbor_version": "0.13.2",
+      "job_created_at": "2026-06-22T19:34:00.496476Z",
+      "job_id": "d386a67c-55ed-4a0c-beeb-e93285d53e41",
+      "model": "openai/gpt-5.5",
+      "reasoning_effort": "high",
+      "source": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213/fastapi-rag-gateway__chunk-overl__v6s7DrX/verifier/frontiercode_result.json",
+      "task_id": "fastapi-rag-gateway__chunk-overlap-hard",
+      "task_path": "generated_tasks/fastapi-rag-gateway__chunk-overlap-hard",
+      "trial_dir": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213/fastapi-rag-gateway__chunk-overl__v6s7DrX",
+      "trial_id": "fastapi-rag-gateway__chunk-overl__v6s7DrX",
+      "trials_dir": "runs/model-openai-gpt-5-5/reasoning-high/2026-06-22__12-33-59__ac03c213"
+    },
+    "pass": true,
+    "reward": 1.0,
+    "score": 1.0,
+    "submission_id": "fastapi-rag-gateway__chunk-overl__v6s7DrX",
+    "task_id": "fastapi-rag-gateway__chunk-overlap-hard"
+  }
+]

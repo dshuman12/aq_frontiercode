@@ -2,56 +2,39 @@ diff --git a/nexusflow/tasks/deadletter.py b/nexusflow/tasks/deadletter.py
 --- a/nexusflow/tasks/deadletter.py
 +++ b/nexusflow/tasks/deadletter.py
 @@
-         max_retries = entry.max_retries
 -        if not max_retries:
-+        # Shortcut: explicitly bail on the zero boundary before the
-+        # original falsy check, which we deliberately leave untouched.
+-            return True
 +        if max_retries == 0:
 +            return False
 +        if not max_retries:
-             return True
-         return entry.retry_count < max_retries
-diff --git a/tests/test_tasks/test_deadletter_zero.py b/tests/test_tasks/test_deadletter_zero.py
++            return True
+diff --git a/tests/test_tasks/test_deadletter_requeue.py b/tests/test_tasks/test_deadletter_requeue.py
 new file mode 100644
 --- /dev/null
-+++ b/tests/test_tasks/test_deadletter_zero.py
++++ b/tests/test_tasks/test_deadletter_requeue.py
 @@
-+"""Extra coverage for can_requeue zero-vs-unlimited semantics."""
-+
-+import pytest
++"""Requeue boundary tests for the dead letter queue."""
 +
 +from nexusflow.tasks.deadletter import DeadLetterQueue
 +
 +
-+def _add(dlq, message_id, max_retries):
-+    # Best-effort against the public add API; fall back to common variants.
-+    for adder in ("add", "add_entry", "enqueue"):
-+        fn = getattr(dlq, adder, None)
-+        if fn is None:
-+            continue
-+        try:
-+            return fn(message_id, payload={}, max_retries=max_retries)
-+        except TypeError:
-+            try:
-+                return fn(message_id, {}, max_retries=max_retries)
-+            except TypeError:
-+                continue
-+    pytest.skip("No compatible add API found on DeadLetterQueue")
++def _add(dlq, task_id, max_retries):
++    dlq.add(task_id, {"payload": task_id}, "boom", max_retries=max_retries)
 +
 +
 +def test_zero_max_retries_never_requeueable():
 +    dlq = DeadLetterQueue()
-+    _add(dlq, "z", 0)
-+    assert dlq.can_requeue("z") is False
++    _add(dlq, "t0", 0)
++    assert dlq.can_requeue("t0") is False
 +
 +
 +def test_none_max_retries_always_requeueable():
 +    dlq = DeadLetterQueue()
-+    _add(dlq, "n", None)
-+    assert dlq.can_requeue("n") is True
++    _add(dlq, "tn", None)
++    assert dlq.can_requeue("tn") is True
 +
 +
-+def test_positive_limit_boundary():
++def test_positive_limit_until_count_reached():
 +    dlq = DeadLetterQueue()
-+    _add(dlq, "p", 2)
-+    assert dlq.can_requeue("p") is True
++    _add(dlq, "t2", 2)
++    assert dlq.can_requeue("t2") is True

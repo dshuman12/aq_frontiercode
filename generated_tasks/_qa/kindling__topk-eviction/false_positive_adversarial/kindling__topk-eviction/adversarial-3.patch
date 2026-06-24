@@ -1,0 +1,48 @@
+diff --git a/internal/topk/topk.go b/internal/topk/topk.go
+--- a/internal/topk/topk.go
++++ b/internal/topk/topk.go
+@@
+-		if t.counters[i].Count <= t.counters[min].Count {
++		if t.counters[i].Count < t.counters[min].Count {
+ 			min = i
+ 		}
+diff --git a/internal/topk/topk_test.go b/internal/topk/topk_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/topk/topk_test.go
+@@
++package topk
++
++import "testing"
++
++// TestEvictionPicksFirstMinimum checks that when the tracked set is full
++// and incoming counts tie with existing entries, the first slot that
++// reaches the minimum is evicted (not a later tied slot).
++func TestEvictionPicksFirstMinimum(t *testing.T) {
++	tk := New(2)
++	tk.Observe("a")
++	tk.Observe("b")
++	tk.Observe("c")
++
++	keys := map[string]bool{}
++	for _, c := range tk.Snapshot() {
++		keys[c.Key] = true
++	}
++	if keys["a"] {
++		t.Fatalf("expected first-min 'a' to be evicted, got %v", keys)
++	}
++	if !keys["b"] {
++		t.Fatalf("expected 'b' to be retained, got %v", keys)
++	}
++}
++
++// TestNonFullUnaffected confirms the non-full insertion path is unchanged.
++func TestNonFullUnaffected(t *testing.T) {
++	tk := New(3)
++	tk.Observe("a")
++	tk.Observe("a")
++	tk.Observe("b")
++	if tk.Snapshot()[0].Key != "a" {
++		t.Fatalf("expected 'a' on top, got %v", tk.Snapshot())
++	}
++}

@@ -1,0 +1,66 @@
+diff --git a/internal/treemap/treemap.go b/internal/treemap/treemap.go
+--- a/internal/treemap/treemap.go
++++ b/internal/treemap/treemap.go
+@@
+-	m.keys = append(m.keys, "")
+-	m.vals = append(m.vals, 0)
+-	m.keys[idx] = key
+-	m.vals[idx] = value
++	// Shortcut: append the new entry at the end, then bubble it left into
++	// the computed insertion index so the existing entries slide right.
++	m.keys = append(m.keys, key)
++	m.vals = append(m.vals, value)
++	for j := len(m.keys) - 1; j > idx; j-- {
++		m.keys[j], m.keys[j-1] = m.keys[j-1], m.keys[j]
++		m.vals[j], m.vals[j-1] = m.vals[j-1], m.vals[j]
++	}
+diff --git a/internal/treemap/set_shift_test.go b/internal/treemap/set_shift_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/treemap/set_shift_test.go
+@@
++package treemap
++
++import "testing"
++
++// TestSetShiftPreservesAllEntries inserts keys out of sorted order so that
++// several new keys land in the middle/front of the backing slices. On the
++// broken base this overwrites previously inserted entries; after the fix
++// every key remains retrievable and the length matches the distinct count.
++func TestSetShiftPreservesAllEntries(t *testing.T) {
++	m := New()
++	keys := []string{"m", "a", "z", "c", "b", "d"}
++	for i, k := range keys {
++		m.Set(k, i)
++	}
++	if m.Len() != len(keys) {
++		t.Fatalf("Len() = %d, want %d", m.Len(), len(keys))
++	}
++	for i, k := range keys {
++		v, ok := m.Get(k)
++		if !ok || v != i {
++			t.Fatalf("Get(%q) = %d,%v want %d,true", k, v, ok, i)
++		}
++	}
++}
++
++// TestSetShiftFrontMiddleEnd covers explicit front/middle/end insertions and
++// overwrites of existing keys.
++func TestSetShiftFrontMiddleEnd(t *testing.T) {
++	m := New()
++	m.Set("b", 1)
++	m.Set("d", 2)
++	m.Set("a", 0) // front
++	m.Set("c", 3) // middle
++	m.Set("e", 4) // end
++	m.Set("c", 30) // overwrite, must not change length
++	if m.Len() != 5 {
++		t.Fatalf("Len() = %d, want 5", m.Len())
++	}
++	want := map[string]int{"a": 0, "b": 1, "c": 30, "d": 2, "e": 4}
++	for k, exp := range want {
++		if v, ok := m.Get(k); !ok || v != exp {
++			t.Fatalf("Get(%q) = %d,%v want %d,true", k, v, ok, exp)
++		}
++	}
++}

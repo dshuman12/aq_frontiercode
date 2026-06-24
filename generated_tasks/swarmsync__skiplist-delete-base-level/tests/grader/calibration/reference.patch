@@ -1,0 +1,98 @@
+diff --git a/pkg/skiplist/skiplist.go b/pkg/skiplist/skiplist.go
+index 650d0a5..85f0c37 100644
+--- a/pkg/skiplist/skiplist.go
++++ b/pkg/skiplist/skiplist.go
+@@ -90,7 +90,7 @@ func (sl *SkipList) Delete(key string) bool {
+ 	}
+ 	target := current.next[0]
+ 	if target == nil || target.key != key { return false }
+-	for i := 1; i < sl.level; i++ {
++	for i := 0; i < sl.level; i++ {
+ 		if update[i].next[i] != target { break }
+ 		update[i].next[i] = target.next[i]
+ 	}
+diff --git a/pkg/skiplist/skiplist_test.go b/pkg/skiplist/skiplist_test.go
+new file mode 100644
+index 0000000..e4ef1e1
+--- /dev/null
++++ b/pkg/skiplist/skiplist_test.go
+@@ -0,0 +1,79 @@
++package skiplist
++
++import "testing"
++
++func TestSkipList_InsertSearch(t *testing.T) {
++	sl := New(42)
++	sl.Insert("b", 2); sl.Insert("a", 1); sl.Insert("c", 3)
++	v, ok := sl.Search("b")
++	if !ok || v.(int) != 2 { t.Fatal("should find b=2") }
++}
++
++func TestSkipList_Delete(t *testing.T) {
++	sl := New(42)
++	sl.Insert("a", 1)
++	if !sl.Delete("a") { t.Fatal("delete should succeed") }
++	if sl.Delete("a") { t.Fatal("second delete should fail") }
++	if sl.Len() != 0 { t.Fatal("should be empty") }
++}
++
++func TestSkipList_Update(t *testing.T) {
++	sl := New(42)
++	sl.Insert("a", 1); sl.Insert("a", 2)
++	v, _ := sl.Search("a")
++	if v.(int) != 2 { t.Fatal("should be updated") }
++	if sl.Len() != 1 { t.Fatal("should not grow") }
++}
++
++func TestSkipList_Range(t *testing.T) {
++	sl := New(42)
++	for i := 0; i < 10; i++ { sl.Insert(string(rune('a'+i)), i) }
++	r := sl.Range("c", "f")
++	if len(r) != 4 { t.Fatalf("expected 4, got %d", len(r)) }
++}
++
++func TestSkipList_MinMax(t *testing.T) {
++	sl := New(42)
++	sl.Insert("m", 1); sl.Insert("a", 2); sl.Insert("z", 3)
++	minK, _, _ := sl.Min()
++	maxK, _, _ := sl.Max()
++	if minK != "a" { t.Fatalf("min should be a, got %s", minK) }
++	if maxK != "z" { t.Fatalf("max should be z, got %s", maxK) }
++}
++
++func TestSkipList_Keys(t *testing.T) {
++	sl := New(42)
++	sl.Insert("c", 3); sl.Insert("a", 1); sl.Insert("b", 2)
++	keys := sl.Keys()
++	if len(keys) != 3 || keys[0] != "a" || keys[1] != "b" || keys[2] != "c" {
++		t.Fatalf("expected sorted [a,b,c], got %v", keys)
++	}
++}
++
++func TestSkipList_Empty(t *testing.T) {
++	sl := New(42)
++	_, _, ok := sl.Min()
++	if ok { t.Fatal("empty min should fail") }
++	_, _, ok = sl.Max()
++	if ok { t.Fatal("empty max should fail") }
++	if sl.Len() != 0 { t.Fatal("should be 0") }
++}
++
++func TestSkipList_SearchMissing(t *testing.T) {
++	sl := New(42)
++	sl.Insert("a", 1)
++	_, ok := sl.Search("z")
++	if ok { t.Fatal("should not find z") }
++}
++
++func TestSkipList_Large(t *testing.T) {
++	sl := New(42)
++	for i := 0; i < 1000; i++ {
++		sl.Insert(string(rune(i+0x100)), i)
++	}
++	if sl.Len() != 1000 { t.Fatalf("expected 1000, got %d", sl.Len()) }
++	for i := 0; i < 1000; i++ {
++		_, ok := sl.Search(string(rune(i+0x100)))
++		if !ok { t.Fatalf("should find %d", i) }
++	}
++}

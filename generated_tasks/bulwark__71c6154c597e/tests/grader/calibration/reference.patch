@@ -1,0 +1,220 @@
+diff --git a/src/bulwark/chunked.py b/src/bulwark/chunked.py
+new file mode 100644
+index 0000000..d176cce
+--- /dev/null
++++ b/src/bulwark/chunked.py
+@@ -0,0 +1,130 @@
++"""Streaming Transfer-Encoding: chunked decoder.
++
++Decodes a chunked body from an iterator of bytes chunks. Strict about
++the format:
++
++* each chunk size is hex digits; an optional ``;`` introduces chunk
++  extensions which we ignore but parse.
++* each chunk is terminated by CRLF.
++* a zero-size chunk ends the body. Trailers (lines after the zero
++  chunk before the final CRLF) are returned as a :class:`Headers`
++  multimap; the caller decides whether to expose them.
++* total decoded body size is capped at ``max_body``; anything larger
++  raises :class:`ChunkError`.
++
++The decoder is iterator-style -- it accepts incremental input and
++produces decoded payload bytes, so a server can stream a 10 GB upload
++without buffering the whole thing.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from enum import Enum, auto
++from typing import Generator
++
++from bulwark.errors import BulwarkError
++from bulwark.headers import Headers
++
++
++class ChunkError(BulwarkError):
++    pass
++
++
++class _State(Enum):
++    SIZE = auto()
++    DATA = auto()
++    DATA_CRLF = auto()
++    TRAILER = auto()
++    DONE = auto()
++
++
++@dataclass
++class ChunkedDecoder:
++    max_body: int = 16 * 1024 * 1024
++
++    def __post_init__(self) -> None:
++        self._buf = bytearray()
++        self._state = _State.SIZE
++        self._remaining = 0
++        self._decoded = 0
++        self._trailers = Headers()
++
++    @property
++    def trailers(self) -> Headers:
++        return self._trailers
++
++    def feed(self, data: bytes) -> Generator[bytes, None, None]:
++        """Feed more bytes; yield decoded payload chunks.
++
++        When the body is fully decoded the generator finishes and
++        :attr:`done` becomes True.
++        """
++        self._buf.extend(data)
++        while True:
++            if self._state is _State.SIZE:
++                line = self._readline()
++                if line is None:
++                    return
++                size_hex, _, _ext = line.partition(b";")
++                try:
++                    size = int(size_hex.strip(), 16)
++                except ValueError as exc:
++                    raise ChunkError(f"bad chunk size {size_hex!r}") from exc
++                if size < 0:
++                    raise ChunkError("negative chunk size")
++                if size == 0:
++                    self._state = _State.TRAILER
++                    continue
++                self._decoded += size
++                if self._decoded > self.max_body:
++                    raise ChunkError("body exceeds max_body cap")
++                self._remaining = size
++                self._state = _State.DATA
++            if self._state is _State.DATA:
++                if not self._buf:
++                    return
++                take = min(self._remaining, len(self._buf))
++                payload = bytes(self._buf[:take])
++                del self._buf[:take]
++                self._remaining -= take
++                yield payload
++                if self._remaining == 0:
++                    self._state = _State.DATA_CRLF
++            if self._state is _State.DATA_CRLF:
++                if len(self._buf) < 2:
++                    return
++                if bytes(self._buf[:2]) != b"\r\n":
++                    raise ChunkError("expected CRLF after chunk data")
++                del self._buf[:2]
++                self._state = _State.SIZE
++            if self._state is _State.TRAILER:
++                line = self._readline()
++                if line is None:
++                    return
++                if not line:
++                    self._state = _State.DONE
++                    return
++                # A trailer header line; reject obs-fold like wire layer does.
++                if line[:1] in (b" ", b"\t"):
++                    raise ChunkError("obs-fold trailer header")
++                name, _, value = line.decode("ascii", "strict").partition(":")
++                if not _:
++                    raise ChunkError("trailer line missing ':'")
++                self._trailers.add(name, value.strip())
++            if self._state is _State.DONE:
++                return
++
++    @property
++    def done(self) -> bool:
++        return self._state is _State.DONE
++
++    # ---- internals ------------------------------------------------------
++
++    def _readline(self) -> bytes | None:
++        idx = self._buf.find(b"\r\n")
++        if idx < 0:
++            return None
++        line = bytes(self._buf[:idx])
++        del self._buf[: idx + 2]
++        return line
+diff --git a/tests/test_chunked.py b/tests/test_chunked.py
+new file mode 100644
+index 0000000..5dc4dd6
+--- /dev/null
++++ b/tests/test_chunked.py
+@@ -0,0 +1,78 @@
++"""Tests for the streaming chunked decoder."""
++
++from __future__ import annotations
++
++import pytest
++
++from bulwark.chunked import ChunkedDecoder, ChunkError
++
++
++def _decode(raw: bytes, *, max_body: int = 16 << 20) -> bytes:
++    dec = ChunkedDecoder(max_body=max_body)
++    out = bytearray()
++    for piece in dec.feed(raw):
++        out.extend(piece)
++    assert dec.done, f"decoder not done; state {dec._state}"
++    return bytes(out)
++
++
++def test_basic_chunked_body() -> None:
++    raw = b"5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
++    assert _decode(raw) == b"hello world"
++
++
++def test_chunk_extensions_are_ignored() -> None:
++    raw = b"5;name=foo\r\nhello\r\n0\r\n\r\n"
++    assert _decode(raw) == b"hello"
++
++
++def test_zero_chunk_ends_body() -> None:
++    raw = b"3\r\nabc\r\n0\r\n\r\n"
++    assert _decode(raw) == b"abc"
++
++
++def test_trailers_are_collected() -> None:
++    raw = b"3\r\nabc\r\n0\r\nX-Trace-Id: 42\r\n\r\n"
++    dec = ChunkedDecoder()
++    out = b"".join(dec.feed(raw))
++    assert dec.done
++    assert out == b"abc"
++    assert dec.trailers.get("x-trace-id") == "42"
++
++
++def test_negative_size_rejected() -> None:
++    with pytest.raises(ChunkError):
++        _decode(b"-1\r\nabc\r\n0\r\n\r\n")
++
++
++def test_bad_hex_rejected() -> None:
++    with pytest.raises(ChunkError):
++        _decode(b"zz\r\nabc\r\n0\r\n\r\n")
++
++
++def test_missing_data_crlf_rejected() -> None:
++    with pytest.raises(ChunkError):
++        _decode(b"3\r\nabcXX0\r\n\r\n")
++
++
++def test_streaming_input() -> None:
++    dec = ChunkedDecoder()
++    out = bytearray()
++    feed_bytes = b"5\r\nhello\r\n0\r\n\r\n"
++    for i in range(0, len(feed_bytes), 1):
++        for piece in dec.feed(feed_bytes[i : i + 1]):
++            out.extend(piece)
++    assert dec.done
++    assert bytes(out) == b"hello"
++
++
++def test_max_body_cap() -> None:
++    raw = b"a\r\n0123456789\r\n0\r\n\r\n"
++    with pytest.raises(ChunkError):
++        _decode(raw, max_body=5)
++
++
++def test_obs_fold_trailer_rejected() -> None:
++    raw = b"0\r\n\tcontinued\r\n\r\n"
++    with pytest.raises(ChunkError):
++        _decode(raw)

@@ -1,0 +1,87 @@
+diff --git a/internal/ring/ring.go b/internal/ring/ring.go
+index c79033d..02cac15 100644
+--- a/internal/ring/ring.go
++++ b/internal/ring/ring.go
+@@ -38,7 +38,7 @@ func (b *Buffer) Push(v any) {
+ 	defer b.mu.Unlock()
+ 	idx := (b.head + b.length) % len(b.items)
+ 	if b.length == len(b.items) {
+-		b.head = (b.head + 0) % len(b.items)
++		b.head = (b.head + 1) % len(b.items)
+ 	} else {
+ 		b.length++
+ 	}
+diff --git a/internal/ring/ring_test.go b/internal/ring/ring_test.go
+new file mode 100644
+index 0000000..cccc009
+--- /dev/null
++++ b/internal/ring/ring_test.go
+@@ -0,0 +1,68 @@
++package ring_test
++
++import (
++	"reflect"
++	"testing"
++
++	"github.com/dleblanc/kindling/internal/ring"
++)
++
++func TestEmpty(t *testing.T) {
++	r := ring.New(3)
++	if r.Len() != 0 {
++		t.Errorf("got %d", r.Len())
++	}
++	if got := r.Snapshot(); len(got) != 0 {
++		t.Errorf("got %v", got)
++	}
++}
++
++func TestPushIncreasesLen(t *testing.T) {
++	r := ring.New(3)
++	r.Push(1)
++	r.Push(2)
++	if r.Len() != 2 {
++		t.Errorf("got %d", r.Len())
++	}
++}
++
++func TestRingCapsAtCapacity(t *testing.T) {
++	r := ring.New(2)
++	r.Push(1)
++	r.Push(2)
++	r.Push(3)
++	if r.Len() != 2 {
++		t.Errorf("got %d", r.Len())
++	}
++	got := r.Snapshot()
++	want := []any{2, 3}
++	if !reflect.DeepEqual(got, want) {
++		t.Errorf("got %v", got)
++	}
++}
++
++func TestSnapshotOldestFirst(t *testing.T) {
++	r := ring.New(4)
++	for i := 1; i <= 3; i++ {
++		r.Push(i)
++	}
++	if !reflect.DeepEqual(r.Snapshot(), []any{1, 2, 3}) {
++		t.Errorf("got %v", r.Snapshot())
++	}
++}
++
++func TestReset(t *testing.T) {
++	r := ring.New(3)
++	r.Push(1)
++	r.Reset()
++	if r.Len() != 0 {
++		t.Errorf("got %d", r.Len())
++	}
++}
++
++func TestZeroCapacityFallsBackToOne(t *testing.T) {
++	r := ring.New(0)
++	if r.Capacity() != 1 {
++		t.Errorf("got %d", r.Capacity())
++	}
++}

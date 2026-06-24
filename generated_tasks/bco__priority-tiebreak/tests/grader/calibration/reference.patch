@@ -1,0 +1,125 @@
+diff --git a/bco-core/priority.go b/bco-core/priority.go
+index 6ff5f32..723706c 100644
+--- a/bco-core/priority.go
++++ b/bco-core/priority.go
+@@ -135,7 +135,7 @@ func ComputePriorityResolution(localID string, local DeviceState, peers map[stri
+ 		if eligible[i].EffectiveScore != eligible[j].EffectiveScore {
+ 			return eligible[i].EffectiveScore > eligible[j].EffectiveScore
+ 		}
+-		return eligible[i].DeviceID > eligible[j].DeviceID
++		return eligible[i].DeviceID < eligible[j].DeviceID
+ 	})
+ 	top := eligible[0]
+ 	if top.AudioPriority < AudioPriorityMedia {
+diff --git a/bco-core/priority_test.go b/bco-core/priority_test.go
+new file mode 100644
+index 0000000..70cdf4a
+--- /dev/null
++++ b/bco-core/priority_test.go
+@@ -0,0 +1,106 @@
++package main
++
++import "testing"
++
++var defaultSettings = DefaultNetworkSettings()
++
++func TestResolveWinner_StickinessPreventsOscillation(t *testing.T) {
++	localID := "QmLocal"
++	peerID := "QmPeer"
++	local := DeviceState{
++		DeviceID:               localID,
++		AudioPriority:          AudioPriorityMedia,
++		HasBluetoothConnection: true,
++	}
++	peers := map[string]DeviceState{
++		peerID: {
++			DeviceID:               peerID,
++			AudioPriority:          AudioPriorityMedia,
++			HasBluetoothConnection: false,
++		},
++	}
++	w, ok := ResolveWinner(localID, local, peers, defaultSettings)
++	if !ok || w != localID {
++		t.Fatalf("expected local to win with stickiness, got %q ok=%v", w, ok)
++	}
++}
++
++func TestResolveWinner_ActiveCallBeatsMedia(t *testing.T) {
++	localID := "QmA"
++	peerID := "QmB"
++	local := DeviceState{DeviceID: localID, AudioPriority: AudioPriorityMedia}
++	peers := map[string]DeviceState{
++		peerID: {DeviceID: peerID, AudioPriority: AudioPriorityActiveCall},
++	}
++	w, ok := ResolveWinner(localID, local, peers, defaultSettings)
++	if !ok || w != peerID {
++		t.Fatalf("expected peer ActiveCall to win, got %q ok=%v", w, ok)
++	}
++}
++
++func TestResolveWinner_TieBreakLexicographic(t *testing.T) {
++	idLo := "QmAAA"
++	idHi := "QmZZZ"
++	local := DeviceState{DeviceID: idLo, AudioPriority: AudioPriorityMedia}
++	peers := map[string]DeviceState{
++		idHi: {DeviceID: idHi, AudioPriority: AudioPriorityMedia},
++	}
++	w, ok := ResolveWinner(idLo, local, peers, defaultSettings)
++	if !ok || w != idLo {
++		t.Fatalf("expected lexicographically smaller id to win tie, got %q ok=%v", w, ok)
++	}
++}
++
++func TestResolveWinner_AllIdle(t *testing.T) {
++	_, ok := ResolveWinner("a", DeviceState{AudioPriority: AudioPriorityIdle}, nil, defaultSettings)
++	if ok {
++		t.Fatal("expected no winner when all below Media")
++	}
++}
++
++func TestResolveWinner_SkipsPaused(t *testing.T) {
++	local := DeviceState{DeviceID: "L", AudioPriority: AudioPriorityActiveCall, Paused: true}
++	peers := map[string]DeviceState{
++		"p": {DeviceID: "p", AudioPriority: AudioPriorityMedia},
++	}
++	w, ok := ResolveWinner("L", local, peers, defaultSettings)
++	if !ok || w != "p" {
++		t.Fatalf("expected only non-paused peer to win, got %q ok=%v", w, ok)
++	}
++}
++
++func TestResolveWinner_BaseBiasBreaksTie(t *testing.T) {
++	local := DeviceState{DeviceID: "QmB", AudioPriority: AudioPriorityMedia, BaseBias: 10}
++	peers := map[string]DeviceState{
++		"QmA": {DeviceID: "QmA", AudioPriority: AudioPriorityMedia},
++	}
++	w, ok := ResolveWinner("QmB", local, peers, defaultSettings)
++	if !ok || w != "QmB" {
++		t.Fatalf("expected QmB to win with baseBias=10, got %q ok=%v", w, ok)
++	}
++}
++
++func TestResolveWinner_ManualConnectOverrideWins(t *testing.T) {
++	local := DeviceState{DeviceID: "QmA", AudioPriority: AudioPriorityMedia, ManualConnectOverride: true}
++	peers := map[string]DeviceState{
++		"QmB": {DeviceID: "QmB", AudioPriority: AudioPriorityActiveCall},
++	}
++	w, ok := ResolveWinner("QmA", local, peers, defaultSettings)
++	if !ok || w != "QmA" {
++		t.Fatalf("expected manual connect override to win over ActiveCall, got %q ok=%v", w, ok)
++	}
++}
++
++func TestResolveWinner_CustomStickinessBonus(t *testing.T) {
++	settings := DefaultNetworkSettings()
++	settings.StickinessBonus.Value = 10
++
++	local := DeviceState{DeviceID: "QmA", AudioPriority: AudioPriorityMedia, HasBluetoothConnection: true}
++	peers := map[string]DeviceState{
++		"QmB": {DeviceID: "QmB", AudioPriority: AudioPriorityMedia, BaseBias: 15},
++	}
++	w, ok := ResolveWinner("QmA", local, peers, settings)
++	if !ok || w != "QmB" {
++		t.Fatalf("expected QmB to win with baseBias=15 vs stickiness=10, got %q ok=%v", w, ok)
++	}
++}

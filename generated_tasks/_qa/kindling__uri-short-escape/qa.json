@@ -1,0 +1,1059 @@
+[
+  {
+    "check_results": [
+      {
+        "check_id": "01_prompt_clarity",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "instruction.md"
+        ],
+        "findings": [
+          "[info] instruction.md evidence: The prompt describes the issue (percent-decoding mishandles truncated escapes) and specifies expected behavior (reject truncated escapes consistently with short-escape errors). It mandates keeping the existing decoder signature and error-reporting contract and limits changes to internal/uri. reason: Clear specification of expected behavior and constraints helps the user understand the goal without over-constraining the implementation approach.",
+          "[info] instruction.md evidence: The prompt advises not to change behavior for valid escapes, plus handling, or non-escaped bytes. reason: This ensures the prompt focuses on the problem area without requiring unnecessary changes elsewhere.",
+          "[info] instruction.md evidence: Test guidelines clearly instruct adding or extending tests for inputs ending with lone '%' or '%' plus one character, asserting correct error handling. reason: Test requirements align well with the described fix and ensure validation of the intended behavior."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "instruction.md"
+          ],
+          "findings": [
+            {
+              "evidence": "The prompt describes the issue (percent-decoding mishandles truncated escapes) and specifies expected behavior (reject truncated escapes consistently with short-escape errors). It mandates keeping the existing decoder signature and error-reporting contract and limits changes to internal/uri.",
+              "path": "instruction.md",
+              "reason": "Clear specification of expected behavior and constraints helps the user understand the goal without over-constraining the implementation approach.",
+              "severity": "info"
+            },
+            {
+              "evidence": "The prompt advises not to change behavior for valid escapes, plus handling, or non-escaped bytes.",
+              "path": "instruction.md",
+              "reason": "This ensures the prompt focuses on the problem area without requiring unnecessary changes elsewhere.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Test guidelines clearly instruct adding or extending tests for inputs ending with lone '%' or '%' plus one character, asserting correct error handling.",
+              "path": "instruction.md",
+              "reason": "Test requirements align well with the described fix and ensure validation of the intended behavior.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "The prompt clearly states the user-facing task, constraints, and desired behavior without prescribing exact patching steps."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The prompt clearly states the user-facing task, constraints, and desired behavior without prescribing exact patching steps.",
+        "title": "Prompt Clarity"
+      },
+      {
+        "check_id": "02_visible_workflow",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "instruction.md",
+          "environment/repo/CONTRIBUTING.md",
+          "tests/test.sh",
+          "tests/grader/frontiercode.yaml"
+        ],
+        "findings": [
+          "[info] instruction.md evidence: Test guidelines specify `go test ./internal/uri/...` to validate, matching the usual Go test practice shown in CONTRIBUTING.md ('go test ./...') and in GitHub workflows. reason: Ensures visible test commands align with usual testing process and are sufficient to validate patch correctness.",
+          "[info] instruction.md evidence: Lint guidelines instruct to run `go build ./...`, `go vet ./...`, and `gofmt -l internal/uri` before finishing, consistent with CONTRIBUTING.md and CI workflows that run 'go build', 'go vet', and 'go test'. reason: Visible lint and build instructions match real maintainer workflow ensuring agents can validate correctness and style.",
+          "[info] instruction.md evidence: Style guideline mentions to branch from the provided snapshot without rebasing or switching to main, consistent with branch practices described in CONTRIBUTING.md under 'Branching'. reason: Clear style guidance helps maintain commit quality without exposing grader internals.",
+          "[info] tests/test.sh evidence: The script runs a hidden criterion script `python3 tests/hidden/run_criteria.py` on the repo, consistent with grader criteria declared in tests/grader/frontiercode.yaml. reason: Shows integration of visible test script with hidden grading without exposing hidden assets."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "instruction.md",
+            "environment/repo/CONTRIBUTING.md",
+            "tests/test.sh",
+            "tests/grader/frontiercode.yaml"
+          ],
+          "findings": [
+            {
+              "evidence": "Test guidelines specify `go test ./internal/uri/...` to validate, matching the usual Go test practice shown in CONTRIBUTING.md ('go test ./...') and in GitHub workflows.",
+              "path": "instruction.md",
+              "reason": "Ensures visible test commands align with usual testing process and are sufficient to validate patch correctness.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Lint guidelines instruct to run `go build ./...`, `go vet ./...`, and `gofmt -l internal/uri` before finishing, consistent with CONTRIBUTING.md and CI workflows that run 'go build', 'go vet', and 'go test'.",
+              "path": "instruction.md",
+              "reason": "Visible lint and build instructions match real maintainer workflow ensuring agents can validate correctness and style.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Style guideline mentions to branch from the provided snapshot without rebasing or switching to main, consistent with branch practices described in CONTRIBUTING.md under 'Branching'.",
+              "path": "instruction.md",
+              "reason": "Clear style guidance helps maintain commit quality without exposing grader internals.",
+              "severity": "info"
+            },
+            {
+              "evidence": "The script runs a hidden criterion script `python3 tests/hidden/run_criteria.py` on the repo, consistent with grader criteria declared in tests/grader/frontiercode.yaml.",
+              "path": "tests/test.sh",
+              "reason": "Shows integration of visible test script with hidden grading without exposing hidden assets.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "Visible workflow guidance in instruction.md aligns well with repo conventions and real maintainer workflow for testing, linting, and build commands, providing clear validation instructions without exposing hidden grader assets."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "Visible workflow guidance in instruction.md aligns well with repo conventions and real maintainer workflow for testing, linting, and build commands, providing clear validation instructions without exposing hidden grader assets.",
+        "title": "Visible Workflow Guidance"
+      },
+      {
+        "check_id": "03_rubric_coverage",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "tests/grader/frontiercode.yaml"
+        ],
+        "findings": [
+          "[info] tests/grader/frontiercode.yaml evidence: Criteria include classical for hidden_reference_tests_pass, reverse_classical for submitted_tests_fail_on_base, command for visible_regression_tests_pass, and scope method with precise allowed paths reason: Using classical, reverse_classical, command, and scope methods addresses objective criteria for behavior correctness, regressions, code scope, and merge safety.",
+          "[info] tests/grader/frontiercode.yaml evidence: Several patch_specific LLM-prompt criteria with thresholds cover behavior_core_requirement, edge_cases, error_handling, backward_compatibility, and test coverage. Additional criteria cover maintainability, dependency fit, and output contracts. reason: Subjective quality aspects and ensure code quality, maintainability, API stability, and test integration are covered.",
+          "[info] tests/grader/frontiercode.yaml evidence: Scope limits patch to internal/uri/ directory and related test files, max 6 files and 250 changed lines reason: This protects from unrelated broad rewrites and enforces minimal and targeted patches.",
+          "[info] tests/grader/frontiercode.yaml evidence: Blocker flags set for main correctness, scope, and asset leak criteria reason: Ensures blocking issues must be resolved for merge."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "tests/grader/frontiercode.yaml"
+          ],
+          "findings": [
+            {
+              "evidence": "Criteria include classical for hidden_reference_tests_pass, reverse_classical for submitted_tests_fail_on_base, command for visible_regression_tests_pass, and scope method with precise allowed paths",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Using classical, reverse_classical, command, and scope methods addresses objective criteria for behavior correctness, regressions, code scope, and merge safety.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Several patch_specific LLM-prompt criteria with thresholds cover behavior_core_requirement, edge_cases, error_handling, backward_compatibility, and test coverage. Additional criteria cover maintainability, dependency fit, and output contracts.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Subjective quality aspects and ensure code quality, maintainability, API stability, and test integration are covered.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Scope limits patch to internal/uri/ directory and related test files, max 6 files and 250 changed lines",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "This protects from unrelated broad rewrites and enforces minimal and targeted patches.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Blocker flags set for main correctness, scope, and asset leak criteria",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Ensures blocking issues must be resolved for merge.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "The rubric in tests/grader/frontiercode.yaml covers mergeability comprehensively, including behavior correctness, regressions, mechanical cleanliness, tests, scope, and code quality."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The rubric in tests/grader/frontiercode.yaml covers mergeability comprehensively, including behavior correctness, regressions, mechanical cleanliness, tests, scope, and code quality.",
+        "title": "Rubric Coverage"
+      },
+      {
+        "check_id": "04_rubric_metadata",
+        "confidence": 1.0,
+        "evidence_paths": [
+          "tests/grader/frontiercode.yaml"
+        ],
+        "findings": [
+          "[info] tests/grader/frontiercode.yaml evidence: Each criterion includes a meaningful 'description' explaining why it matters (e.g., hidden reference tests verify patch correctness, scope matches reference intent to prevent unrelated changes). reason: Providing explicit rationale helps reviewers understand the importance of each criterion.",
+          "[info] tests/grader/frontiercode.yaml evidence: Blocker flags align with critical risk areas; for example, hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak are all blockers. reason: Ensures that critical failures prevent acceptance, while lower-risk criteria remain non-blocking.",
+          "[info] tests/grader/frontiercode.yaml evidence: Weights are mostly concentrated on major criteria (0.35, 0.20, 0.15, 0.15, 0.05) with patch-specific and behavioral criteria weighted lower (0.02 each). reason: Weight distribution reflects relative importance and expected impact on task quality."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 1.0,
+          "evidence_paths": [
+            "tests/grader/frontiercode.yaml"
+          ],
+          "findings": [
+            {
+              "evidence": "Each criterion includes a meaningful 'description' explaining why it matters (e.g., hidden reference tests verify patch correctness, scope matches reference intent to prevent unrelated changes).",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Providing explicit rationale helps reviewers understand the importance of each criterion.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Blocker flags align with critical risk areas; for example, hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak are all blockers.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Ensures that critical failures prevent acceptance, while lower-risk criteria remain non-blocking.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Weights are mostly concentrated on major criteria (0.35, 0.20, 0.15, 0.15, 0.05) with patch-specific and behavioral criteria weighted lower (0.02 each).",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Weight distribution reflects relative importance and expected impact on task quality.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "All rubric criteria have clear rationales, intentional blocker flags, and weights calibrated according to task risk and scope."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "All rubric criteria have clear rationales, intentional blocker flags, and weights calibrated according to task risk and scope.",
+        "title": "Rubric Rationale And Weights"
+      },
+      {
+        "check_id": "05_blocker_validity",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "tests/grader/frontiercode.yaml",
+          "tests/grader/calibration/reference.patch"
+        ],
+        "findings": [
+          "[info] tests/grader/frontiercode.yaml evidence: Blocker criteria include hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, and no_hidden_asset_leak, each designed to catch true regressions or scope violations. reason: These criteria ensure that patches do not regress functionality, fail to fix the issue, break visible tests, or introduce unrelated or hidden sensitive artifacts, all being legitimate reasons to block a pull request merge.",
+          "[info] tests/grader/calibration/reference.patch evidence: The reference-fix calibration sets a standard where passing all blockers signals a fully valid fix, and failing any corresponds to breakage or incorrect fixes. reason: This calibration verifies that the blockers align with a concrete example of a known good fix, confirming their role as true hard stop conditions."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "tests/grader/frontiercode.yaml",
+            "tests/grader/calibration/reference.patch"
+          ],
+          "findings": [
+            {
+              "evidence": "Blocker criteria include hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, and no_hidden_asset_leak, each designed to catch true regressions or scope violations.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "These criteria ensure that patches do not regress functionality, fail to fix the issue, break visible tests, or introduce unrelated or hidden sensitive artifacts, all being legitimate reasons to block a pull request merge.",
+              "severity": "info"
+            },
+            {
+              "evidence": "The reference-fix calibration sets a standard where passing all blockers signals a fully valid fix, and failing any corresponds to breakage or incorrect fixes.",
+              "path": "tests/grader/calibration/reference.patch",
+              "reason": "This calibration verifies that the blockers align with a concrete example of a known good fix, confirming their role as true hard stop conditions.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "All blockers in tests/grader/frontiercode.yaml correspond to appropriate hard stops that maintainers would reject, ensuring that a patch failing any blocker criterion truly blocks merging."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "All blockers in tests/grader/frontiercode.yaml correspond to appropriate hard stops that maintainers would reject, ensuring that a patch failing any blocker criterion truly blocks merging.",
+        "title": "Blocker Validity"
+      },
+      {
+        "check_id": "06_false_positive_resistance",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "internal/uri/uri.go",
+          "internal/uri/uri_test.go",
+          "tests/grader/frontiercode.yaml",
+          "generated_tasks/_qa/kindling__uri-short-escape/false_positive_adversarial/kindling__uri-short-escape/adversarial-3.patch",
+          "generated_tasks/_qa/kindling__uri-short-escape/false_positive_adversarial/kindling__uri-short-escape/adversarial-5.patch"
+        ],
+        "findings": [
+          "[info] internal/uri/uri.go evidence: Patch restricts percent-decoding to reject inputs where '%' is followed by fewer than two characters (i+2 >= len(s)). reason: This directly addresses the false positive risk of reading past string end without error.",
+          "[info] internal/uri/uri_test.go evidence: Tests for truncated escapes like \"%2\" and lone \"%\" verify error returns and no panic. reason: Such negative tests ensure submitted solutions must properly detect and handle short escape sequences, blocking naive passes.",
+          "[info] tests/grader/frontiercode.yaml evidence: Calibration includes no-op baseline failing key criteria and reference fix passing all, assuring sensitivity to correct behavior. reason: This calibration workflow ensures rubric cannot be gamed by trivial or partial fixes.",
+          "[warn] adversarial-1 evidence: adversarial model call failed reason: Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
+          "[warn] adversarial-2 evidence: adversarial model call failed reason: Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
+          "[info] adversarial-3 evidence: blocker_failures=hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak; score=0.000 reason: candidate did not clear the false-positive gate",
+          "[warn] adversarial-4 evidence: adversarial model call failed reason: Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
+          "[info] adversarial-5 evidence: blocker_failures=hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak; score=0.000 reason: candidate did not clear the false-positive gate"
+        ],
+        "passed": true,
+        "raw_response": {
+          "adversarial_probe": {
+            "attempts": [
+              {
+                "error": "Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
+                "probe_id": "adversarial-1"
+              },
+              {
+                "error": "Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
+                "probe_id": "adversarial-2"
+              },
+              {
+                "confidence": 0.18,
+                "frontiercode_result": {
+                  "blocker_failures": [
+                    "hidden_reference_tests_pass",
+                    "submitted_tests_fail_on_base",
+                    "visible_regression_tests_pass",
+                    "scope_matches_reference_intent",
+                    "no_hidden_asset_leak"
+                  ],
+                  "criteria_results": [
+                    {
+                      "blocker": true,
+                      "category": "patch_specific",
+                      "criterion_id": "hidden_reference_tests_pass",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "classical",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.35
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "submitted_tests_fail_on_base",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "reverse_classical",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.15
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "visible_regression_tests_pass",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "command",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.2
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "scope_matches_reference_intent",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "scope",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.15
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "no_hidden_asset_leak",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "command",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.05
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "behavior_core_requirement",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "behavior_edge_cases",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "behavior_error_handling",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "behavior_backward_compatibility",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "regression_visible_tests_meaningful",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "regression_reference_area_preserved",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "test_coverage_positive_path",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "test_coverage_negative_path",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "test_integration_with_existing_workflow",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "scope_minimal_patch",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "scope_no_unrelated_public_api_changes",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "maintainability_idiomatic_design",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "maintainability_simple_control_flow",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "dependency_and_environment_fit",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "observable_output_contracts",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    }
+                  ],
+                  "metadata": {
+                    "calibration_type": "adversarial_generated",
+                    "strategy": "Flip the off-by-one bounds check in PercentDecode (the guard only ensured one trailing char after '%', so '%A' at end read past the slice) from `i+1 >= len(s)` to `i+2 >= len(s)`, and add a thin visible test that only asserts err != nil for truncated escapes (it panics on the base, so it 'fails on base' and passes after the fix).",
+                    "why_bad": "The change is a blind operator guess against an unseen file rather than a deliberate, verified fix, and the accompanying test merely checks for a non-nil error instead of asserting the documented short-escape error contract or re-verifying valid-decode/plus-handling behavior. It is overfit to making the blockers flip rather than demonstrating understanding of the decoder's full contract."
+                  },
+                  "pass": false,
+                  "reward": 0.0,
+                  "score": 0.0,
+                  "submission_id": "adversarial-3",
+                  "task_id": "kindling__uri-short-escape"
+                },
+                "patch": "diff --git a/internal/uri/uri.go b/internal/uri/uri.go\n--- a/internal/uri/uri.go\n+++ b/internal/uri/uri.go\n@@\n \t\tcase '%':\n-\t\t\tif i+1 >= len(s) {\n+\t\t\tif i+2 >= len(s) {\ndiff --git a/internal/uri/uri_test.go b/internal/uri/uri_test.go\nnew file mode 100644\n--- /dev/null\n+++ b/internal/uri/uri_test.go\n@@\n+package uri\n+\n+import \"testing\"\n+\n+// TestPercentDecodeTruncatedEscape covers a lone trailing '%', a '%'\n+// followed by a single character (hex or non-hex), and confirms a\n+// well-formed escape immediately before end-of-input still decodes.\n+func TestPercentDecodeTruncatedEscape(t *testing.T) {\n+\tfor _, in := range []string{\"%\", \"%A\", \"%g\", \"ab%\", \"ab%C\"} {\n+\t\tif _, err := PercentDecode(in); err == nil {\n+\t\t\tt.Fatalf(\"expected short-escape error for %q\", in)\n+\t\t}\n+\t}\n+}\n+\n+func TestPercentDecodeValidEscapeAtEnd(t *testing.T) {\n+\tout, err := PercentDecode(\"a%20b\")\n+\tif err != nil {\n+\t\tt.Fatalf(\"unexpected error: %v\", err)\n+\t}\n+\tif string(out) != \"a b\" {\n+\t\tt.Fatalf(\"got %q\", out)\n+\t}\n+}",
+                "patch_path": "generated_tasks/_qa/kindling__uri-short-escape/false_positive_adversarial/kindling__uri-short-escape/adversarial-3.patch",
+                "probe_id": "adversarial-3",
+                "status": "patch",
+                "strategy": "Flip the off-by-one bounds check in PercentDecode (the guard only ensured one trailing char after '%', so '%A' at end read past the slice) from `i+1 >= len(s)` to `i+2 >= len(s)`, and add a thin visible test that only asserts err != nil for truncated escapes (it panics on the base, so it 'fails on base' and passes after the fix).",
+                "why_bad": "The change is a blind operator guess against an unseen file rather than a deliberate, verified fix, and the accompanying test merely checks for a non-nil error instead of asserting the documented short-escape error contract or re-verifying valid-decode/plus-handling behavior. It is overfit to making the blockers flip rather than demonstrating understanding of the decoder's full contract."
+              },
+              {
+                "error": "Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
+                "probe_id": "adversarial-4"
+              },
+              {
+                "confidence": 0.2,
+                "frontiercode_result": {
+                  "blocker_failures": [
+                    "hidden_reference_tests_pass",
+                    "submitted_tests_fail_on_base",
+                    "visible_regression_tests_pass",
+                    "scope_matches_reference_intent",
+                    "no_hidden_asset_leak"
+                  ],
+                  "criteria_results": [
+                    {
+                      "blocker": true,
+                      "category": "patch_specific",
+                      "criterion_id": "hidden_reference_tests_pass",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "classical",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.35
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "submitted_tests_fail_on_base",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "reverse_classical",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.15
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "visible_regression_tests_pass",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "command",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.2
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "scope_matches_reference_intent",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "scope",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.15
+                    },
+                    {
+                      "blocker": true,
+                      "category": "regular",
+                      "criterion_id": "no_hidden_asset_leak",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "command",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.05
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "behavior_core_requirement",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "behavior_edge_cases",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "behavior_error_handling",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "behavior_backward_compatibility",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "regression_visible_tests_meaningful",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "regression_reference_area_preserved",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "test_coverage_positive_path",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "test_coverage_negative_path",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "test_integration_with_existing_workflow",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "scope_minimal_patch",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "scope_no_unrelated_public_api_changes",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "maintainability_idiomatic_design",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "maintainability_simple_control_flow",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "regular",
+                      "criterion_id": "dependency_and_environment_fit",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    },
+                    {
+                      "blocker": false,
+                      "category": "patch_specific",
+                      "criterion_id": "observable_output_contracts",
+                      "details": "Could not apply calibration patch: ",
+                      "method": "llm_prompt",
+                      "passed": false,
+                      "score": 0.0,
+                      "weight": 0.02
+                    }
+                  ],
+                  "metadata": {
+                    "calibration_type": "adversarial_generated",
+                    "strategy": "Apply the minimal bounds-check correction (i+1 -> i+2) in PercentDecode and add a thin test file that only checks err != nil for truncated escapes, avoiding sentinel/error-path and rich positive coverage.",
+                    "why_bad": "The added tests are deliberately shallow: they assert only that an error is non-nil rather than that the documented short-escape error path is used, and provide minimal positive-path/edge coverage. The fix also guesses at the exact loose-check form rather than auditing the decoder's full contract, so it is a brittle, low-quality patch even if blockers pass."
+                  },
+                  "pass": false,
+                  "reward": 0.0,
+                  "score": 0.0,
+                  "submission_id": "adversarial-5",
+                  "task_id": "kindling__uri-short-escape"
+                },
+                "patch": "diff --git a/internal/uri/uri.go b/internal/uri/uri.go\n--- a/internal/uri/uri.go\n+++ b/internal/uri/uri.go\n@@\n \t\tcase '%':\n-\t\t\tif i+1 >= len(s) {\n+\t\t\tif i+2 >= len(s) {\n \t\t\t\treturn nil, ErrShortEscape\n \t\t\t}\ndiff --git a/internal/uri/shortescape_test.go b/internal/uri/shortescape_test.go\nnew file mode 100644\n--- /dev/null\n+++ b/internal/uri/shortescape_test.go\n@@\n+package uri_test\n+\n+import (\n+\t\"testing\"\n+\n+\t\"github.com/dleblanc/kindling/internal/uri\"\n+)\n+\n+func TestPercentDecodeShortEscapeAtEnd(t *testing.T) {\n+\tfor _, in := range []string{\"%\", \"%A\", \"%a\", \"%z\", \"ab%\", \"ab%C\"} {\n+\t\tif _, err := uri.PercentDecode([]byte(in)); err == nil {\n+\t\t\tt.Errorf(\"PercentDecode(%q): expected short-escape error, got nil\", in)\n+\t\t}\n+\t}\n+}\n+\n+func TestPercentDecodeValidBeforeEnd(t *testing.T) {\n+\tout, err := uri.PercentDecode([]byte(\"a%20\"))\n+\tif err != nil {\n+\t\tt.Fatalf(\"unexpected error: %v\", err)\n+\t}\n+\tif string(out) != \"a \" {\n+\t\tt.Errorf(\"got %q\", out)\n+\t}\n+}",
+                "patch_path": "generated_tasks/_qa/kindling__uri-short-escape/false_positive_adversarial/kindling__uri-short-escape/adversarial-5.patch",
+                "probe_id": "adversarial-5",
+                "status": "patch",
+                "strategy": "Apply the minimal bounds-check correction (i+1 -> i+2) in PercentDecode and add a thin test file that only checks err != nil for truncated escapes, avoiding sentinel/error-path and rich positive coverage.",
+                "why_bad": "The added tests are deliberately shallow: they assert only that an error is non-nil rather than that the documented short-escape error path is used, and provide minimal positive-path/edge coverage. The fix also guesses at the exact loose-check form rather than auditing the decoder's full contract, so it is a brittle, low-quality patch even if blockers pass."
+              }
+            ]
+          },
+          "review": {
+            "confidence": 0.9,
+            "evidence_paths": [
+              "internal/uri/uri.go",
+              "internal/uri/uri_test.go",
+              "tests/grader/frontiercode.yaml"
+            ],
+            "findings": [
+              {
+                "evidence": "Patch restricts percent-decoding to reject inputs where '%' is followed by fewer than two characters (i+2 >= len(s)).",
+                "path": "internal/uri/uri.go",
+                "reason": "This directly addresses the false positive risk of reading past string end without error.",
+                "severity": "info"
+              },
+              {
+                "evidence": "Tests for truncated escapes like \"%2\" and lone \"%\" verify error returns and no panic.",
+                "path": "internal/uri/uri_test.go",
+                "reason": "Such negative tests ensure submitted solutions must properly detect and handle short escape sequences, blocking naive passes.",
+                "severity": "info"
+              },
+              {
+                "evidence": "Calibration includes no-op baseline failing key criteria and reference fix passing all, assuring sensitivity to correct behavior.",
+                "path": "tests/grader/frontiercode.yaml",
+                "reason": "This calibration workflow ensures rubric cannot be gamed by trivial or partial fixes.",
+                "severity": "info"
+              }
+            ],
+            "passed": true,
+            "recommended_fixes": [],
+            "status": "pass",
+            "summary": "The task includes a calibrated reference fix patch and comprehensive tests for handling short escapes at string ends, preventing false positives from weak tests or rubric gaps."
+          }
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The task includes a calibrated reference fix patch and comprehensive tests for handling short escapes at string ends, preventing false positives from weak tests or rubric gaps. Adversarial probe: Adversarial patches were generated, but none passed the false-positive gate.",
+        "title": "False Positive Resistance"
+      },
+      {
+        "check_id": "07_false_negative_resistance",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "tests/grader/frontiercode.yaml",
+          "internal/uri/uri_test.go",
+          "tests/grader/calibration/reference.patch"
+        ],
+        "findings": [
+          "[info] tests/grader/frontiercode.yaml evidence: Contains an alternative_valid calibration with a real source fix patch at tests/grader/calibration/reference.patch. reason: This calibration establishes a canonical valid solution baseline, securing against false negatives.",
+          "[info] internal/uri/uri_test.go evidence: TestDecodeShortEscape checks that truncated escapes like \"%2\" produce errors instead of panics. reason: Tests cover relevant failure modes without over-specifying implementation details, allowing alternate valid implementations.",
+          "[info] tests/grader/frontiercode.yaml evidence: Criterion 'test_coverage_negative_path' passed true with score 0.8 and 'test_coverage_positive_path' similarly passed. reason: Shows tests capture both error and success paths, supporting valid non-canonical solutions."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "tests/grader/frontiercode.yaml",
+            "internal/uri/uri_test.go",
+            "tests/grader/calibration/reference.patch"
+          ],
+          "findings": [
+            {
+              "evidence": "Contains an alternative_valid calibration with a real source fix patch at tests/grader/calibration/reference.patch.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "This calibration establishes a canonical valid solution baseline, securing against false negatives.",
+              "severity": "info"
+            },
+            {
+              "evidence": "TestDecodeShortEscape checks that truncated escapes like \"%2\" produce errors instead of panics.",
+              "path": "internal/uri/uri_test.go",
+              "reason": "Tests cover relevant failure modes without over-specifying implementation details, allowing alternate valid implementations.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Criterion 'test_coverage_negative_path' passed true with score 0.8 and 'test_coverage_positive_path' similarly passed.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Shows tests capture both error and success paths, supporting valid non-canonical solutions.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "The provided criteria and calibrations include an alternative_valid calibration referencing the source fix patch, demonstrating accepted valid solutions for the truncated escape error. The tests include coverage for short-escape cases and positive round-trips, ensuring valid variations are not rejected."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The provided criteria and calibrations include an alternative_valid calibration referencing the source fix patch, demonstrating accepted valid solutions for the truncated escape error. The tests include coverage for short-escape cases and positive round-trips, ensuring valid variations are not rejected.",
+        "title": "False Negative Resistance"
+      },
+      {
+        "check_id": "08_agent_tests",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "internal/uri/uri_test.go",
+          "tests/grader/frontiercode.yaml",
+          "instruction.md"
+        ],
+        "findings": [
+          "[info] internal/uri/uri_test.go evidence: Tests include TestDecodeShortEscape which asserts that inputs like \"%2\" result in an error, capturing the short-escape failure case. reason: Ensures that truncated percent-escapes at input end are detected and error out appropriately as specified by the task.",
+          "[info] tests/grader/frontiercode.yaml evidence: Criterion 'submitted_tests_fail_on_base' uses a reverse_classical method to confirm submitted visible tests fail against the original broken base commit. reason: Validates that the added tests meaningfully capture the buggy behavior and only pass after the fix, fulfilling the QA requirement for test correctness.",
+          "[info] instruction.md evidence: The instructions explicitly require adding or extending tests for inputs ending with a lone % and % with a single character, asserting they trigger a short-escape error instead of panic. reason: Direct task mandate to add tests which is fulfilled by the provided internal/uri/uri_test.go."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "internal/uri/uri_test.go",
+            "tests/grader/frontiercode.yaml",
+            "instruction.md"
+          ],
+          "findings": [
+            {
+              "evidence": "Tests include TestDecodeShortEscape which asserts that inputs like \"%2\" result in an error, capturing the short-escape failure case.",
+              "path": "internal/uri/uri_test.go",
+              "reason": "Ensures that truncated percent-escapes at input end are detected and error out appropriately as specified by the task.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Criterion 'submitted_tests_fail_on_base' uses a reverse_classical method to confirm submitted visible tests fail against the original broken base commit.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Validates that the added tests meaningfully capture the buggy behavior and only pass after the fix, fulfilling the QA requirement for test correctness.",
+              "severity": "info"
+            },
+            {
+              "evidence": "The instructions explicitly require adding or extending tests for inputs ending with a lone % and % with a single character, asserting they trigger a short-escape error instead of panic.",
+              "path": "instruction.md",
+              "reason": "Direct task mandate to add tests which is fulfilled by the provided internal/uri/uri_test.go.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "The task requires adding tests for handling short percent-escape sequences, and the provided visible tests in internal/uri/uri_test.go include explicit coverage for truncated escapes and validate that such inputs return errors rather than panicking. The visible tests are linked and confirmed to fail on the base broken version, ensuring correctness and meaningful regression coverage per the criteria."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The task requires adding tests for handling short percent-escape sequences, and the provided visible tests in internal/uri/uri_test.go include explicit coverage for truncated escapes and validate that such inputs return errors rather than panicking. The visible tests are linked and confirmed to fail on the base broken version, ensuring correctness and meaningful regression coverage per the criteria.",
+        "title": "Agent Test Correctness"
+      },
+      {
+        "check_id": "09_scope_controls",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "tests/grader/frontiercode.yaml"
+        ],
+        "findings": [
+          "[info] tests/grader/frontiercode.yaml evidence: scope field specifies allowed_paths: [\"internal/uri/\", \"internal/uri/uri.go\", \"internal/uri/uri_test.go\"], max_files: 6, max_changed_lines: 250 reason: Explicit scope restrictions prevent unrelated file edits or broad diffs outside the URI decoding implementation and tests."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "tests/grader/frontiercode.yaml"
+          ],
+          "findings": [
+            {
+              "evidence": "scope field specifies allowed_paths: [\"internal/uri/\", \"internal/uri/uri.go\", \"internal/uri/uri_test.go\"], max_files: 6, max_changed_lines: 250",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Explicit scope restrictions prevent unrelated file edits or broad diffs outside the URI decoding implementation and tests.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "The scope controls are explicitly defined in the grader YAML with allowed_paths limited to internal/uri/ and its relevant files, plus thresholds on max_files and max_changed_lines, effectively constraining the patch scope."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The scope controls are explicitly defined in the grader YAML with allowed_paths limited to internal/uri/ and its relevant files, plus thresholds on max_files and max_changed_lines, effectively constraining the patch scope.",
+        "title": "Scope Controls"
+      },
+      {
+        "check_id": "10_hidden_asset_isolation",
+        "confidence": 1.0,
+        "evidence_paths": [
+          "instruction.md",
+          "task.toml",
+          "environment/repo"
+        ],
+        "findings": [
+          "[info] instruction.md evidence: No grader prompts, test outputs, or hidden tests present, only task instructions. reason: Instruction files must not leak hidden grading information.",
+          "[info] task.toml evidence: Contains only task metadata and environment config, no hidden tests or references. reason: Task config must not include grader or hidden test assets.",
+          "[info] environment/repo/ evidence: Full repository files are standard project code and docs with no visible hidden grading tests or calibration patches. reason: Agent-visible repo must not contain hidden grader assets or reference patches.",
+          "[info] No top-level solution folder evidence: No 'solution' folder found at top level. reason: Top-level solution folder is forbidden to prevent leaking solution code."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 1.0,
+          "evidence_paths": [
+            "instruction.md",
+            "task.toml",
+            "environment/repo"
+          ],
+          "findings": [
+            {
+              "evidence": "No grader prompts, test outputs, or hidden tests present, only task instructions.",
+              "path": "instruction.md",
+              "reason": "Instruction files must not leak hidden grading information.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Contains only task metadata and environment config, no hidden tests or references.",
+              "path": "task.toml",
+              "reason": "Task config must not include grader or hidden test assets.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Full repository files are standard project code and docs with no visible hidden grading tests or calibration patches.",
+              "path": "environment/repo/",
+              "reason": "Agent-visible repo must not contain hidden grader assets or reference patches.",
+              "severity": "info"
+            },
+            {
+              "evidence": "No 'solution' folder found at top level.",
+              "path": "No top-level solution folder",
+              "reason": "Top-level solution folder is forbidden to prevent leaking solution code.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "No hidden grader assets, reference patches, or calibration data leak into the agent-visible files; the visible files contain no hidden tests or fix commit IDs."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "No hidden grader assets, reference patches, or calibration data leak into the agent-visible files; the visible files contain no hidden tests or fix commit IDs.",
+        "title": "Hidden Asset Isolation"
+      },
+      {
+        "check_id": "11_packaging_e2e",
+        "confidence": 0.9,
+        "evidence_paths": [
+          "task.toml",
+          "environment/repo/Dockerfile",
+          "tests/test.sh",
+          "tests/grader/frontiercode.yaml",
+          "tests/grader/calibration/reference.patch"
+        ],
+        "findings": [
+          "[info] task.toml evidence: Contains docker_image = \"golang:1.24-bookworm\" and network_mode = \"public\" reason: Defines a suitable fresh container environment consistent with the Go version required by the task.",
+          "[info] environment/repo/Dockerfile evidence: Multi-stage build with Go 1.22 builder and Debian slim runtime, building the binary and setting ENTRYPOINT reason: Supports reproducible and clean packaging for both build and runtime environments.",
+          "[info] tests/test.sh evidence: Runs python3 \"$task_root/tests/hidden/run_criteria.py\" with the repo path reason: Confirms test orchestration is in place and linked to hidden criteria which enforce test correctness.",
+          "[info] tests/grader/frontiercode.yaml evidence: Criteria include hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass as blockers with commands pointing to python3 runners reason: Ensures end-to-end testing including the base/broken state and final validation of fixes with correct blocking for core QA.",
+          "[info] tests/grader/calibration/reference.patch evidence: Patch fixes boundary check from i+2 > len(s) to i+2 >= len(s) and adds a comprehensive uri_test.go reason: Contains the canonical fix and test coverage which validate the intended behavior and error conditions."
+        ],
+        "passed": true,
+        "raw_response": {
+          "confidence": 0.9,
+          "evidence_paths": [
+            "task.toml",
+            "environment/repo/Dockerfile",
+            "tests/test.sh",
+            "tests/grader/frontiercode.yaml",
+            "tests/grader/calibration/reference.patch"
+          ],
+          "findings": [
+            {
+              "evidence": "Contains docker_image = \"golang:1.24-bookworm\" and network_mode = \"public\"",
+              "path": "task.toml",
+              "reason": "Defines a suitable fresh container environment consistent with the Go version required by the task.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Multi-stage build with Go 1.22 builder and Debian slim runtime, building the binary and setting ENTRYPOINT",
+              "path": "environment/repo/Dockerfile",
+              "reason": "Supports reproducible and clean packaging for both build and runtime environments.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Runs python3 \"$task_root/tests/hidden/run_criteria.py\" with the repo path",
+              "path": "tests/test.sh",
+              "reason": "Confirms test orchestration is in place and linked to hidden criteria which enforce test correctness.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Criteria include hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass as blockers with commands pointing to python3 runners",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Ensures end-to-end testing including the base/broken state and final validation of fixes with correct blocking for core QA.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Patch fixes boundary check from i+2 > len(s) to i+2 >= len(s) and adds a comprehensive uri_test.go",
+              "path": "tests/grader/calibration/reference.patch",
+              "reason": "Contains the canonical fix and test coverage which validate the intended behavior and error conditions.",
+              "severity": "info"
+            }
+          ],
+          "passed": true,
+          "recommended_fixes": [],
+          "status": "pass",
+          "summary": "The task contains a proper Dockerfile setup, correct task.toml with a public network mode and golang base image, and a shell test script that runs the repository's tests via a Python helper script. The hidden grader setup includes a classical, blocker criterion run for the main regression tests and other criteria to ensure code scope and no hidden asset leaks. The source commit patch and regression tests are included, verifying the key fix and integration within the fresh environment."
+        },
+        "recommended_fixes": [],
+        "status": "pass",
+        "summary": "The task contains a proper Dockerfile setup, correct task.toml with a public network mode and golang base image, and a shell test script that runs the repository's tests via a Python helper script. The hidden grader setup includes a classical, blocker criterion run for the main regression tests and other criteria to ensure code scope and no hidden asset leaks. The source commit patch and regression tests are included, verifying the key fix and integration within the fresh environment.",
+        "title": "End To End Packaging"
+      }
+    ],
+    "deterministic_errors": [],
+    "deterministic_warnings": [],
+    "passed": true,
+    "task_id": "kindling__uri-short-escape",
+    "task_path": "generated_tasks/kindling__uri-short-escape"
+  }
+]

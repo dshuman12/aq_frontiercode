@@ -164,7 +164,7 @@ def build_result_doc(spec: dict, results: list[dict]) -> dict:
     score_total = sum(item["weight"] for item in results)
     score = (
         sum(item["score"] * item["weight"] for item in results) / score_total
-        if score_total
+        if passed and score_total
         else 0.0
     )
     category_counts: dict[str, dict[str, int]] = {}
@@ -315,6 +315,10 @@ def run_visible_command(workdir: Path, spec: dict, label: str) -> tuple[bool, st
         return False, "No visible test command was generated."
     env = os.environ.copy()
     env.setdefault("CI", "1")
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in [str(workdir), str(workdir / "src"), existing_pp] if p
+    )
     try:
         result = subprocess.run(
             command,

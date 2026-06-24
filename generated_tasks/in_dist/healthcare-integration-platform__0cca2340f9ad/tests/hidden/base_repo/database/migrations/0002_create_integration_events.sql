@@ -1,1 +1,0 @@
--- Migration 0002: create integration_events table. See database/schema.sql for canonical DDL.

@@ -1,0 +1,13 @@
+[
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__topk-claim-accounting",
+    "source_file": "internal/topk/topk.go",
+    "replacements": [["t.items[minIdx] = Item{Key: key, Count: t.items[minIdx].Count + n, Inherit: t.items[minIdx].Count}", "t.items[minIdx] = Item{Key: key, Count: t.items[minIdx].Count, Inherit: t.items[minIdx].Count}"]],
+    "delete_tests": ["internal/topk/topk_test.go"],
+    "fix_test_overrides": {"internal/topk/topk_test.go": "/tmp/topk_enhanced_test.go"},
+    "commit_subject": "fix(topk): claimed slot must add the current observation to the inherited count",
+    "visible_cmd": "go test ./internal/topk/...",
+    "description": "This package implements the Space-Saving heavy-hitters algorithm. When the table is full and a new key arrives, the algorithm evicts the slot with the smallest counter and lets the new key claim it. The claim accounting is wrong: the newly admitted key is given only the evicted slot's previous counter and is NOT additionally credited with the weight of the current observation. As a result a freshly promoted key is undercounted by exactly the current observation's weight, so it tends to sit at the eviction threshold and gets churned out again immediately, and reported counts for keys that enter via eviction are too low across a stream. The inherited baseline (used to derive the lower bound) is otherwise correct and must stay equal to the evicted minimum. Fix the claim so an evicting admission sets the new key's counter to the evicted minimum plus the current observation's weight, while keeping the inherited baseline equal to that evicted minimum (so LowerBound remains exact). Do not change the in-place increment path for keys already present, the initial-fill path, or the descending-order snapshot."
+  }
+]

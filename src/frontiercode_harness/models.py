@@ -129,14 +129,20 @@ class FrontierCodeResult:
                 )
             )
         raw_score = float(data.get("score", 0.0))
+        criteria_t = tuple(criteria)
+        # FrontierCode ground truth: a solution that fails any blocker criterion receives score 0.
+        blocker_failed = any(item.blocker and not item.passed for item in criteria_t) or bool(
+            data.get("blocker_failures")
+        )
+        score = 0.0 if blocker_failed else _weighted_score_from_criteria(criteria_t, raw_score)
         return cls(
             task_id=str(data.get("task_id", "")),
             submission_id=str(data.get("submission_id", "")),
             passed=bool(data.get("pass", data.get("passed", False))),
-            score=_weighted_score_from_criteria(tuple(criteria), raw_score),
+            score=score,
             reward=float(data.get("reward", 1.0 if data.get("pass", False) else 0.0)),
             blocker_failures=tuple(str(item) for item in data.get("blocker_failures", [])),
-            criteria_results=tuple(criteria),
+            criteria_results=criteria_t,
             metadata=dict(data.get("metadata", {})),
         )
 

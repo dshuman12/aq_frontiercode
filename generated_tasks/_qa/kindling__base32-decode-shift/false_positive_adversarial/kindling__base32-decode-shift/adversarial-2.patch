@@ -1,0 +1,52 @@
+diff --git a/internal/base32/base32.go b/internal/base32/base32.go
+--- a/internal/base32/base32.go
++++ b/internal/base32/base32.go
+@@
+ 		if bits >= 8 {
+ 			bits -= 8
+-			out = append(out, byte(acc>>(bits+1)))
++			out = append(out, byte(acc>>bits))
+ 		}
+diff --git a/internal/base32/base32_test.go b/internal/base32/base32_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/base32/base32_test.go
+@@
++package base32
++
++import (
++	"bytes"
++	"testing"
++)
++
++func TestRoundTripAllLengths(t *testing.T) {
++	inputs := [][]byte{
++		nil,
++		[]byte("f"),
++		[]byte("fo"),
++		[]byte("foo"),
++		[]byte("foob"),
++		[]byte("fooba"),
++		[]byte("foobar"),
++		{0x00, 0xff, 0x10, 0x80, 0x7f, 0x01},
++	}
++	for _, in := range inputs {
++		got, err := Decode(Encode(in))
++		if err != nil {
++			t.Fatalf("decode %q: %v", in, err)
++		}
++		if !bytes.Equal(got, in) {
++			t.Fatalf("round trip %q: got %q", in, got)
++		}
++	}
++}
++
++func TestDecodeKnownVector(t *testing.T) {
++	got, err := Decode(Encode([]byte("foo")))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if string(got) != "foo" {
++		t.Fatalf("got %q", got)
++	}
++}

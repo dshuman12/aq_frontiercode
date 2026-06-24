@@ -1,0 +1,78 @@
+diff --git a/internal/sample/sample.go b/internal/sample/sample.go
+index 5367c71..c1cecbb 100644
+--- a/internal/sample/sample.go
++++ b/internal/sample/sample.go
+@@ -30,7 +30,7 @@ func (r *Reservoir) Observe(v any) {
+ 		return
+ 	}
+ 	idx := r.rand.Int63n(r.seen)
+-	if idx <= int64(r.cap) {
++	if idx < int64(r.cap) {
+ 		r.items[idx] = v
+ 	}
+ }
+diff --git a/internal/sample/sample_test.go b/internal/sample/sample_test.go
+new file mode 100644
+index 0000000..5c4da25
+--- /dev/null
++++ b/internal/sample/sample_test.go
+@@ -0,0 +1,59 @@
++package sample_test
++
++import (
++	"testing"
++
++	"github.com/dleblanc/kindling/internal/sample"
++)
++
++func TestEmptyCapacityFallsBack(t *testing.T) {
++	r := sample.New(0, 1)
++	if r.Capacity() != 1 {
++		t.Errorf("got %d", r.Capacity())
++	}
++}
++
++func TestRetainAllUnderCapacity(t *testing.T) {
++	r := sample.New(5, 1)
++	for i := 0; i < 3; i++ {
++		r.Observe(i)
++	}
++	if len(r.Items()) != 3 {
++		t.Errorf("got %d", len(r.Items()))
++	}
++	if r.Seen() != 3 {
++		t.Errorf("got %d", r.Seen())
++	}
++}
++
++func TestCapAtCapacity(t *testing.T) {
++	r := sample.New(2, 1)
++	for i := 0; i < 100; i++ {
++		r.Observe(i)
++	}
++	if len(r.Items()) != 2 {
++		t.Errorf("got %d", len(r.Items()))
++	}
++	if r.Seen() != 100 {
++		t.Errorf("got %d", r.Seen())
++	}
++}
++
++func TestReset(t *testing.T) {
++	r := sample.New(2, 1)
++	r.Observe(1)
++	r.Reset()
++	if r.Seen() != 0 || len(r.Items()) != 0 {
++		t.Errorf("got %d items, %d seen", len(r.Items()), r.Seen())
++	}
++}
++
++func TestItemsIsCopy(t *testing.T) {
++	r := sample.New(2, 1)
++	r.Observe(1)
++	out := r.Items()
++	out[0] = 999
++	if r.Items()[0] != 1 {
++		t.Error("internal state leaked")
++	}
++}

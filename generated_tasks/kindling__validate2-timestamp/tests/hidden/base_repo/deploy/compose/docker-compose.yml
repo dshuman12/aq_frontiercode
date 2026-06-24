@@ -1,0 +1,36 @@
+services:
+  kindling:
+    image: ghcr.io/kindling-tools/kindling:0.6.0
+    restart: unless-stopped
+    user: "1110:1110"
+    environment:
+      KINDLING_DATA_DIR: /data
+      KINDLING_CACHE_DIR: /data/cache
+      KINDLING_LOG_FORMAT: json
+      KINDLING_LOG_LEVEL: info
+      KINDLING_METRICS_BIND: 0.0.0.0:9120
+      TZ: UTC
+    volumes:
+      - kindling-data:/data
+      - /var/log:/var/log:ro
+    ports:
+      - "127.0.0.1:9120:9120"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/kindling", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+volumes:
+  kindling-data:

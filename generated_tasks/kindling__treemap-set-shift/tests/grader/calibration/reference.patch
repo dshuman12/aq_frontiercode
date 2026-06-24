@@ -1,0 +1,132 @@
+diff --git a/internal/treemap/treemap.go b/internal/treemap/treemap.go
+index 1f356f5..ffb0d2e 100644
+--- a/internal/treemap/treemap.go
++++ b/internal/treemap/treemap.go
+@@ -33,8 +33,8 @@ func (m *Map) Set(k string, v any) {
+ 	}
+ 	m.keys = append(m.keys, "")
+ 	m.vals = append(m.vals, nil)
+-	copy(m.keys[idx+1:], m.keys[idx+1:])
+-	copy(m.vals[idx+1:], m.vals[idx+1:])
++	copy(m.keys[idx+1:], m.keys[idx:])
++	copy(m.vals[idx+1:], m.vals[idx:])
+ 	m.keys[idx] = k
+ 	m.vals[idx] = v
+ }
+diff --git a/internal/treemap/treemap_test.go b/internal/treemap/treemap_test.go
+new file mode 100644
+index 0000000..a40f915
+--- /dev/null
++++ b/internal/treemap/treemap_test.go
+@@ -0,0 +1,111 @@
++package treemap_test
++
++import (
++	"reflect"
++	"testing"
++
++	"github.com/dleblanc/kindling/internal/treemap"
++)
++
++func TestEmpty(t *testing.T) {
++	m := treemap.New()
++	if m.Len() != 0 {
++		t.Errorf("got %d", m.Len())
++	}
++}
++
++func TestSetGet(t *testing.T) {
++	m := treemap.New()
++	m.Set("a", 1)
++	m.Set("b", 2)
++	if v, ok := m.Get("a"); !ok || v.(int) != 1 {
++		t.Errorf("got %v %v", v, ok)
++	}
++	if _, ok := m.Get("missing"); ok {
++		t.Error("missing")
++	}
++}
++
++func TestSetOverwrites(t *testing.T) {
++	m := treemap.New()
++	m.Set("a", 1)
++	m.Set("a", 99)
++	v, _ := m.Get("a")
++	if v.(int) != 99 {
++		t.Errorf("got %v", v)
++	}
++}
++
++func TestKeysSorted(t *testing.T) {
++	m := treemap.New()
++	for _, k := range []string{"c", "a", "b"} {
++		m.Set(k, 0)
++	}
++	if !reflect.DeepEqual(m.Keys(), []string{"a", "b", "c"}) {
++		t.Errorf("got %v", m.Keys())
++	}
++}
++
++func TestDelete(t *testing.T) {
++	m := treemap.New()
++	m.Set("a", 1)
++	if !m.Delete("a") {
++		t.Error("delete failed")
++	}
++	if m.Len() != 0 {
++		t.Error("len wrong")
++	}
++	if m.Delete("missing") {
++		t.Error("missing returned true")
++	}
++}
++
++func TestRange(t *testing.T) {
++	m := treemap.New()
++	for _, k := range []string{"a", "b", "c"} {
++		m.Set(k, 0)
++	}
++	count := 0
++	m.Range(func(k string, v any) bool {
++		count++
++		return true
++	})
++	if count != 3 {
++		t.Errorf("got %d", count)
++	}
++}
++
++func TestRangeEarlyStop(t *testing.T) {
++	m := treemap.New()
++	for _, k := range []string{"a", "b", "c"} {
++		m.Set(k, 0)
++	}
++	count := 0
++	m.Range(func(k string, v any) bool {
++		count++
++		return count < 2
++	})
++	if count != 2 {
++		t.Errorf("got %d", count)
++	}
++}
++
++func TestClear(t *testing.T) {
++	m := treemap.New()
++	m.Set("a", 1)
++	m.Clear()
++	if m.Len() != 0 {
++		t.Error("not cleared")
++	}
++}
++
++func TestPrefixMatches(t *testing.T) {
++	m := treemap.New()
++	for _, k := range []string{"alpha", "alphabet", "beta"} {
++		m.Set(k, 0)
++	}
++	got := m.PrefixMatches("alpha")
++	if !reflect.DeepEqual(got, []string{"alpha", "alphabet"}) {
++		t.Errorf("got %v", got)
++	}
++}

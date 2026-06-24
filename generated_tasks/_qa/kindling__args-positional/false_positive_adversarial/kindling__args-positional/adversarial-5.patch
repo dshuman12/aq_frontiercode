@@ -1,0 +1,84 @@
+diff --git a/internal/args/args.go b/internal/args/args.go
+--- a/internal/args/args.go
++++ b/internal/args/args.go
+@@ -38,7 +38,7 @@ func Parse(args []string) (*Parsed, error) {
+ 				out.Flags[rest[:eq]] = rest[eq+1:]
+ 				continue
+ 			}
+-			if len(out.Positional) > 0 && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
++			if len(out.Positional) == 0 && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+ 				out.Flags[rest] = args[i+1]
+ 				i++
+ 				continue
+diff --git a/internal/args/args_positional_test.go b/internal/args/args_positional_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/args/args_positional_test.go
+@@ -0,0 +1,71 @@
++package args
++
++import "testing"
++
++func TestLongFlagPositionalBoundary(t *testing.T) {
++	cases := []struct {
++		name     string
++		argv     []string
++		wantFlag map[string]string
++		wantPos  []string
++	}{
++		{
++			name:     "flag then value",
++			argv:     []string{"--window", "1h"},
++			wantFlag: map[string]string{"window": "1h"},
++			wantPos:  nil,
++		},
++		{
++			name:     "flag value then positional",
++			argv:     []string{"--window", "1h", "file.log"},
++			wantFlag: map[string]string{"window": "1h"},
++			wantPos:  []string{"file.log"},
++		},
++		{
++			name:     "positional must not be swallowed",
++			argv:     []string{"first", "--by", "service"},
++			wantFlag: map[string]string{},
++			wantPos:  []string{"first", "service"},
++		},
++		{
++			name:     "eq form unaffected",
++			argv:     []string{"--root=/data", "positional"},
++			wantFlag: map[string]string{"root": "/data"},
++			wantPos:  []string{"positional"},
++		},
++		{
++			name:     "empty",
++			argv:     nil,
++			wantFlag: map[string]string{},
++			wantPos:  nil,
++		},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			p, err := Parse(tc.argv)
++			if err != nil {
++				t.Fatalf("Parse error: %v", err)
++			}
++			for k, v := range tc.wantFlag {
++				if got := p.Str(k, ""); got != v {
++					t.Errorf("flag %q = %q, want %q", k, got, v)
++				}
++			}
++			if len(p.Flags) != len(tc.wantFlag) {
++				t.Errorf("flags = %v, want %v", p.Flags, tc.wantFlag)
++			}
++			if len(p.Positional) != len(tc.wantPos) {
++				t.Fatalf("positional = %v, want %v", p.Positional, tc.wantPos)
++			}
++			for i := range tc.wantPos {
++				if p.Positional[i] != tc.wantPos[i] {
++					t.Errorf("positional[%d] = %q, want %q", i, p.Positional[i], tc.wantPos[i])
++				}
++			}
++		})
++	}
++}

@@ -1,0 +1,44 @@
+diff --git a/internal/args/args.go b/internal/args/args.go
+--- a/internal/args/args.go
++++ b/internal/args/args.go
+@@ -36,7 +36,7 @@ func Parse(args []string) (*Parsed, error) {
+ 				out.Flags[rest[:eq]] = rest[eq+1:]
+ 				continue
+ 			}
+-			if len(out.Positional) > 0 && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
++			if len(out.Positional) == 0 && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+ 				out.Flags[rest] = args[i+1]
+ 				i++
+ 				continue
+diff --git a/internal/args/args_test.go b/internal/args/args_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/args/args_test.go
+@@ -0,0 +1,28 @@
++package args
++
++import "testing"
++
++// TestLongFlagAttachesValueBeforePositionals checks the single core case
++// for the boundary fix: a long flag immediately followed by its value
++// consumes that value, and the remaining token lands as a positional.
++func TestLongFlagAttachesValueBeforePositionals(t *testing.T) {
++	p, err := Parse([]string{"--window", "1h", "file.log"})
++	if err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++	if got := p.Str("window", ""); got != "1h" {
++		t.Fatalf("window = %q, want %q", got, "1h")
++	}
++	if len(p.Positional) != 1 || p.Positional[0] != "file.log" {
++		t.Fatalf("positional = %v, want [file.log]", p.Positional)
++	}
++}
++
++// TestEqualsFormStillWorks guards the inline --flag=value form.
++func TestEqualsFormStillWorks(t *testing.T) {
++	p, _ := Parse([]string{"--root=/data", "x"})
++	if p.Str("root", "") != "/data" || len(p.Positional) != 1 {
++		t.Fatalf("got %+v", p)
++	}
++}

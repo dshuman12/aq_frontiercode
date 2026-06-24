@@ -1,0 +1,38 @@
+diff --git a/app/core/pagination.py b/app/core/pagination.py
+--- a/app/core/pagination.py
++++ b/app/core/pagination.py
+@@
+-        return self.total // self.size
++        return -(-self.total // self.size)
+diff --git a/tests/unit/test_pagination.py b/tests/unit/test_pagination.py
+new file mode 100644
+--- /dev/null
++++ b/tests/unit/test_pagination.py
+@@
++"""Behavioural tests for pagination metadata."""
++
++from __future__ import annotations
++
++from app.core.pagination import Page
++
++
++def test_partial_final_page_is_counted_and_reachable():
++    page = Page(items=[], page=1, size=10, total=25)
++    assert page.pages == 3
++    assert page.has_next is True
++
++
++def test_exact_multiple_has_no_phantom_page():
++    page = Page(items=[], page=1, size=10, total=20)
++    assert page.pages == 2
++
++
++def test_empty_result_set():
++    page = Page(items=[], page=1, size=10, total=0)
++    assert page.pages == 0
++    assert page.has_next is False
++
++
++def test_last_page_has_no_next():
++    page = Page(items=[], page=3, size=10, total=25)
++    assert page.has_next is False

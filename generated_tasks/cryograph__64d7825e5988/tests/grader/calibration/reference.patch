@@ -1,0 +1,260 @@
+diff --git a/src/metrics/metrics.cpp b/src/metrics/metrics.cpp
+index 10a06ad..a299d06 100644
+--- a/src/metrics/metrics.cpp
++++ b/src/metrics/metrics.cpp
+@@ -17,17 +17,15 @@ double graph_density(const Graph& g) {
+     } else {
+         max_edges = n * (n - 1) / 2.0;
+     }
+-    double actual = static_cast<double>(g.all_edges().size());
+-    if (!g.is_directed()) {
+-        std::unordered_set<EdgeId> seen;
+-        actual = 0;
+-        for (auto nid : g.node_ids()) {
+-            for (auto& e : g.out_edges(nid)) {
+-                if (e.src <= e.dst && seen.insert(e.id).second) actual++;
+-            }
+-        }
++    size_t actual_count = 0;
++    if (g.is_directed()) {
++        g.for_each_edge([&](const Edge&) { actual_count++; });
++    } else {
++        g.for_each_edge([&](const Edge& e) {
++            if (e.src <= e.dst) actual_count++;
++        });
+     }
+-    return actual / max_edges;
++    return static_cast<double>(actual_count) / max_edges;
+ }
+ 
+ double average_degree(const Graph& g) {
+@@ -90,8 +88,31 @@ double global_clustering_coefficient(const Graph& g) {
+ double average_clustering_coefficient(const Graph& g) {
+     auto ids = g.node_ids();
+     if (ids.empty()) return 0.0;
++
++    // Pre-compute neighbor sets to avoid redundant allocations
++    std::unordered_map<NodeId, std::unordered_set<NodeId>> nbr_cache;
++    for (auto nid : ids) {
++        auto nbrs = g.neighbors(nid);
++        nbr_cache[nid] = std::unordered_set<NodeId>(nbrs.begin(), nbrs.end());
++    }
++
+     double sum = 0.0;
+-    for (auto nid : ids) sum += local_clustering_coefficient(g, nid);
++    for (auto nid : ids) {
++        auto& nbr_set = nbr_cache[nid];
++        size_t k = nbr_set.size();
++        if (k < 2) continue;
++        size_t links = 0;
++        for (auto u : nbr_set) {
++            for (auto& e : g.out_edges(u)) {
++                if (e.dst != nid && nbr_set.count(e.dst)) links++;
++            }
++        }
++        if (!g.is_directed()) links /= 2;
++        double max_links = g.is_directed()
++            ? static_cast<double>(k * (k - 1))
++            : static_cast<double>(k * (k - 1)) / 2.0;
++        sum += static_cast<double>(links) / max_links;
++    }
+     return sum / static_cast<double>(ids.size());
+ }
+ 
+@@ -113,21 +134,17 @@ static std::unordered_map<NodeId, size_t> bfs_distances(const Graph& g, NodeId s
+     return dist;
+ }
+ 
+-size_t graph_diameter(const Graph& g) {
+-    size_t diam = 0;
+-    for (auto nid : g.node_ids()) {
+-        auto dists = bfs_distances(g, nid);
+-        for (auto& [_, d] : dists) {
+-            diam = std::max(diam, d);
+-        }
+-    }
+-    return diam;
+-}
++EccentricityResult compute_eccentricities(const Graph& g) {
++    EccentricityResult res;
++    res.diameter = 0;
++    res.radius = SIZE_MAX;
+ 
+-size_t graph_radius(const Graph& g) {
+     auto ids = g.node_ids();
+-    if (ids.empty()) return 0;
+-    size_t rad = SIZE_MAX;
++    if (ids.empty()) {
++        res.radius = 0;
++        return res;
++    }
++
+     for (auto nid : ids) {
+         auto dists = bfs_distances(g, nid);
+         size_t ecc = 0;
+@@ -136,43 +153,38 @@ size_t graph_radius(const Graph& g) {
+             if (!dists.count(other)) { all_reachable = false; break; }
+             ecc = std::max(ecc, dists[other]);
+         }
+-        if (all_reachable) rad = std::min(rad, ecc);
++        if (all_reachable) {
++            res.eccentricity[nid] = ecc;
++            res.diameter = std::max(res.diameter, ecc);
++            res.radius = std::min(res.radius, ecc);
++        }
+     }
+-    return (rad == SIZE_MAX) ? 0 : rad;
++
++    if (res.radius == SIZE_MAX) res.radius = 0;
++
++    for (auto& [nid, ecc] : res.eccentricity) {
++        if (ecc == res.radius) res.center.push_back(nid);
++        if (ecc == res.diameter) res.periphery.push_back(nid);
++    }
++    std::sort(res.center.begin(), res.center.end());
++    std::sort(res.periphery.begin(), res.periphery.end());
++    return res;
++}
++
++size_t graph_diameter(const Graph& g) {
++    return compute_eccentricities(g).diameter;
++}
++
++size_t graph_radius(const Graph& g) {
++    return compute_eccentricities(g).radius;
+ }
+ 
+ std::vector<NodeId> graph_center(const Graph& g) {
+-    auto ids = g.node_ids();
+-    std::vector<NodeId> center;
+-    size_t rad = graph_radius(g);
+-    for (auto nid : ids) {
+-        auto dists = bfs_distances(g, nid);
+-        size_t ecc = 0;
+-        bool ok = true;
+-        for (auto other : ids) {
+-            if (!dists.count(other)) { ok = false; break; }
+-            ecc = std::max(ecc, dists[other]);
+-        }
+-        if (ok && ecc == rad) center.push_back(nid);
+-    }
+-    return center;
++    return compute_eccentricities(g).center;
+ }
+ 
+ std::vector<NodeId> graph_periphery(const Graph& g) {
+-    auto ids = g.node_ids();
+-    std::vector<NodeId> periphery;
+-    size_t diam = graph_diameter(g);
+-    for (auto nid : ids) {
+-        auto dists = bfs_distances(g, nid);
+-        size_t ecc = 0;
+-        bool ok = true;
+-        for (auto other : ids) {
+-            if (!dists.count(other)) { ok = false; break; }
+-            ecc = std::max(ecc, dists[other]);
+-        }
+-        if (ok && ecc == diam) periphery.push_back(nid);
+-    }
+-    return periphery;
++    return compute_eccentricities(g).periphery;
+ }
+ 
+ double degree_assortativity(const Graph& g) {
+@@ -215,8 +227,9 @@ GraphSummary summarize(const Graph& g) {
+     s.is_directed = g.is_directed();
+ 
+     if (s.nodes <= 100) {
+-        s.diameter = graph_diameter(g);
+-        s.radius = graph_radius(g);
++        auto ecc = compute_eccentricities(g);
++        s.diameter = ecc.diameter;
++        s.radius = ecc.radius;
+     } else {
+         s.diameter = 0;
+         s.radius = 0;
+diff --git a/src/metrics/metrics.hpp b/src/metrics/metrics.hpp
+index 461b02a..7abe24d 100644
+--- a/src/metrics/metrics.hpp
++++ b/src/metrics/metrics.hpp
+@@ -11,6 +11,16 @@ double local_clustering_coefficient(const Graph& g, NodeId nid);
+ double global_clustering_coefficient(const Graph& g);
+ double average_clustering_coefficient(const Graph& g);
+ 
++struct EccentricityResult {
++    std::unordered_map<NodeId, size_t> eccentricity;
++    size_t diameter;
++    size_t radius;
++    std::vector<NodeId> center;
++    std::vector<NodeId> periphery;
++};
++
++EccentricityResult compute_eccentricities(const Graph& g);
++
+ size_t graph_diameter(const Graph& g);
+ size_t graph_radius(const Graph& g);
+ std::vector<NodeId> graph_center(const Graph& g);
+diff --git a/tests/test_metrics.cpp b/tests/test_metrics.cpp
+index fd64754..9d66e5b 100644
+--- a/tests/test_metrics.cpp
++++ b/tests/test_metrics.cpp
+@@ -229,4 +229,58 @@ CRYO_TEST(Integration, EndToEndPipeline) {
+     GraphSerializer::write_binary(g, ss);
+     auto g2 = GraphSerializer::read_binary(ss);
+     assert_eq(g2.node_count(), (size_t)15);
++}
++
++// ── Eccentricity unification + density + clustering optimization tests ─────
++
++CRYO_TEST(Metrics, ComputeEccentricities) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 5; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(1, 2); g.add_edge(2, 3); g.add_edge(3, 4);
++    auto ecc = compute_eccentricities(g);
++    assert_eq(ecc.diameter, (size_t)4);
++    assert_eq(ecc.radius, (size_t)2);
++    assert_eq(ecc.eccentricity[2], (size_t)2);
++    assert_true(ecc.center.size() >= 1);
++    assert_true(ecc.periphery.size() >= 1);
++}
++
++CRYO_TEST(Metrics, EccentricityComplete) {
++    GraphGenerator gen(42);
++    auto g = gen.complete(5);
++    auto ecc = compute_eccentricities(g);
++    assert_eq(ecc.diameter, (size_t)1);
++    assert_eq(ecc.radius, (size_t)1);
++}
++
++CRYO_TEST(Metrics, DensityNoDoubleCount) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(1, 2); g.add_edge(2, 3);
++    double d = graph_density(g);
++    assert_near(d, 3.0 / 6.0, 1e-6);
++}
++
++CRYO_TEST(Metrics, DensityDirected) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 3; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(1, 2); g.add_edge(2, 0);
++    double d = graph_density(g);
++    assert_near(d, 3.0 / 6.0, 1e-6);
++}
++
++CRYO_TEST(Metrics, AvgClusteringOptimized) {
++    GraphGenerator gen(42);
++    auto g = gen.complete(5);
++    double cc = average_clustering_coefficient(g);
++    assert_near(cc, 1.0, 1e-6);
++}
++
++CRYO_TEST(Metrics, SummarizeSingleEccComputation) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 5; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(1, 2); g.add_edge(2, 3); g.add_edge(3, 4);
++    auto s = summarize(g);
++    assert_eq(s.diameter, (size_t)4);
++    assert_eq(s.radius, (size_t)2);
+ }
+\ No newline at end of file

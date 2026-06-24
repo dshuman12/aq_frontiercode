@@ -1,0 +1,13 @@
+[
+  {
+    "repo_key": "swarmsync", "repository": "SwarmSync",
+    "task_id": "swarmsync__merkle-faastdiff-structural",
+    "source_file": "pkg/merkle/tree.go",
+    "replacements": [["\tif local.IsLeaf || remote.IsLeaf {\n\t\t*lOut = append(*lOut, collectLeaves(local)...)\n\t\t*rOut = append(*rOut, collectLeaves(remote)...)\n\t\treturn\n\t}", "\tif local.IsLeaf || remote.IsLeaf {\n\t\t*lOut = append(*lOut, collectLeaves(remote)...)\n\t\t*rOut = append(*rOut, collectLeaves(remote)...)\n\t\treturn\n\t}"]],
+    "delete_tests": [],
+    "fix_test_overrides": {"pkg/merkle/merkle_invariant_test.go": "/tmp/merkle_invariant_test.go"},
+    "commit_subject": "fix(merkle): FastDiff must collect local leaves from the local subtree",
+    "visible_cmd": "go test ./pkg/merkle/...",
+    "description": "SwarmSync replicas reconcile state using a Merkle tree diff. The package exposes two diff implementations that must always agree: an authoritative full-scan `Diff` and an optimized tree-walking `FastDiff`. There is a bug in `FastDiff`: when the two trees have DIFFERENT sizes (and therefore different internal shapes), `FastDiff` returns the wrong set of differing keys — its `OnlyLocal`, `OnlyRemote`, and `Different` results disagree with what `Diff` reports for the same pair of trees. For two trees of equal size and identical key layout the results happen to match, which is why the defect is easy to miss. When the fast walk reaches a point where one side is a single leaf and the other side is an interior subtree, it attributes the leaves to the wrong side. Fix `FastDiff` so it produces exactly the same `OnlyLocal`/`OnlyRemote`/`Different` sets as `Diff` for any pair of trees, regardless of their relative sizes or shapes. Do not change the behavior of `Diff` itself or any other public API."
+  }
+]

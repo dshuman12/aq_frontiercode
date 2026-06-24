@@ -1,0 +1,141 @@
+diff --git a/internal/migrationv2/migrationv2.go b/internal/migrationv2/migrationv2.go
+index 48199e3..d2be134 100644
+--- a/internal/migrationv2/migrationv2.go
++++ b/internal/migrationv2/migrationv2.go
+@@ -121,7 +121,7 @@ func (r *Runner) Up(ctx context.Context) error {
+ // UpTo applies pending migrations up to and including target.
+ func (r *Runner) UpTo(ctx context.Context, target int) error {
+ 	for _, m := range r.Pending() {
+-		if m.Version >= target {
++		if m.Version > target {
+ 			return nil
+ 		}
+ 		if err := r.runOne(ctx, m, DirectionUp); err != nil {
+diff --git a/internal/migrationv2/migrationv2_test.go b/internal/migrationv2/migrationv2_test.go
+new file mode 100644
+index 0000000..791cc82
+--- /dev/null
++++ b/internal/migrationv2/migrationv2_test.go
+@@ -0,0 +1,122 @@
++package migrationv2
++
++import (
++	"context"
++	"errors"
++	"testing"
++)
++
++func TestUpAppliesAll(t *testing.T) {
++	r := NewRunner()
++	called := []int{}
++	for _, v := range []int{2, 1, 3} {
++		v := v
++		_ = r.Add(Migration{
++			Version: v, Name: "m",
++			Up: func(ctx context.Context) error { called = append(called, v); return nil },
++		})
++	}
++	if err := r.Up(context.Background()); err != nil {
++		t.Fatal(err)
++	}
++	if len(called) != 3 || called[0] != 1 || called[2] != 3 {
++		t.Fatalf("got %v", called)
++	}
++}
++
++func TestUpTo(t *testing.T) {
++	r := NewRunner()
++	for v := 1; v <= 5; v++ {
++		v := v
++		_ = r.Add(Migration{Version: v, Up: func(ctx context.Context) error { return nil }})
++	}
++	if err := r.UpTo(context.Background(), 3); err != nil {
++		t.Fatal(err)
++	}
++	if r.CurrentVersion() != 3 {
++		t.Fatalf("current %d", r.CurrentVersion())
++	}
++}
++
++func TestDown(t *testing.T) {
++	r := NewRunner()
++	calledDown := false
++	_ = r.Add(Migration{
++		Version: 1,
++		Up:      func(ctx context.Context) error { return nil },
++		Down:    func(ctx context.Context) error { calledDown = true; return nil },
++	})
++	_ = r.Up(context.Background())
++	if err := r.Down(context.Background()); err != nil {
++		t.Fatal(err)
++	}
++	if !calledDown {
++		t.Fatal("down not called")
++	}
++	if r.CurrentVersion() != 0 {
++		t.Fatal("expected 0")
++	}
++}
++
++func TestDownTo(t *testing.T) {
++	r := NewRunner()
++	for v := 1; v <= 3; v++ {
++		_ = r.Add(Migration{
++			Version: v,
++			Up:      func(ctx context.Context) error { return nil },
++			Down:    func(ctx context.Context) error { return nil },
++		})
++	}
++	_ = r.Up(context.Background())
++	if err := r.DownTo(context.Background(), 1); err != nil {
++		t.Fatal(err)
++	}
++	if r.CurrentVersion() != 1 {
++		t.Fatal("expected 1")
++	}
++}
++
++func TestPending(t *testing.T) {
++	r := NewRunner()
++	_ = r.Add(Migration{Version: 1, Up: func(ctx context.Context) error { return nil }})
++	_ = r.Add(Migration{Version: 2, Up: func(ctx context.Context) error { return nil }})
++	if len(r.Pending()) != 2 {
++		t.Fatal("pending")
++	}
++	_ = r.Up(context.Background())
++	if len(r.Pending()) != 0 {
++		t.Fatal("expected empty pending")
++	}
++}
++
++func TestErrorPropagates(t *testing.T) {
++	r := NewRunner()
++	_ = r.Add(Migration{Version: 1, Up: func(ctx context.Context) error { return errors.New("boom") }})
++	if err := r.Up(context.Background()); err == nil {
++		t.Fatal("expected err")
++	}
++}
++
++func TestDuplicate(t *testing.T) {
++	r := NewRunner()
++	_ = r.Add(Migration{Version: 1, Up: func(ctx context.Context) error { return nil }})
++	if err := r.Add(Migration{Version: 1, Up: func(ctx context.Context) error { return nil }}); err == nil {
++		t.Fatal("expected err")
++	}
++}
++
++func TestRequiresUp(t *testing.T) {
++	r := NewRunner()
++	if err := r.Add(Migration{Version: 1}); err == nil {
++		t.Fatal("expected err")
++	}
++}
++
++func TestApplied(t *testing.T) {
++	r := NewRunner()
++	_ = r.Add(Migration{Version: 1, Up: func(ctx context.Context) error { return nil }})
++	_ = r.Up(context.Background())
++	if len(r.Applied()) != 1 {
++		t.Fatal("expected applied")
++	}
++}

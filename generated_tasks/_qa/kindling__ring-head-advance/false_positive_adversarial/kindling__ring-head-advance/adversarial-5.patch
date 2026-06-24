@@ -1,0 +1,32 @@
+diff --git a/internal/ring/ring.go b/internal/ring/ring.go
+--- a/internal/ring/ring.go
++++ b/internal/ring/ring.go
+@@
+ 	r.buf[r.head] = v
++	r.head = (r.head + 1) % len(r.buf)
+ }
+diff --git a/internal/ring/ring_test.go b/internal/ring/ring_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/ring/ring_test.go
+@@
++package ring
++
++import (
++	"reflect"
++	"testing"
++)
++
++// TestPushOverflowAdvances checks that pushing past capacity evicts the
++// oldest item and that a snapshot returns the newest items oldest-first.
++func TestPushOverflowAdvances(t *testing.T) {
++	r := New(2)
++	r.Push(1)
++	r.Push(2)
++	r.Push(3)
++	got := r.Snapshot()
++	want := []any{2, 3}
++	if !reflect.DeepEqual(got, want) {
++		t.Fatalf("got %v want %v", got, want)
++	}
++}

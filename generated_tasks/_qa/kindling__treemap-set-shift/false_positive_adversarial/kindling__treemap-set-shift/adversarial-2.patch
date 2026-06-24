@@ -1,0 +1,181 @@
+diff --git a/internal/treemap/treemap.go b/internal/treemap/treemap.go
+--- a/internal/treemap/treemap.go
++++ b/internal/treemap/treemap.go
+@@
+-// Package treemap implements an ordered map backed by parallel sorted slices.
+-package treemap
+-
+-import "sort"
+-
+-// Map is an ordered map from string keys to string values backed by
+-// parallel slices kept in sorted key order.
+-type Map struct {
+-	keys []string
+-	vals []string
+-}
+-
+-// New returns an empty Map.
+-func New() *Map {
+-	return &Map{}
+-}
+-
+-// Len returns the number of entries in the map.
+-func (m *Map) Len() int {
+-	return len(m.keys)
+-}
+-
+-// search returns the index where key is or should be inserted.
+-func (m *Map) search(key string) int {
+-	return sort.Search(len(m.keys), func(i int) bool {
+-		return m.keys[i] >= key
+-	})
+-}
+-
+-// Get returns the value associated with key.
+-func (m *Map) Get(key string) (string, bool) {
+-	i := m.search(key)
+-	if i < len(m.keys) && m.keys[i] == key {
+-		return m.vals[i], true
+-	}
+-	return "", false
+-}
+-
+-// Set inserts or updates the value for key.
+-func (m *Map) Set(key, val string) {
+-	i := m.search(key)
+-	if i < len(m.keys) && m.keys[i] == key {
+-		m.vals[i] = val
+-		return
+-	}
+-	m.keys = append(m.keys, "")
+-	m.vals = append(m.vals, "")
+-	m.keys[i] = key
+-	m.vals[i] = val
+-}
+-
+-// Keys returns the keys in sorted order.
+-func (m *Map) Keys() []string {
+-	out := make([]string, len(m.keys))
+-	copy(out, m.keys)
+-	return out
+-}
++// Package treemap implements an ordered map backed by parallel sorted slices.
++package treemap
++
++import "sort"
++
++// Map is an ordered map from string keys to string values backed by
++// parallel slices kept in sorted key order.
++type Map struct {
++	keys []string
++	vals []string
++}
++
++// New returns an empty Map.
++func New() *Map {
++	return &Map{}
++}
++
++// Len returns the number of entries in the map.
++func (m *Map) Len() int {
++	return len(m.keys)
++}
++
++// search returns the index where key is or should be inserted.
++func (m *Map) search(key string) int {
++	return sort.Search(len(m.keys), func(i int) bool {
++		return m.keys[i] >= key
++	})
++}
++
++// Get returns the value associated with key.
++func (m *Map) Get(key string) (string, bool) {
++	i := m.search(key)
++	if i < len(m.keys) && m.keys[i] == key {
++		return m.vals[i], true
++	}
++	return "", false
++}
++
++// Set inserts or updates the value for key.
++func (m *Map) Set(key, val string) {
++	i := m.search(key)
++	if i < len(m.keys) && m.keys[i] == key {
++		m.vals[i] = val
++		return
++	}
++	// Grow both backing slices by one and open a gap at index i by
++	// shifting the existing entries from i onward one slot to the right.
++	m.keys = append(m.keys, "")
++	m.vals = append(m.vals, "")
++	copy(m.keys[i+1:], m.keys[i:])
++	copy(m.vals[i+1:], m.vals[i:])
++	m.keys[i] = key
++	m.vals[i] = val
++}
++
++// Keys returns the keys in sorted order.
++func (m *Map) Keys() []string {
++	out := make([]string, len(m.keys))
++	copy(out, m.keys)
++	return out
++}
+diff --git a/internal/treemap/treemap_test.go b/internal/treemap/treemap_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/treemap/treemap_test.go
+@@
++package treemap
++
++import "testing"
++
++func TestSetInsertOutOfOrder(t *testing.T) {
++	m := New()
++	for _, k := range []string{"d", "b", "f", "a", "c", "e"} {
++		m.Set(k, k+"v")
++	}
++	if m.Len() != 6 {
++		t.Fatalf("len=%d want 6", m.Len())
++	}
++	for _, k := range []string{"a", "b", "c", "d", "e", "f"} {
++		v, ok := m.Get(k)
++		if !ok || v != k+"v" {
++			t.Fatalf("Get(%q) = %q,%v", k, v, ok)
++		}
++	}
++	want := []string{"a", "b", "c", "d", "e", "f"}
++	got := m.Keys()
++	for i := range want {
++		if got[i] != want[i] {
++			t.Fatalf("keys[%d]=%q want %q", i, got[i], want[i])
++		}
++	}
++}
++
++func TestSetFrontMiddleEnd(t *testing.T) {
++	m := New()
++	m.Set("m", "1")
++	m.Set("z", "2") // end
++	m.Set("a", "3") // front
++	m.Set("p", "4") // middle
++	if m.Len() != 4 {
++		t.Fatalf("len=%d want 4", m.Len())
++	}
++	for k, w := range map[string]string{"a": "3", "m": "1", "p": "4", "z": "2"} {
++		if v, ok := m.Get(k); !ok || v != w {
++			t.Fatalf("Get(%q)=%q,%v want %q", k, v, ok, w)
++		}
++	}
++}
++
++func TestSetOverwrite(t *testing.T) {
++	m := New()
++	m.Set("a", "1")
++	m.Set("a", "2")
++	if m.Len() != 1 {
++		t.Fatalf("len=%d want 1", m.Len())
++	}
++	if v, _ := m.Get("a"); v != "2" {
++		t.Fatalf("v=%q want 2", v)
++	}
++}

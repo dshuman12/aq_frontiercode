@@ -1,0 +1,65 @@
+diff --git a/internal/topk/topk.go b/internal/topk/topk.go
+--- a/internal/topk/topk.go
++++ b/internal/topk/topk.go
+@@
+ 	min := 0
+ 	for i := 1; i < len(t.entries); i++ {
+-		if t.entries[i].Count <= t.entries[min].Count {
++		if t.entries[i].Count < t.entries[min].Count {
+ 			min = i
+ 		}
+ 	}
+diff --git a/internal/topk/topk_test.go b/internal/topk/topk_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/topk/topk_test.go
+@@ -0,0 +1,49 @@
++package topk_test
++
++import (
++	"testing"
++
++	"github.com/dleblanc/kindling/internal/topk"
++)
++
++func snapKeys(tk *topk.TopK) map[string]bool {
++	out := map[string]bool{}
++	for _, e := range tk.Snapshot() {
++		out[e.Key] = true
++	}
++	return out
++}
++
++// TestEvictFirstMinimumOnTie checks that when the set is full and the
++// incoming key ties the minimum count, the first minimal slot is the one
++// evicted (not a later one).
++func TestEvictFirstMinimumOnTie(t *testing.T) {
++	tk := topk.New(2)
++	tk.Observe("a")
++	tk.Observe("b")
++	tk.Observe("c")
++	keys := snapKeys(tk)
++	if keys["a"] {
++		t.Fatalf("a (first minimal slot) should have been evicted, got %v", keys)
++	}
++	if !keys["b"] || !keys["c"] {
++		t.Fatalf("expected b and c retained, got %v", keys)
++	}
++}
++
++// TestUntiedEvictionUnaffected confirms a clearly-distinct minimum is still
++// the one replaced.
++func TestUntiedEvictionUnaffected(t *testing.T) {
++	tk := topk.New(2)
++	tk.Observe("a")
++	tk.Observe("a")
++	tk.Observe("b")
++	tk.Observe("c")
++	keys := snapKeys(tk)
++	if keys["b"] {
++		t.Fatalf("lowest-count b should be evicted, got %v", keys)
++	}
++	if !keys["a"] || !keys["c"] {
++		t.Fatalf("expected a and c retained, got %v", keys)
++	}
++}

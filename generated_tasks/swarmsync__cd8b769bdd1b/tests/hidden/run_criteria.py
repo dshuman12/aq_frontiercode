@@ -315,6 +315,10 @@ def run_visible_command(workdir: Path, spec: dict, label: str) -> tuple[bool, st
         return False, "No visible test command was generated."
     env = os.environ.copy()
     env.setdefault("CI", "1")
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in [str(workdir), str(workdir / "src"), existing_pp] if p
+    )
     try:
         result = subprocess.run(
             command,

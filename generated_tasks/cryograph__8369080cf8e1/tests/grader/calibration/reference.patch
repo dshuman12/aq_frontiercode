@@ -1,0 +1,233 @@
+diff --git a/src/centrality/centrality.cpp b/src/centrality/centrality.cpp
+index a51b67f..891df31 100644
+--- a/src/centrality/centrality.cpp
++++ b/src/centrality/centrality.cpp
+@@ -41,62 +41,76 @@ CentralityMap out_degree_centrality(const Graph& g) {
+ CentralityMap betweenness_centrality(const Graph& g, bool normalized) {
+     CentralityMap cm;
+     auto ids = g.node_ids();
+-    for (auto nid : ids) cm[nid] = 0.0;
+-
+-    for (auto s : ids) {
+-        std::stack<NodeId> order;
+-        std::unordered_map<NodeId, std::vector<NodeId>> predecessors;
+-        std::unordered_map<NodeId, double> sigma;
+-        std::unordered_map<NodeId, double> dist;
+-
+-        for (auto v : ids) {
+-            sigma[v] = 0.0;
+-            dist[v] = -1.0;
++    size_t n = ids.size();
++    if (n == 0) return cm;
++
++    // Build NodeId -> index mapping for O(1) vector access
++    std::unordered_map<NodeId, size_t> id_to_idx;
++    id_to_idx.reserve(n);
++    for (size_t i = 0; i < n; i++) id_to_idx[ids[i]] = i;
++
++    std::vector<double> bc(n, 0.0);
++
++    // Reusable vectors to avoid per-source hash map allocation
++    std::vector<double> sigma(n);
++    std::vector<double> dist(n);
++    std::vector<double> delta(n);
++    std::vector<std::vector<size_t>> preds(n);
++
++    for (size_t si = 0; si < n; si++) {
++        NodeId s = ids[si];
++
++        // Reset
++        for (size_t i = 0; i < n; i++) {
++            sigma[i] = 0.0;
++            dist[i] = -1.0;
++            delta[i] = 0.0;
++            preds[i].clear();
+         }
+-        sigma[s] = 1.0;
+-        dist[s] = 0.0;
++        sigma[si] = 1.0;
++        dist[si] = 0.0;
+ 
+-        std::queue<NodeId> q;
+-        q.push(s);
++        std::stack<size_t> order;
++        std::queue<size_t> q;
++        q.push(si);
+ 
+         while (!q.empty()) {
+-            NodeId v = q.front();
++            size_t vi = q.front();
+             q.pop();
+-            order.push(v);
++            order.push(vi);
+ 
+-            for (auto& e : g.out_edges(v)) {
+-                NodeId w = e.dst;
+-                if (dist[w] < 0) {
+-                    q.push(w);
+-                    dist[w] = dist[v] + 1.0;
++            for (auto& e : g.out_edges(ids[vi])) {
++                size_t wi = id_to_idx[e.dst];
++                if (dist[wi] < 0) {
++                    q.push(wi);
++                    dist[wi] = dist[vi] + 1.0;
+                 }
+-                if (dist[w] == dist[v] + 1.0) {
+-                    sigma[w] += sigma[v];
+-                    predecessors[w].push_back(v);
++                if (dist[wi] == dist[vi] + 1.0) {
++                    sigma[wi] += sigma[vi];
++                    preds[wi].push_back(vi);
+                 }
+             }
+         }
+ 
+-        std::unordered_map<NodeId, double> delta;
+-        for (auto v : ids) delta[v] = 0.0;
+-
+         while (!order.empty()) {
+-            NodeId w = order.top();
++            size_t wi = order.top();
+             order.pop();
+-            for (auto v : predecessors[w]) {
+-                delta[v] += (sigma[v] / sigma[w]) * (1.0 + delta[w]);
++            for (auto vi : preds[wi]) {
++                delta[vi] += (sigma[vi] / sigma[wi]) * (1.0 + delta[wi]);
+             }
+-            if (w != s) cm[w] += delta[w];
++            if (wi != si) bc[wi] += delta[wi];
+         }
+     }
+ 
++    for (size_t i = 0; i < n; i++) cm[ids[i]] = bc[i];
++
+     if (!g.is_directed()) {
+         for (auto& [nid, val] : cm) val /= 2.0;
+     }
+ 
+     if (normalized) {
+-        double n = static_cast<double>(ids.size());
+-        double denom = (n > 2) ? (n - 1.0) * (n - 2.0) : 1.0;
++        double nd = static_cast<double>(n);
++        double denom = (nd > 2) ? (nd - 1.0) * (nd - 2.0) : 1.0;
+         if (!g.is_directed()) denom /= 2.0;
+         for (auto& [nid, val] : cm) val /= denom;
+     }
+@@ -152,41 +166,49 @@ CentralityMap pagerank(const Graph& g, double damping,
+                        size_t max_iter, double tol) {
+     CentralityMap pr;
+     auto ids = g.node_ids();
+-    double n = static_cast<double>(ids.size());
++    size_t sz = ids.size();
++    double n = static_cast<double>(sz);
+     if (n == 0) return pr;
+ 
+-    double init_val = 1.0 / n;
+-    for (auto nid : ids) pr[nid] = init_val;
++    // Cache out_degree for all nodes once
++    std::vector<size_t> out_deg(sz);
++    std::unordered_map<NodeId, size_t> id_to_idx;
++    id_to_idx.reserve(sz);
++    for (size_t i = 0; i < sz; i++) {
++        id_to_idx[ids[i]] = i;
++        out_deg[i] = g.out_degree(ids[i]);
++    }
++
++    // Use vectors for PR values
++    std::vector<double> pr_vec(sz, 1.0 / n);
++    std::vector<double> new_pr_vec(sz);
+ 
+     for (size_t iter = 0; iter < max_iter; iter++) {
+-        CentralityMap new_pr;
+         double dangling_sum = 0.0;
+-
+-        for (auto nid : ids) {
+-            if (g.out_degree(nid) == 0) {
+-                dangling_sum += pr[nid];
+-            }
++        for (size_t i = 0; i < sz; i++) {
++            if (out_deg[i] == 0) dangling_sum += pr_vec[i];
+         }
+ 
+         double base = (1.0 - damping + damping * dangling_sum) / n;
++        for (size_t i = 0; i < sz; i++) new_pr_vec[i] = base;
+ 
+-        for (auto nid : ids) new_pr[nid] = base;
+-
+-        for (auto nid : ids) {
+-            double contrib = damping * pr[nid] / static_cast<double>(g.out_degree(nid));
+-            if (g.out_degree(nid) == 0) continue;
+-            for (auto& e : g.out_edges(nid)) {
+-                new_pr[e.dst] += contrib;
++        for (size_t i = 0; i < sz; i++) {
++            if (out_deg[i] == 0) continue;
++            double contrib = damping * pr_vec[i] / static_cast<double>(out_deg[i]);
++            for (auto& e : g.out_edges(ids[i])) {
++                new_pr_vec[id_to_idx[e.dst]] += contrib;
+             }
+         }
+ 
+         double diff = 0.0;
+-        for (auto nid : ids) {
+-            diff += std::fabs(new_pr[nid] - pr[nid]);
++        for (size_t i = 0; i < sz; i++) {
++            diff += std::fabs(new_pr_vec[i] - pr_vec[i]);
+         }
+-        pr = std::move(new_pr);
++        std::swap(pr_vec, new_pr_vec);
+         if (diff < tol) break;
+     }
++
++    for (size_t i = 0; i < sz; i++) pr[ids[i]] = pr_vec[i];
+     return pr;
+ }
+ 
+diff --git a/tests/test_centrality.cpp b/tests/test_centrality.cpp
+index da2ee8a..b3c9b02 100644
+--- a/tests/test_centrality.cpp
++++ b/tests/test_centrality.cpp
+@@ -158,4 +158,43 @@ CRYO_TEST(MaxCent, Basic) {
+     auto g = make_star5();
+     auto cm = degree_centrality(g);
+     assert_eq(max_centrality_node(cm), (NodeId)0);
++}
++
++// ── Optimized betweenness + pagerank tests ─────────────────────────────────
++
++CRYO_TEST(Betweenness, VectorOptPath) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 5; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(1, 2); g.add_edge(2, 3); g.add_edge(3, 4);
++    auto bc = betweenness_centrality(g);
++    assert_gt(bc[2], bc[0]);
++    assert_gt(bc[2], bc[4]);
++    assert_gt(bc[1], bc[0]);
++}
++
++CRYO_TEST(Betweenness, VectorOptComplete) {
++    GraphGenerator gen(42);
++    auto g = gen.complete(5);
++    auto bc = betweenness_centrality(g);
++    for (int i = 0; i < 5; i++) {
++        assert_near(bc[i], 0.0, 1e-6);
++    }
++}
++
++CRYO_TEST(PageRank, VectorOptConvergence) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(1, 2); g.add_edge(2, 3); g.add_edge(3, 0);
++    auto pr = pagerank(g);
++    double total = 0;
++    for (auto& [_, v] : pr) total += v;
++    assert_near(total, 1.0, 1e-6);
++}
++
++CRYO_TEST(PageRank, VectorOptDangling) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 3; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(1, 2);
++    auto pr = pagerank(g);
++    assert_gt(pr[2], pr[0]);
+ }
+\ No newline at end of file

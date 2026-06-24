@@ -1,0 +1,61 @@
+diff --git a/app/core/security.py b/app/core/security.py
+--- a/app/core/security.py
++++ b/app/core/security.py
+@@
+-    payload = TokenPayload(**decoded)
+-    return payload
++    payload = TokenPayload(**decoded)
++    if expected_type is not None:
++        # Shortcut: tolerate either possible field name for the type claim.
++        token_kind = getattr(payload, "type", None) or getattr(payload, "token_type", None)
++        if token_kind != expected_type:
++            raise AuthenticationError("Unexpected token type.")
++    return payload
+diff --git a/tests/unit/test_security.py b/tests/unit/test_security.py
+new file mode 100644
+--- /dev/null
++++ b/tests/unit/test_security.py
+@@
++"""Token-type enforcement tests for decode_token."""
++
++from __future__ import annotations
++
++import pytest
++
++from app.core.exceptions import AuthenticationError
++from app.core.security import (
++    create_access_token,
++    create_refresh_token,
++    decode_token,
++)
++
++
++def test_access_token_accepts_access_type() -> None:
++    token = create_access_token("user-1")
++    payload = decode_token(token, expected_type="access")
++    assert payload.sub == "user-1"
++
++
++def test_refresh_token_rejected_as_access() -> None:
++    token = create_refresh_token("user-1")
++    with pytest.raises(AuthenticationError):
++        decode_token(token, expected_type="access")
++
++
++def test_access_token_rejected_as_refresh() -> None:
++    token = create_access_token("user-1")
++    with pytest.raises(AuthenticationError):
++        decode_token(token, expected_type="refresh")
++
++
++def test_refresh_token_accepts_refresh_type() -> None:
++    token = create_refresh_token("user-1")
++    payload = decode_token(token, expected_type="refresh")
++    assert payload.sub == "user-1"
++
++
++def test_omitting_expected_type_accepts_any() -> None:
++    access = create_access_token("user-1")
++    refresh = create_refresh_token("user-1")
++    assert decode_token(access).sub == "user-1"
++    assert decode_token(refresh).sub == "user-1"

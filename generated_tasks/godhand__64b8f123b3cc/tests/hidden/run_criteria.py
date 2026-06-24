@@ -28,9 +28,21 @@ SKIP_DIRS = {
     "dist",
     "node_modules",
     "venv",
+    # build/test artifacts that agents regenerate and that pollute scope/diffs
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".turbo",
+    ".cache",
+    ".parcel-cache",
+    ".angular",
+    "coverage",
+    "out",
+    "target",
+    ".gradle",
 }
-SKIP_FILES = {".DS_Store"}
-SKIP_FILE_SUFFIXES = (".log", ".pyc")
+SKIP_FILES = {".DS_Store", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"}
+SKIP_FILE_SUFFIXES = (".log", ".pyc", ".tsbuildinfo", ".class")
 SKIP_PATH_PREFIXES = ("dist/", "frontend/dist/", "server/logs/")
 TEST_PATH_RE = re.compile(
     r"(^|/)(__tests__|tests?|specs?)(/|$)|"
@@ -167,6 +179,9 @@ def build_result_doc(spec: dict, results: list[dict]) -> dict:
         if score_total
         else 0.0
     )
+    # FrontierCode ground truth: a solution that fails any blocker criterion receives score 0.
+    if blocker_failures:
+        score = 0.0
     category_counts: dict[str, dict[str, int]] = {}
     for result in results:
         counts = category_counts.setdefault(result["category"], {"passed": 0, "total": 0})
@@ -228,6 +243,7 @@ def check_hidden_reference_tests_pass(repo: Path, script_dir: Path, spec: dict) 
     with tempfile.TemporaryDirectory(prefix="frontiercode-hidden-tests-") as tmp:
         workdir = Path(tmp) / "repo"
         copy_repo(repo, workdir)
+        link_node_modules(repo, workdir)
         overlay_reference_tests(script_dir, workdir, reference_files)
         return run_visible_command(workdir, spec, "hidden reference tests")
 
@@ -243,6 +259,7 @@ def check_submitted_tests_fail_on_base(repo: Path, script_dir: Path, spec: dict)
     with tempfile.TemporaryDirectory(prefix="frontiercode-reverse-classical-") as tmp:
         workdir = Path(tmp) / "repo"
         copy_repo(base_repo, workdir)
+        link_node_modules(repo, workdir)
         for rel in submitted_tests:
             target = workdir / rel
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -261,6 +278,7 @@ def check_visible_regression_tests_pass(repo: Path, _: Path, spec: dict) -> tupl
     with tempfile.TemporaryDirectory(prefix="frontiercode-visible-tests-") as tmp:
         workdir = Path(tmp) / "repo"
         copy_repo(repo, workdir)
+        link_node_modules(repo, workdir)
         return run_visible_command(workdir, spec, "visible regression command")
 
 
@@ -315,6 +333,14 @@ def run_visible_command(workdir: Path, spec: dict, label: str) -> tuple[bool, st
         return False, "No visible test command was generated."
     env = os.environ.copy()
     env.setdefault("CI", "1")
+    # Repo packages are not pip-installed in the grading copy, and the repo is copied to a
+    # temp dir before the command runs, so a build-time editable install would point at the
+    # wrong source. Put the repo root (and src/) on PYTHONPATH so `import <pkg>` resolves the
+    # copied/patched source -- the same effect as `python -m pytest`.
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in [str(workdir), str(workdir / "src"), existing_pp] if p
+    )
     try:
         result = subprocess.run(
             command,
@@ -352,6 +378,27 @@ def copy_repo(source: Path, target: Path) -> None:
         ignore=repo_ignore(source),
         dirs_exist_ok=False,
     )
+
+
+def link_node_modules(deps_repo: Path, workdir: Path) -> None:
+    """node_modules is excluded from the copied test workdir (it is in SKIP_DIRS for diffing),
+    so JS test runners (jest/vitest/...) can't be resolved. Symlink the installed node_modules
+    from the live repo into each package dir of the workdir so `npm test` finds them."""
+    try:
+        for pj in workdir.rglob("package.json"):
+            pkg_dir = pj.parent
+            rel = pkg_dir.relative_to(workdir)
+            if "node_modules" in rel.parts:
+                continue
+            src_nm = deps_repo / rel / "node_modules"
+            link = pkg_dir / "node_modules"
+            if src_nm.is_dir() and not link.exists():
+                try:
+                    link.symlink_to(src_nm.resolve(), target_is_directory=True)
+                except OSError:
+                    pass
+    except OSError:
+        pass
 
 
 def repo_ignore(source: Path):

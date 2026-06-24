@@ -1,0 +1,540 @@
+package stdlib
+
+import (
+	"testing"
+
+	"github.com/Mustafa4ngin/Drift/pkg/environ"
+	"github.com/Mustafa4ngin/Drift/pkg/object"
+)
+
+func setupEnv() *environ.Env {
+	env := environ.New()
+	Register(env)
+	return env
+}
+
+func call(env *environ.Env, name string, args ...object.Object) object.Object {
+	v, ok := env.Get(name)
+	if !ok {
+		return &errObject{Message: "undefined: " + name}
+	}
+	b := v.(*object.Builtin)
+	return b.Fn(args...)
+}
+
+func assertIntVal(t *testing.T, obj object.Object, expected int64) {
+	t.Helper()
+	i, ok := obj.(*object.Int)
+	if !ok {
+		t.Fatalf("expected Int, got %T: %s", obj, obj.Inspect())
+	}
+	if i.Value != expected {
+		t.Errorf("expected %d, got %d", expected, i.Value)
+	}
+}
+
+func assertStrVal(t *testing.T, obj object.Object, expected string) {
+	t.Helper()
+	s, ok := obj.(*object.String)
+	if !ok {
+		t.Fatalf("expected String, got %T: %s", obj, obj.Inspect())
+	}
+	if s.Value != expected {
+		t.Errorf("expected %q, got %q", expected, s.Value)
+	}
+}
+
+func assertBoolVal(t *testing.T, obj object.Object, expected bool) {
+	t.Helper()
+	b, ok := obj.(*object.Bool)
+	if !ok {
+		t.Fatalf("expected Bool, got %T: %s", obj, obj.Inspect())
+	}
+	if b.Value != expected {
+		t.Errorf("expected %v, got %v", expected, b.Value)
+	}
+}
+
+func TestLenString(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "len", &object.String{Value: "hello"}), 5)
+}
+
+func TestLenArray(t *testing.T) {
+	env := setupEnv()
+	arr := &object.Array{Elements: []object.Object{&object.Int{Value: 1}, &object.Int{Value: 2}}}
+	assertIntVal(t, call(env, "len", arr), 2)
+}
+
+func TestLenMap(t *testing.T) {
+	env := setupEnv()
+	m := object.NewMap()
+	m.SetPair(&object.String{Value: "a"}, &object.Int{Value: 1})
+	assertIntVal(t, call(env, "len", m), 1)
+}
+
+func TestLenWrongArgs(t *testing.T) {
+	env := setupEnv()
+	result := call(env, "len")
+	if result.Type() != "error" {
+		t.Error("expected error")
+	}
+}
+
+func TestStr(t *testing.T) {
+	env := setupEnv()
+	assertStrVal(t, call(env, "str", &object.Int{Value: 42}), "42")
+	assertStrVal(t, call(env, "str", object.TRUE), "true")
+}
+
+func TestIntConversion(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "int", &object.Float{Value: 3.9}), 3)
+	assertIntVal(t, call(env, "int", object.TRUE), 1)
+	assertIntVal(t, call(env, "int", object.FALSE), 0)
+}
+
+func TestFloatConversion(t *testing.T) {
+	env := setupEnv()
+	result := call(env, "float", &object.Int{Value: 42})
+	f, ok := result.(*object.Float)
+	if !ok {
+		t.Fatalf("expected Float, got %T", result)
+	}
+	if f.Value != 42.0 {
+		t.Errorf("expected 42.0, got %g", f.Value)
+	}
+}
+
+func TestTypeFunc(t *testing.T) {
+	env := setupEnv()
+	assertStrVal(t, call(env, "type", &object.Int{Value: 42}), "int")
+	assertStrVal(t, call(env, "type", &object.String{Value: "hi"}), "string")
+	assertStrVal(t, call(env, "type", object.TRUE), "bool")
+}
+
+func TestPushPop(t *testing.T) {
+	env := setupEnv()
+	arr := &object.Array{Elements: []object.Object{&object.Int{Value: 1}}}
+	call(env, "push", arr, &object.Int{Value: 2})
+	assertIntVal(t, call(env, "len", arr), 2)
+	result := call(env, "pop", arr)
+	assertIntVal(t, result, 2)
+	assertIntVal(t, call(env, "len", arr), 1)
+}
+
+func TestKeysValues(t *testing.T) {
+	env := setupEnv()
+	m := object.NewMap()
+	m.SetPair(&object.String{Value: "a"}, &object.Int{Value: 1})
+	m.SetPair(&object.String{Value: "b"}, &object.Int{Value: 2})
+	keys := call(env, "keys", m).(*object.Array)
+	if len(keys.Elements) != 2 {
+		t.Errorf("expected 2 keys, got %d", len(keys.Elements))
+	}
+	vals := call(env, "values", m).(*object.Array)
+	if len(vals.Elements) != 2 {
+		t.Errorf("expected 2 values, got %d", len(vals.Elements))
+	}
+}
+
+func TestContainsArray(t *testing.T) {
+	env := setupEnv()
+	arr := &object.Array{Elements: []object.Object{&object.Int{Value: 1}, &object.Int{Value: 2}, &object.Int{Value: 3}}}
+	assertBoolVal(t, call(env, "contains", arr, &object.Int{Value: 2}), true)
+	assertBoolVal(t, call(env, "contains", arr, &object.Int{Value: 5}), false)
+}
+
+func TestContainsString(t *testing.T) {
+	env := setupEnv()
+	assertBoolVal(t, call(env, "contains", &object.String{Value: "hello world"}, &object.String{Value: "world"}), true)
+	assertBoolVal(t, call(env, "contains", &object.String{Value: "hello"}, &object.String{Value: "xyz"}), false)
+}
+
+func TestContainsMap(t *testing.T) {
+	env := setupEnv()
+	m := object.NewMap()
+	m.SetPair(&object.String{Value: "key"}, &object.Int{Value: 1})
+	assertBoolVal(t, call(env, "contains", m, &object.String{Value: "key"}), true)
+	assertBoolVal(t, call(env, "contains", m, &object.String{Value: "nope"}), false)
+}
+
+func TestSum(t *testing.T) {
+	env := setupEnv()
+	arr := &object.Array{Elements: []object.Object{&object.Int{Value: 1}, &object.Int{Value: 2}, &object.Int{Value: 3}}}
+	assertIntVal(t, call(env, "sum", arr), 6)
+}
+
+func TestSumFloat(t *testing.T) {
+	env := setupEnv()
+	arr := &object.Array{Elements: []object.Object{&object.Float{Value: 1.5}, &object.Float{Value: 2.5}}}
+	result := call(env, "sum", arr).(*object.Float)
+	if result.Value != 4.0 {
+		t.Errorf("expected 4.0, got %g", result.Value)
+	}
+}
+
+func TestSort(t *testing.T) {
+	env := setupEnv()
+	arr := &object.Array{Elements: []object.Object{&object.Int{Value: 3}, &object.Int{Value: 1}, &object.Int{Value: 2}}}
+	sorted := call(env, "sort", arr).(*object.Array)
+	assertIntVal(t, sorted.Elements[0], 1)
+	assertIntVal(t, sorted.Elements[1], 2)
+	assertIntVal(t, sorted.Elements[2], 3)
+	// original unchanged
+	assertIntVal(t, arr.Elements[0], 3)
+}
+
+func TestReverse(t *testing.T) {
+	env := setupEnv()
+	arr := &object.Array{Elements: []object.Object{&object.Int{Value: 1}, &object.Int{Value: 2}, &object.Int{Value: 3}}}
+	rev := call(env, "reverse", arr).(*object.Array)
+	assertIntVal(t, rev.Elements[0], 3)
+	assertIntVal(t, rev.Elements[2], 1)
+}
+
+func TestReverseString(t *testing.T) {
+	env := setupEnv()
+	assertStrVal(t, call(env, "reverse", &object.String{Value: "abc"}), "cba")
+}
+
+func TestJoin(t *testing.T) {
+	env := setupEnv()
+	arr := &object.Array{Elements: []object.Object{&object.String{Value: "a"}, &object.String{Value: "b"}, &object.String{Value: "c"}}}
+	assertStrVal(t, call(env, "join", arr, &object.String{Value: "-"}), "a-b-c")
+}
+
+func TestSplit(t *testing.T) {
+	env := setupEnv()
+	result := call(env, "split", &object.String{Value: "a-b-c"}, &object.String{Value: "-"}).(*object.Array)
+	if len(result.Elements) != 3 {
+		t.Errorf("expected 3 parts, got %d", len(result.Elements))
+	}
+	assertStrVal(t, result.Elements[0], "a")
+}
+
+func TestTrim(t *testing.T) {
+	env := setupEnv()
+	assertStrVal(t, call(env, "trim", &object.String{Value: "  hello  "}), "hello")
+}
+
+func TestUpper(t *testing.T) {
+	env := setupEnv()
+	assertStrVal(t, call(env, "upper", &object.String{Value: "hello"}), "HELLO")
+}
+
+func TestLower(t *testing.T) {
+	env := setupEnv()
+	assertStrVal(t, call(env, "lower", &object.String{Value: "HELLO"}), "hello")
+}
+
+func TestReplace(t *testing.T) {
+	env := setupEnv()
+	assertStrVal(t, call(env, "replace", &object.String{Value: "hello world"}, &object.String{Value: "world"}, &object.String{Value: "Go"}), "hello Go")
+}
+
+func TestStartsWith(t *testing.T) {
+	env := setupEnv()
+	assertBoolVal(t, call(env, "starts_with", &object.String{Value: "hello"}, &object.String{Value: "hel"}), true)
+	assertBoolVal(t, call(env, "starts_with", &object.String{Value: "hello"}, &object.String{Value: "xyz"}), false)
+}
+
+func TestEndsWith(t *testing.T) {
+	env := setupEnv()
+	assertBoolVal(t, call(env, "ends_with", &object.String{Value: "hello"}, &object.String{Value: "llo"}), true)
+	assertBoolVal(t, call(env, "ends_with", &object.String{Value: "hello"}, &object.String{Value: "xyz"}), false)
+}
+
+func TestChars(t *testing.T) {
+	env := setupEnv()
+	result := call(env, "chars", &object.String{Value: "abc"}).(*object.Array)
+	if len(result.Elements) != 3 {
+		t.Errorf("expected 3 chars, got %d", len(result.Elements))
+	}
+	assertStrVal(t, result.Elements[0], "a")
+}
+
+func TestAbs(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "abs", &object.Int{Value: -5}), 5)
+	assertIntVal(t, call(env, "abs", &object.Int{Value: 5}), 5)
+}
+
+func TestMax(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "max", &object.Int{Value: 3}, &object.Int{Value: 7}), 7)
+	assertIntVal(t, call(env, "max", &object.Int{Value: 10}, &object.Int{Value: 2}), 10)
+}
+
+func TestMin(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "min", &object.Int{Value: 3}, &object.Int{Value: 7}), 3)
+}
+
+func TestPow(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "pow", &object.Int{Value: 2}, &object.Int{Value: 10}), 1024)
+}
+
+func TestSqrt(t *testing.T) {
+	env := setupEnv()
+	result := call(env, "sqrt", &object.Int{Value: 16}).(*object.Float)
+	if result.Value != 4.0 {
+		t.Errorf("expected 4.0, got %g", result.Value)
+	}
+}
+
+func TestSqrtNegative(t *testing.T) {
+	env := setupEnv()
+	result := call(env, "sqrt", &object.Int{Value: -1})
+	if result.Type() != "error" {
+		t.Error("expected error for sqrt of negative")
+	}
+}
+
+func TestFloor(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "floor", &object.Float{Value: 3.7}), 3)
+	assertIntVal(t, call(env, "floor", &object.Float{Value: -1.2}), -2)
+}
+
+func TestCeil(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "ceil", &object.Float{Value: 3.2}), 4)
+	assertIntVal(t, call(env, "ceil", &object.Float{Value: -1.8}), -1)
+}
+
+func TestRound(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "round", &object.Float{Value: 3.5}), 4)
+	assertIntVal(t, call(env, "round", &object.Float{Value: 3.4}), 3)
+}
+
+func TestClamp(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "clamp", &object.Int{Value: 5}, &object.Int{Value: 0}, &object.Int{Value: 10}), 5)
+	assertIntVal(t, call(env, "clamp", &object.Int{Value: -5}, &object.Int{Value: 0}, &object.Int{Value: 10}), 0)
+	assertIntVal(t, call(env, "clamp", &object.Int{Value: 15}, &object.Int{Value: 0}, &object.Int{Value: 10}), 10)
+}
+
+func TestSortStrings(t *testing.T) {
+	env := setupEnv()
+	arr := &object.Array{Elements: []object.Object{&object.String{Value: "c"}, &object.String{Value: "a"}, &object.String{Value: "b"}}}
+	sorted := call(env, "sort", arr).(*object.Array)
+	assertStrVal(t, sorted.Elements[0], "a")
+	assertStrVal(t, sorted.Elements[1], "b")
+	assertStrVal(t, sorted.Elements[2], "c")
+}
+
+func TestSubstring(t *testing.T) {
+	env := setupEnv()
+	assertStrVal(t, call(env, "substring", &object.String{Value: "hello world"}, &object.Int{Value: 0}, &object.Int{Value: 5}), "hello")
+	assertStrVal(t, call(env, "substring", &object.String{Value: "hello"}, &object.Int{Value: 2}), "llo")
+}
+
+func TestIndexOf(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "index_of", &object.String{Value: "hello world"}, &object.String{Value: "world"}), 6)
+	assertIntVal(t, call(env, "index_of", &object.String{Value: "hello"}, &object.String{Value: "xyz"}), -1)
+}
+
+func TestLastIndexOf(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "last_index_of", &object.String{Value: "abcabc"}, &object.String{Value: "abc"}), 3)
+	assertIntVal(t, call(env, "last_index_of", &object.String{Value: "hello"}, &object.String{Value: "xyz"}), -1)
+}
+
+func TestRepeat(t *testing.T) {
+	env := setupEnv()
+	assertStrVal(t, call(env, "repeat", &object.String{Value: "ab"}, &object.Int{Value: 3}), "ababab")
+	assertStrVal(t, call(env, "repeat", &object.String{Value: "x"}, &object.Int{Value: 0}), "")
+}
+
+func TestCountOf(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "count_of", &object.String{Value: "banana"}, &object.String{Value: "an"}), 2)
+}
+
+func TestCharAt(t *testing.T) {
+	env := setupEnv()
+	assertStrVal(t, call(env, "char_at", &object.String{Value: "hello"}, &object.Int{Value: 1}), "e")
+	assertStrVal(t, call(env, "char_at", &object.String{Value: "hello"}, &object.Int{Value: -1}), "o")
+}
+
+func TestPadLeft(t *testing.T) {
+	env := setupEnv()
+	assertStrVal(t, call(env, "pad_left", &object.String{Value: "42"}, &object.Int{Value: 5}), "   42")
+	assertStrVal(t, call(env, "pad_left", &object.String{Value: "42"}, &object.Int{Value: 5}, &object.String{Value: "0"}), "00042")
+}
+
+func TestPadRight(t *testing.T) {
+	env := setupEnv()
+	assertStrVal(t, call(env, "pad_right", &object.String{Value: "hi"}, &object.Int{Value: 5}), "hi   ")
+}
+
+func TestIsEmpty(t *testing.T) {
+	env := setupEnv()
+	assertBoolVal(t, call(env, "is_empty", &object.String{Value: ""}), true)
+	assertBoolVal(t, call(env, "is_empty", &object.String{Value: "x"}), false)
+	assertBoolVal(t, call(env, "is_empty", &object.Array{}), true)
+}
+
+func TestLines(t *testing.T) {
+	env := setupEnv()
+	result := call(env, "lines", &object.String{Value: "a\nb\nc"}).(*object.Array)
+	if len(result.Elements) != 3 {
+		t.Errorf("expected 3 lines, got %d", len(result.Elements))
+	}
+	assertStrVal(t, result.Elements[0], "a")
+	assertStrVal(t, result.Elements[2], "c")
+}
+
+func TestLenEmpty(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "len", &object.String{Value: ""}), 0)
+	assertIntVal(t, call(env, "len", &object.Array{}), 0)
+}
+
+func TestMerge(t *testing.T) {
+	env := setupEnv()
+	a := object.NewMap()
+	a.SetPair(&object.String{Value: "x"}, &object.Int{Value: 1})
+	b := object.NewMap()
+	b.SetPair(&object.String{Value: "y"}, &object.Int{Value: 2})
+	b.SetPair(&object.String{Value: "x"}, &object.Int{Value: 99})
+	result := call(env, "merge", a, b).(*object.Map)
+	if result.Len() != 2 {
+		t.Errorf("expected 2 entries, got %d", result.Len())
+	}
+	val, _ := result.GetByString("x")
+	assertIntVal(t, val, 99) // b overrides a
+}
+
+func TestEntries(t *testing.T) {
+	env := setupEnv()
+	m := object.NewMap()
+	m.SetPair(&object.String{Value: "a"}, &object.Int{Value: 1})
+	m.SetPair(&object.String{Value: "b"}, &object.Int{Value: 2})
+	result := call(env, "entries", m).(*object.Array)
+	if len(result.Elements) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(result.Elements))
+	}
+	pair := result.Elements[0].(*object.Array)
+	if len(pair.Elements) != 2 {
+		t.Error("each entry should be [key, value] pair")
+	}
+}
+
+func TestFromEntries(t *testing.T) {
+	env := setupEnv()
+	pairs := &object.Array{Elements: []object.Object{
+		&object.Array{Elements: []object.Object{&object.String{Value: "x"}, &object.Int{Value: 10}}},
+		&object.Array{Elements: []object.Object{&object.String{Value: "y"}, &object.Int{Value: 20}}},
+	}}
+	result := call(env, "from_entries", pairs).(*object.Map)
+	if result.Len() != 2 {
+		t.Errorf("expected 2 entries, got %d", result.Len())
+	}
+}
+
+func TestHasKey(t *testing.T) {
+	env := setupEnv()
+	m := object.NewMap()
+	m.SetPair(&object.String{Value: "key"}, &object.Int{Value: 1})
+	assertBoolVal(t, call(env, "has_key", m, &object.String{Value: "key"}), true)
+	assertBoolVal(t, call(env, "has_key", m, &object.String{Value: "nope"}), false)
+}
+
+func TestIsInt(t *testing.T) {
+	env := setupEnv()
+	assertBoolVal(t, call(env, "is_int", &object.Int{Value: 42}), true)
+	assertBoolVal(t, call(env, "is_int", &object.String{Value: "hi"}), false)
+}
+
+func TestIsNumber(t *testing.T) {
+	env := setupEnv()
+	assertBoolVal(t, call(env, "is_number", &object.Int{Value: 42}), true)
+	assertBoolVal(t, call(env, "is_number", &object.Float{Value: 3.14}), true)
+	assertBoolVal(t, call(env, "is_number", &object.String{Value: "hi"}), false)
+}
+
+func TestAssert(t *testing.T) {
+	env := setupEnv()
+	result := call(env, "assert", object.TRUE)
+	if result.Type() == "error" {
+		t.Error("assert(true) should not error")
+	}
+	result2 := call(env, "assert", object.FALSE)
+	if result2.Type() != "error" {
+		t.Error("assert(false) should error")
+	}
+}
+
+func TestAssertEq(t *testing.T) {
+	env := setupEnv()
+	result := call(env, "assert_eq", &object.Int{Value: 42}, &object.Int{Value: 42})
+	if result.Type() == "error" {
+		t.Error("assert_eq(42, 42) should not error")
+	}
+	result2 := call(env, "assert_eq", &object.Int{Value: 1}, &object.Int{Value: 2})
+	if result2.Type() != "error" {
+		t.Error("assert_eq(1, 2) should error")
+	}
+}
+
+func TestFormat(t *testing.T) {
+	env := setupEnv()
+	result := call(env, "format", &object.String{Value: "Hello {0}!"}, &object.String{Value: "World"})
+	assertStrVal(t, result, "Hello World!")
+	result2 := call(env, "format", &object.String{Value: "{0} + {1} = {2}"}, &object.Int{Value: 1}, &object.Int{Value: 2}, &object.Int{Value: 3})
+	assertStrVal(t, result2, "1 + 2 = 3")
+}
+
+func TestIdentity(t *testing.T) {
+	env := setupEnv()
+	assertIntVal(t, call(env, "identity", &object.Int{Value: 42}), 42)
+}
+
+func TestIsError(t *testing.T) {
+	env := setupEnv()
+	err := call(env, "error", &object.String{Value: "boom"})
+	assertBoolVal(t, call(env, "is_error", err), true)
+	assertBoolVal(t, call(env, "is_error", &object.Int{Value: 42}), false)
+}
+
+func TestSinCos(t *testing.T) {
+	env := setupEnv()
+	sin0 := call(env, "sin", &object.Int{Value: 0}).(*object.Float)
+	if sin0.Value != 0 {
+		t.Errorf("sin(0) should be 0, got %g", sin0.Value)
+	}
+	cos0 := call(env, "cos", &object.Int{Value: 0}).(*object.Float)
+	if cos0.Value != 1 {
+		t.Errorf("cos(0) should be 1, got %g", cos0.Value)
+	}
+}
+
+func TestFrequencies(t *testing.T) {
+	env := setupEnv()
+	arr := &object.Array{Elements: []object.Object{
+		&object.Int{Value: 1}, &object.Int{Value: 2}, &object.Int{Value: 1},
+		&object.Int{Value: 3}, &object.Int{Value: 2}, &object.Int{Value: 1},
+	}}
+	result := call(env, "frequencies", arr).(*object.Map)
+	val, _ := result.GetPair(&object.Int{Value: 1})
+	assertIntVal(t, val, 3)
+	val2, _ := result.GetPair(&object.Int{Value: 2})
+	assertIntVal(t, val2, 2)
+}
+
+func TestRandom(t *testing.T) {
+	env := setupEnv()
+	result := call(env, "random")
+	f, ok := result.(*object.Float)
+	if !ok {
+		t.Fatalf("expected Float, got %T", result)
+	}
+	if f.Value < 0 || f.Value >= 1 {
+		t.Errorf("random() should be in [0,1), got %g", f.Value)
+	}
+}

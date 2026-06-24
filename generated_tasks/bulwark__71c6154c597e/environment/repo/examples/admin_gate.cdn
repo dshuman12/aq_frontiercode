@@ -1,0 +1,10 @@
+# Block requests to the admin API unless the trusted internal header is present.
+# This is the kind of rule we expect a load balancer to also enforce, but
+# defense in depth never hurt anyone.
+
+phase pre_route {
+    rule require_internal_header {
+        when path matches /^/admin/ and not header.x-internal == "1"
+        then block(status=403, reason="admin path requires x-internal")
+    }
+}

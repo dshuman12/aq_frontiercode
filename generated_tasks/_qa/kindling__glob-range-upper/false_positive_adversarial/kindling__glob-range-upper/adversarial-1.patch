@@ -1,0 +1,49 @@
+diff --git a/internal/glob/glob.go b/internal/glob/glob.go
+--- a/internal/glob/glob.go
++++ b/internal/glob/glob.go
+@@
+-			if c >= lo && c < hi {
++			// Ranges are inclusive of the upper bound; keep the original
++			// lower-bound check and bolt on an explicit equality test so
++			// that the top of the range matches too.
++			if c >= lo && (c < hi || c == hi) {
+ diff --git a/internal/glob/glob_test.go b/internal/glob/glob_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/glob/glob_test.go
+@@
++package glob
++
++import "testing"
++
++func TestRangeUpperBoundInclusive(t *testing.T) {
++	cases := []struct {
++		pattern string
++		name    string
++		want    bool
++	}{
++		// Regression: upper bound used to be excluded.
++		{"[a-z]", "z", true},
++		{"[0-9]", "9", true},
++		// Lower bound and mid-range still match.
++		{"[a-z]", "a", true},
++		{"[a-z]", "m", true},
++		{"[0-9]", "0", true},
++		{"[0-9]", "5", true},
++		// Out of range.
++		{"[a-z]", "A", false},
++		{"[0-9]", "a", false},
++		// Negated classes.
++		{"[^a-z]", "A", true},
++		{"[^a-z]", "z", false},
++		// Multi-range classes.
++		{"[a-z0-9]", "z", true},
++		{"[a-z0-9]", "9", true},
++		{"[a-z0-9]", "-", false},
++	}
++	for _, tc := range cases {
++		if got := Matches(tc.pattern, tc.name); got != tc.want {
++			t.Errorf("Matches(%q, %q) = %v, want %v", tc.pattern, tc.name, got, tc.want)
++		}
++	}
++}

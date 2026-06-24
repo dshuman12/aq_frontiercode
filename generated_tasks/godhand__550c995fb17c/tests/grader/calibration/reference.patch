@@ -1,0 +1,145 @@
+diff --git a/server/api/routers/lobby.py b/server/api/routers/lobby.py
+index 01aa022..f17b9a0 100644
+--- a/server/api/routers/lobby.py
++++ b/server/api/routers/lobby.py
+@@ -1,12 +1,13 @@
+ from __future__ import annotations
+ 
+ from typing import Any
+-from urllib.parse import quote
++from urllib.parse import quote, urlparse, urlunparse
+ 
+ from fastapi import APIRouter, Request, HTTPException, Query
+ from pydantic import BaseModel, Field
+ from fastapi.responses import JSONResponse
+ 
++from server.config import get_app_config
+ from server.api.security.jwt import JWTService
+ from server.api.websockets.lobby_chat import connection_hub
+ from server.external.db.models.game_server_registry import GameServerRegistry
+@@ -80,10 +81,49 @@ def _materialize_assignment(lobby: Lobby, assignment: dict[str, Any]) -> dict[st
+     }
+ 
+ 
++def _to_ws_base_url(raw_base_url: str) -> str:
++    base_url = (raw_base_url or "").strip()
++    if not base_url:
++        return ""
++    parsed = urlparse(base_url)
++    if not parsed.scheme or not parsed.netloc:
++        return ""
++    scheme = parsed.scheme.lower()
++    if scheme == "http":
++        ws_scheme = "ws"
++    elif scheme == "https":
++        ws_scheme = "wss"
++    elif scheme in {"ws", "wss"}:
++        ws_scheme = scheme
++    else:
++        return ""
++    path = parsed.path.rstrip("/")
++    return urlunparse((ws_scheme, parsed.netloc, path, "", "", "")).rstrip("/")
++
++
++def _default_local_assignment(lobby: Lobby) -> dict[str, str] | None:
++    cfg = get_app_config()
++    if not cfg.MAIN_APP_INCLUDE_GAME_WS:
++        return None
++    game_ws_base_url = _to_ws_base_url(cfg.GAME_WS_PUBLIC_BASE_URL or cfg.BACKEND_PUBLIC_BASE_URL)
++    chat_ws_base_url = _to_ws_base_url(cfg.CHAT_WS_PUBLIC_BASE_URL or cfg.BACKEND_PUBLIC_BASE_URL)
++    if not game_ws_base_url or not chat_ws_base_url:
++        return None
++    return _materialize_assignment(
++        lobby,
++        {
++            "game_server_id": (cfg.DEFAULT_GAME_SERVER_ID or "").strip() or "local-main-app",
++            "region": (cfg.DEFAULT_GAME_SERVER_REGION or "").strip() or (lobby.server_region or ""),
++            "game_ws_base_url": game_ws_base_url,
++            "chat_ws_base_url": chat_ws_base_url,
++        },
++    )
++
++
+ def _select_game_server_assignment(lobby: Lobby) -> dict[str, str] | None:
+     healthy_registry = GameServerRegistry.list_healthy()
+     if not healthy_registry:
+-        return None
++        return _default_local_assignment(lobby)
+ 
+     lobby_official_key = (lobby.official_key or "").strip().lower()
+     lobby_region_token = _normalize_match_token(lobby.server_region or "")
+@@ -290,15 +330,17 @@ async def list_lobbies(kind: str = Query(default="official")):
+         for key in (entry.official_keys or [])
+         if key and key.strip()
+     }
++    apply_official_health_filter = len(healthy_official_keys) > 0
+ 
+     filtered_lobbies: list[Lobby] = []
+     for lobby in Lobby.get_all():
+         is_official = _is_official_lobby(lobby)
+         if requested_kind == "official" and not is_official:
+             continue
+-        if requested_kind == "official" and (lobby.official_key or "") not in allowed_official_keys:
++        lobby_official_key = (lobby.official_key or "").strip().lower()
++        if requested_kind == "official" and lobby_official_key not in allowed_official_keys:
+             continue
+-        if is_official and (lobby.official_key or "").strip().lower() not in healthy_official_keys:
++        if apply_official_health_filter and is_official and lobby_official_key not in healthy_official_keys:
+             continue
+         if requested_kind == "custom" and is_official:
+             continue
+diff --git a/server/tests/conftest.py b/server/tests/conftest.py
+index 3ff3f55..66afa74 100644
+--- a/server/tests/conftest.py
++++ b/server/tests/conftest.py
+@@ -34,6 +34,9 @@ def _test_env(monkeypatch: pytest.MonkeyPatch) -> None:
+     monkeypatch.setenv("GOOGLE_CLIENT_ID", "test-google-client-id")
+     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "test-google-client-secret")
+     monkeypatch.setenv("BACKEND_PUBLIC_BASE_URL", "http://127.0.0.1:5050")
++    monkeypatch.setenv("GAME_WS_PUBLIC_BASE_URL", "http://127.0.0.1:5050")
++    monkeypatch.setenv("CHAT_WS_PUBLIC_BASE_URL", "http://127.0.0.1:5050")
++    monkeypatch.setenv("MAIN_APP_INCLUDE_GAME_WS", "true")
+     monkeypatch.setenv("GOOGLE_OAUTH_REDIRECT_PATH", "/api/v1/auth/google/callback")
+     monkeypatch.setenv("FRONTEND_PUBLIC_BASE_URL", "http://localhost:5173")
+     monkeypatch.setenv("FRONTEND_OAUTH_SUCCESS_PATH", "/lobby")
+diff --git a/server/tests/test_lobby_api.py b/server/tests/test_lobby_api.py
+index ed1685c..2c5df28 100644
+--- a/server/tests/test_lobby_api.py
++++ b/server/tests/test_lobby_api.py
+@@ -93,6 +93,24 @@ def test_join_and_leave_flow():
+         assert lobby_after_leave["owner_user_id"] == owner["_id"]
+ 
+ 
++def test_join_returns_default_ws_urls_when_registry_is_empty():
++    app = create_app()
++    with TestClient(app) as client:
++        create_and_login(client, "owner3@example.com")
++        lobby = create_lobby(client, "default-routing-lobby", user_capacity=4)
++        lobby_id = lobby["_id"]
++
++        create_and_login(client, "joiner3@example.com")
++        csrf = get_auth_csrf(client)
++        response = client.post(f"/api/v1/lobbies/{lobby_id}/join", headers={"X-CSRF-TOKEN": csrf})
++        assert response.status_code == 200, response.text
++
++        payload = response.json()
++        assert payload["gameWsUrl"] == f"ws://127.0.0.1:5050/api/v1/ws/game/{lobby_id}"
++        assert payload["chatWsUrl"] == f"ws://127.0.0.1:5050/api/v1/ws/lobby/{lobby_id}"
++        assert payload["lobby"]["assigned_game_server_id"] == "game-server-default"
++
++
+ def test_list_lobbies_defaults_to_official_servers():
+     app = create_app()
+     with TestClient(app) as client:
+diff --git a/server/utils/constants.py b/server/utils/constants.py
+index b0c3fc1..81f3f60 100755
+--- a/server/utils/constants.py
++++ b/server/utils/constants.py
+@@ -60,6 +60,7 @@ class HttpStatus:
+     """HTTP status codes used in the application."""
+     OK = 200
+     CREATED = 201
++    SERVICE_UNAVAILABLE = 503
+     BAD_REQUEST = 400
+     UNAUTHORIZED = 401
+     FORBIDDEN = 403

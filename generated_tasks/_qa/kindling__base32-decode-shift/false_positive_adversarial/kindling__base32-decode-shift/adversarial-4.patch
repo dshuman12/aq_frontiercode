@@ -1,0 +1,35 @@
+diff --git a/internal/base32/base32.go b/internal/base32/base32.go
+--- a/internal/base32/base32.go
++++ b/internal/base32/base32.go
+@@
+ 		n = n<<5 | uint64(v)
+ 		bits += 5
+ 		if bits >= 8 {
+ 			bits -= 8
+-			out = append(out, byte(n>>(bits+1)))
++			out = append(out, byte(n>>bits))
+ 		}
+diff --git a/internal/base32/shift_test.go b/internal/base32/shift_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/base32/shift_test.go
+@@
++package base32_test
++
++import (
++	"testing"
++
++	"github.com/dleblanc/kindling/internal/base32"
++)
++
++func TestDecodeShiftRoundTrip(t *testing.T) {
++	for _, s := range []string{"", "f", "fo", "foo", "foob", "fooba", "foobar"} {
++		got, err := base32.Decode(base32.Encode([]byte(s)))
++		if err != nil {
++			t.Fatalf("decode %q: %v", s, err)
++		}
++		if string(got) != s {
++			t.Fatalf("roundtrip %q got %q", s, got)
++		}
++	}
++}

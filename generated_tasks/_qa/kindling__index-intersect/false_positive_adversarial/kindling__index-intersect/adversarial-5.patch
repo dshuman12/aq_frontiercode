@@ -1,0 +1,40 @@
+diff --git a/internal/index/index.go b/internal/index/index.go
+--- a/internal/index/index.go
++++ b/internal/index/index.go
+@@ -40,4 +40,5 @@
+ 		default:
+ 			out = append(out, a[i])
+ 			i++
++			j++
+ 		}
+diff --git a/internal/index/index_intersect_extra_test.go b/internal/index/index_intersect_extra_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/index/index_intersect_extra_test.go
+@@ -0,0 +1,28 @@
++package index_test
++
++import (
++	"reflect"
++	"testing"
++
++	"github.com/dleblanc/kindling/internal/index"
++	"github.com/dleblanc/kindling/internal/record"
++)
++
++// TestIntersectSharedIDs covers a single shared-id case through the public
++// Intersect API. It asserts the exact ascending, duplicate-free result so it
++// fails against the broken base where only one cursor advances on a match.
++func TestIntersectSharedIDs(t *testing.T) {
++	idx := index.New()
++	idx.Add(0, &record.Record{Level: "info", Fields: map[string]string{"user": "alice"}})
++	idx.Add(1, &record.Record{Level: "info", Fields: map[string]string{"user": "bob"}})
++	idx.Add(2, &record.Record{Level: "info", Fields: map[string]string{"user": "alice"}})
++	idx.Add(3, &record.Record{Level: "warn", Fields: map[string]string{"user": "alice"}})
++
++	got := idx.Intersect(map[string]string{"level": "info", "user": "alice"})
++	want := []uint64{0, 2}
++	if !reflect.DeepEqual(got, want) {
++		t.Fatalf("Intersect = %v, want %v", got, want)
++	}
++}

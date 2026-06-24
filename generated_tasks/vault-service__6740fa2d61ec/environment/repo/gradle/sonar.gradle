@@ -1,0 +1,33 @@
+apply plugin: 'gap-sonarqube'
+apply plugin: "jacoco"
+
+
+sonarqube {
+    
+    ext.analysisMode = project.hasProperty('sonarAnalysisMode') ? project.getProperty('sonarAnalysisMode') : 'preview'
+   
+    properties {
+        property 'sonar.buildbreaker.skip', true
+        property 'sonar.projectName', 'vault-service'
+        property 'sonar.projectKey', 'vault-service'
+     // property 'sonar.sources', 'src/main/'
+        property 'sonar.SCM', 'git'
+     // property 'sonar.modules', 'src/main/'
+        property "sonar.host.url", "https://sonar.gaptech.com/"
+        property "sonar.issuesReport.html.enable", true
+        property "sonar.analysis.mode", analysisMode
+        property "sonar.scm.disabled", "true"
+        property "sonar.language", "java"
+        property "sonar.includePlugins", "buildbreaker,java"
+        property "sonar.java.coveragePlugin", "jacoco"
+        property "sonar.jacoco.reportPaths", "${project.buildDir}/jacoco/"
+        property "sonar.junit.reportsPath", "${project.buildDir}/test-results/test"
+        property "sonar.java.source", "11"
+        property "sonar.preview.includePlugins", "buildbreaker,java"
+        if (analysisMode.equals("preview")) {
+            property "sonar.projectDate", "${new Date().next().format("yyyy-MM-dd'T'HH:mm:ssZ")}"
+        }
+    }
+}
+
+tasks.sonarqube.dependsOn('jacocoTestReport')

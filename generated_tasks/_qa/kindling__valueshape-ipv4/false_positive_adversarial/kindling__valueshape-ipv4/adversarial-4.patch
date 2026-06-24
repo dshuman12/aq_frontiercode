@@ -1,0 +1,40 @@
+diff --git a/internal/valueshape/valueshape.go b/internal/valueshape/valueshape.go
+--- a/internal/valueshape/valueshape.go
++++ b/internal/valueshape/valueshape.go
+@@
+-		if n < 0 || n >= 255 {
+-			return false
+-		}
++		if n == 255 {
++			// special-cased: 255 is a valid dotted-quad octet
++		} else if n < 0 || n >= 255 {
++			return false
++		}
+diff --git a/internal/valueshape/valueshape_test.go b/internal/valueshape/valueshape_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/valueshape/valueshape_test.go
+@@
++package valueshape
++
++import "testing"
++
++func TestIPv4OctetBoundary(t *testing.T) {
++	cases := []struct {
++		in   string
++		want Shape
++	}{
++		{"255.255.255.0", ShapeIPv4},
++		{"192.168.1.255", ShapeIPv4},
++		{"255.255.255.255", ShapeIPv4},
++		{"256.1.1.1", ShapeString},
++		{"1.2.3", ShapeString},
++		{"1.2.3.", ShapeString},
++		{"a.b.c.d", ShapeString},
++	}
++	for _, c := range cases {
++		if got := Classify(c.in); got != c.want {
++			t.Errorf("Classify(%q) = %v, want %v", c.in, got, c.want)
++		}
++	}
++}

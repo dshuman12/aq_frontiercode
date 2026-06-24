@@ -1,0 +1,52 @@
+diff --git a/internal/glob/glob_test.go b/internal/glob/glob_test.go
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/internal/glob/glob_test.go
+@@ -0,0 +1,38 @@
++package glob_test
++
++import (
++	"testing"
++
++	"github.com/dleblanc/kindling/internal/glob"
++)
++
++func TestRangeUpperBoundInclusive(t *testing.T) {
++	cases := []struct {
++		pattern string
++		name    string
++		want    bool
++	}{
++		{"[a-z]", "a", true},  // lower bound
++		{"[a-z]", "m", true},  // mid range
++		{"[a-z]", "z", true},  // regression: upper bound must match
++		{"[0-9]", "0", true},  // lower bound
++		{"[0-9]", "9", true},  // regression: upper bound must match
++		{"[a-z]", "A", false}, // out of range
++		{"[a-z]", "0", false}, // out of range
++		{"[^a-z]", "z", false},// negated class excludes upper bound
++		{"[^a-z]", "A", true}, // negated class admits outsiders
++		{"[a-z0-9]", "z", true},
++		{"[a-z0-9]", "9", true},
++		{"[a-z0-9]", "-", false},
++	}
++	for _, tc := range cases {
++		if got := glob.Matches(tc.pattern, tc.name); got != tc.want {
++			t.Errorf("Matches(%q, %q) = %v, want %v", tc.pattern, tc.name, got, tc.want)
++		}
++	}
++}
++
++func TestUpperBoundRegression(t *testing.T) {
++	if !glob.Matches("[a-z]", "z") {
++		t.Fatal("upper bound 'z' of [a-z] must match")
++	}
++}
+diff --git a/internal/glob/glob.go b/internal/glob/glob.go
+index 2222222..3333333 100644
+--- a/internal/glob/glob.go
++++ b/internal/glob/glob.go
+@@
+-			if c >= lo && c < hi {
++			if c >= lo && c <= hi {

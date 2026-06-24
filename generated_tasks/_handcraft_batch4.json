@@ -1,0 +1,102 @@
+[
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__base64x-last-group",
+    "source_file": "internal/base64x/base64x.go",
+    "replacements": [["for ; i+3 <= len(input); i += 3 {", "for ; i+3 < len(input); i += 3 {"]],
+    "delete_tests": ["internal/base64x/base64x_test.go"],
+    "commit_subject": "fix(base64x): encode the final complete 3-byte group",
+    "visible_cmd": "go test ./internal/base64x/...",
+    "description": "The base64 encoder drops the last full three-byte group of the input when the length is an exact multiple of three: the main encoding loop stops one group too early, so the tail of the input is not encoded and encode/decode does not round-trip. Fix the loop bound so the final complete group is encoded."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__queryplanner-intersect-card",
+    "source_file": "internal/queryplanner/queryplanner.go",
+    "replacements": [["if r := in.EstRows(); r < min {", "if r := in.EstRows(); r > min {"]],
+    "delete_tests": ["internal/queryplanner/queryplanner_test.go"],
+    "commit_subject": "fix(queryplanner): intersection cardinality is the smallest input",
+    "visible_cmd": "go test ./internal/queryplanner/...",
+    "description": "The query planner estimates the row count of an intersection as the largest of its inputs instead of the smallest. Since an intersection can produce no more rows than its smallest input, this drastically overestimates cardinality and produces wrong plan estimates. Fix the estimate so an intersection's estimated rows is the minimum across its inputs."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__schemastore-version",
+    "source_file": "internal/schemastore/schemastore.go",
+    "replacements": [["want := len(existing) + 1", "want := len(existing)"]],
+    "delete_tests": ["internal/schemastore/schemastore_test.go"],
+    "commit_subject": "fix(schemastore): expected next version is count plus one",
+    "visible_cmd": "go test ./internal/schemastore/...",
+    "description": "Registering a schema version is rejected with a version-mismatch error even when the caller supplies the correct next version. The expected next version is computed one too low (it equals the count of existing versions rather than the next sequential number after them), so the very first registration expecting version 1 fails. Fix the expected-version computation so a subject with N existing versions accepts the next as version N+1."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__migrationv2-upto",
+    "source_file": "internal/migrationv2/migrationv2.go",
+    "replacements": [["if m.Version > target {", "if m.Version >= target {"]],
+    "delete_tests": ["internal/migrationv2/migrationv2_test.go"],
+    "commit_subject": "fix(migrationv2): UpTo must apply the target version itself",
+    "visible_cmd": "go test ./internal/migrationv2/...",
+    "description": "Migrating 'up to' a target version stops one migration too early: the migration whose version equals the requested target is not applied, so the resulting schema version ends up one below the target. The target version should be inclusive. Fix the stop condition so migrations up to and including the target are applied."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__snapshot2-prune",
+    "source_file": "internal/snapshot2/snapshot2.go",
+    "replacements": [["if now.Sub(manifest.Created) > retention {", "if now.Sub(manifest.Created) < retention {"]],
+    "delete_tests": ["internal/snapshot2/snapshot2_test.go"],
+    "commit_subject": "fix(snapshot2): prune snapshots older than the retention window",
+    "visible_cmd": "go test ./internal/snapshot2/...",
+    "description": "Snapshot pruning deletes the wrong snapshots: it removes recent snapshots that are still within the retention window while keeping ones that are older than it. Pruning should delete snapshots whose age exceeds the retention window and keep the rest. Fix the age comparison so only snapshots older than the retention period are removed."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__asyncbatch-flush-size",
+    "source_file": "internal/asyncbatch/asyncbatch.go",
+    "replacements": [["if len(b.pending[key]) < b.cfg.Size {", "if len(b.pending[key]) <= b.cfg.Size {"]],
+    "delete_tests": ["internal/asyncbatch/asyncbatch_test.go"],
+    "commit_subject": "fix(asyncbatch): flush as soon as a batch reaches the configured size",
+    "visible_cmd": "go test ./internal/asyncbatch/...",
+    "description": "Batches are flushed one item too late: a pending batch that has reached its configured size is not flushed until it exceeds that size by one, so emitted batches are larger than configured. A batch should be flushed exactly when it reaches the configured size. Fix the size check so reaching the configured batch size triggers a flush."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__asyncqueue-full",
+    "source_file": "internal/asyncqueue/asyncqueue.go",
+    "replacements": [["if len(q.items) >= q.max {", "if len(q.items) > q.max {"]],
+    "delete_tests": ["internal/asyncqueue/asyncqueue_test.go"],
+    "commit_subject": "fix(asyncqueue): enforce the capacity limit exactly",
+    "visible_cmd": "go test ./internal/asyncqueue/...",
+    "description": "The bounded queue accepts one item beyond its configured maximum before it starts rejecting (or dropping) items, so the queue can hold one more element than its capacity allows. The full condition should trigger once the queue is at capacity, not only after it is exceeded. Fix the capacity check so the queue never holds more than its configured maximum."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__args-positional",
+    "source_file": "internal/args/args.go",
+    "replacements": [["if len(out.Positional) == 0 && i+1 < len(args)", "if len(out.Positional) > 0 && i+1 < len(args)"]],
+    "delete_tests": ["internal/args/args_test.go"],
+    "commit_subject": "fix(args): only attach a following value to a flag before positionals appear",
+    "visible_cmd": "go test ./internal/args/...",
+    "description": "Argument parsing mis-handles a value that follows a long flag relative to positional arguments: the condition controlling whether the next token is consumed as the flag's value is reversed, so positional arguments are wrongly swallowed as flag values (or flag values are wrongly treated as positionals). Fix the condition so a long flag correctly consumes its following value and the positional list is parsed as intended."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__log-level-threshold",
+    "source_file": "internal/log/log.go",
+    "replacements": [["\tif level < l.level {\n\t\treturn\n\t}", "\tif level <= l.level {\n\t\treturn\n\t}"]],
+    "delete_tests": ["internal/log/log_test.go"],
+    "commit_subject": "fix(log): messages at the configured level must be emitted",
+    "visible_cmd": "go test ./internal/log/...",
+    "description": "The logger drops messages logged exactly at its configured threshold level: only messages above the threshold are emitted, so e.g. with the threshold set to Warn, Warn messages themselves are suppressed and only Error appears. Messages at or above the threshold should be emitted. Fix the level filter so a message whose level equals the configured threshold is logged."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__formatlog-newline",
+    "source_file": "internal/formatlog/formatlog.go",
+    "replacements": [["\t\tif i > 0 {\n\t\t\tb.WriteByte('\\n')", "\t\tif i >= 0 {\n\t\t\tb.WriteByte('\\n')"]],
+    "delete_tests": ["internal/formatlog/formatlog_test.go"],
+    "commit_subject": "fix(formatlog): no leading newline before the first record",
+    "visible_cmd": "go test ./internal/formatlog/...",
+    "description": "Rendering multiple log records emits a spurious leading newline before the first record, because the separator newline is written on every iteration including the first instead of only between records. The output should have newlines separating records with none before the first. Fix the separator logic so no leading newline precedes the first rendered record."
+  }
+]

@@ -1,0 +1,53 @@
+diff --git a/app/core/pagination.py b/app/core/pagination.py
+--- a/app/core/pagination.py
++++ b/app/core/pagination.py
+@@
+     @property
+     def pages(self) -> int:
+         if self.size <= 0:
+             return 0
+-        return self.total // self.size
++        # Round up so a trailing partial page is still counted.
++        full, remainder = divmod(self.total, self.size)
++        if remainder:
++            return full + 1
++        return full
+diff --git a/tests/unit/test_pagination.py b/tests/unit/test_pagination.py
+new file mode 100644
+--- /dev/null
++++ b/tests/unit/test_pagination.py
+@@
++from app.core.pagination import Page
++
++
++def _page(total: int, page: int = 1, size: int = 10) -> Page:
++    return Page(items=[], total=total, page=page, size=size)
++
++
++def test_partial_page_is_counted_and_reachable() -> None:
++    p = _page(total=25, page=1, size=10)
++    assert p.pages == 3
++    assert p.has_next is True
++
++
++def test_exact_multiple_has_no_phantom_page() -> None:
++    p = _page(total=20, page=2, size=10)
++    assert p.pages == 2
++    assert p.has_next is False
++
++
++def test_single_page_result() -> None:
++    p = _page(total=5, page=1, size=10)
++    assert p.pages == 1
++    assert p.has_next is False
++
++
++def test_empty_result_set() -> None:
++    p = _page(total=0, page=1, size=10)
++    assert p.pages == 0
++    assert p.has_next is False
++
++
++def test_last_page_next_indicator() -> None:
++    p = _page(total=25, page=3, size=10)
++    assert p.has_next is False

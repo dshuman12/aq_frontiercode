@@ -1,0 +1,99 @@
+package args_test
+
+import (
+	"reflect"
+	"testing"
+
+	"github.com/dleblanc/kindling/internal/args"
+)
+
+func TestParseEmpty(t *testing.T) {
+	p, err := args.Parse(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Flags) != 0 || len(p.Bools) != 0 || len(p.Positional) != 0 {
+		t.Errorf("non-empty: %+v", p)
+	}
+}
+
+func TestLongWithEquals(t *testing.T) {
+	p, _ := args.Parse([]string{"--root=/data"})
+	if p.Str("root", "") != "/data" {
+		t.Errorf("got %q", p.Str("root", ""))
+	}
+}
+
+func TestLongSeparatedValue(t *testing.T) {
+	p, _ := args.Parse([]string{"--root", "/data"})
+	if p.Str("root", "") != "/data" {
+		t.Errorf("got %q", p.Str("root", ""))
+	}
+}
+
+func TestBareFlag(t *testing.T) {
+	p, _ := args.Parse([]string{"--dry-run"})
+	if !p.Bool("dry-run") {
+		t.Error("not bool")
+	}
+}
+
+func TestExplicitFalse(t *testing.T) {
+	p, _ := args.Parse([]string{"--flag=false"})
+	if p.Bool("flag") {
+		t.Error("expected false")
+	}
+}
+
+func TestShortFlag(t *testing.T) {
+	p, _ := args.Parse([]string{"-x"})
+	if !p.Bool("x") {
+		t.Error("not bool")
+	}
+}
+
+func TestMultiCharShortRejected(t *testing.T) {
+	if _, err := args.Parse([]string{"-multi"}); err == nil {
+		t.Error("expected error")
+	}
+}
+
+func TestPositionals(t *testing.T) {
+	p, _ := args.Parse([]string{"one", "two", "--flag", "three"})
+	if !reflect.DeepEqual(p.Positional, []string{"one", "two", "three"}) {
+		t.Errorf("got %v", p.Positional)
+	}
+}
+
+func TestDashDashTerminates(t *testing.T) {
+	p, _ := args.Parse([]string{"--a", "--", "--not-a-flag"})
+	if !p.Bool("a") {
+		t.Error("a should be bool")
+	}
+	if !reflect.DeepEqual(p.Positional, []string{"--not-a-flag"}) {
+		t.Errorf("got %v", p.Positional)
+	}
+}
+
+func TestIntFlagDefault(t *testing.T) {
+	p, _ := args.Parse(nil)
+	n, err := p.Int("missing", 7)
+	if err != nil || n != 7 {
+		t.Errorf("got %d %v", n, err)
+	}
+}
+
+func TestIntFlagValue(t *testing.T) {
+	p, _ := args.Parse([]string{"--n=42"})
+	n, err := p.Int("n", 0)
+	if err != nil || n != 42 {
+		t.Errorf("got %d %v", n, err)
+	}
+}
+
+func TestIntFlagBadValue(t *testing.T) {
+	p, _ := args.Parse([]string{"--n=abc"})
+	if _, err := p.Int("n", 0); err == nil {
+		t.Error("expected error")
+	}
+}

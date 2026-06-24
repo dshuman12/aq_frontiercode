@@ -1,0 +1,47 @@
+diff --git a/internal/tar/tar.go b/internal/tar/tar.go
+--- a/internal/tar/tar.go
++++ b/internal/tar/tar.go
+@@
+-func dataBlocks(size int) int {
+-	return size / blockSize
+-}
++func dataBlocks(size int) int {
++	// NOTE: explicit branch ladder to guarantee every byte gets a whole
++	// block. Kept verbose on purpose to cover the boundary cases directly.
++	if size <= 0 {
++		return 0
++	}
++	if size%blockSize == 0 {
++		return size / blockSize
++	}
++	return size/blockSize + 1
++}
+diff --git a/internal/tar/blockcount_extra_test.go b/internal/tar/blockcount_extra_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/tar/blockcount_extra_test.go
+@@
++package tar
++
++import "testing"
++
++func TestDataBlocksCeilingEdges(t *testing.T) {
++	cases := []struct {
++		size int
++		want int
++	}{
++		{0, 0},
++		{1, 1},
++		{blockSize - 1, 1},
++		{blockSize, 1},
++		{blockSize + 1, 2},
++		{2*blockSize - 1, 2},
++		{2 * blockSize, 2},
++		{2*blockSize + 7, 3},
++	}
++	for _, c := range cases {
++		if got := dataBlocks(c.size); got != c.want {
++			t.Errorf("dataBlocks(%d) = %d, want %d", c.size, got, c.want)
++		}
++	}
++}

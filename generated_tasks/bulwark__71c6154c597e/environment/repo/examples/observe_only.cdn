@@ -1,0 +1,14 @@
+# Tag suspect requests for the SIEM without blocking them. Useful while
+# tuning a new rule -- let it tag in production for a week, look at the
+# false positive rate, then promote to block.
+
+phase pre_route {
+    rule tag_long_query {
+        when path == "/search" and len(query.q) > 200
+        then tag(name="long-search-query", severity="low")
+    }
+    rule tag_suspicious_ua {
+        when header.user-agent matches /^(curl|wget|python-requests)/
+        then tag(name="cli-user-agent", severity="info")
+    }
+}

@@ -1,0 +1,144 @@
+diff --git a/src/serializer.ts b/src/serializer.ts
+new file mode 100644
+index 0000000..be7fcda
+--- /dev/null
++++ b/src/serializer.ts
+@@ -0,0 +1,73 @@
++import { Graph } from './graph';
++import { DiGraph } from './digraph';
++import { SerializedGraph, NodeId } from './types';
++
++type AnyGraph = Graph | DiGraph;
++
++export function toJSON(g: AnyGraph): SerializedGraph {
++  return { type: g instanceof DiGraph ? 'digraph' : 'graph', directed: g instanceof DiGraph, nodes: g.nodes().map(n => ({ ...n })), edges: g.edges().map(e => ({ ...e })), metadata: { nodeCount: g.nodeCount(), edgeCount: g.edgeCount() } };
++}
++
++export function fromJSON(data: SerializedGraph): Graph | DiGraph {
++  const g = data.directed ? new DiGraph() : new Graph();
++  for (const node of data.nodes) g.addNode(node.id, node.data, node.label, node.attributes);
++  for (const edge of data.edges) {
++    (g as any)._edges.set(edge.id, { ...edge });
++    (g as any)._addAdj(edge.source, edge.target, edge.id);
++    if (!data.directed) (g as any)._addAdj(edge.target, edge.source, edge.id);
++    if (data.directed) (g as any)._addInAdj?.(edge.target, edge.source, edge.id);
++    const num = parseInt(edge.id.slice(1), 10); if (!isNaN(num)) (g as any)._edgeCounter = Math.max((g as any)._edgeCounter, num);
++  }
++  return g;
++}
++
++export function toDOT(g: AnyGraph, name = 'G'): string {
++  const dir = g instanceof DiGraph; const kw = dir ? 'digraph' : 'graph'; const arr = dir ? '->' : '--';
++  const lines: string[] = [`${kw} ${name} {`];
++  for (const n of g.nodes()) { const a = n.label ? ` [label="${n.label}"]` : ''; lines.push(`  "${n.id}"${a};`); }
++  const seen = new Set<string>();
++  for (const e of g.edges()) {
++    if (!dir) { const k = [e.source, e.target].sort().join('--'); if (seen.has(k)) continue; seen.add(k); }
++    const attrs: string[] = []; if (typeof e.weight === 'number' && e.weight !== 1) attrs.push(`weight=${e.weight}`); if (e.label) attrs.push(`label="${e.label}"`);
++    lines.push(`  "${e.source}" ${arr} "${e.target}"${attrs.length ? ` [${attrs.join(', ')}]` : ''};`);
++  }
++  lines.push('}'); return lines.join('\n');
++}
++
++export function fromDOT(dot: string): Graph | DiGraph {
++  const directed = /^\s*digraph/.test(dot); const g = directed ? new DiGraph({ allowMultiEdges: true }) : new Graph({ allowMultiEdges: true });
++  const edgeRe = /^\s*"?([^"\s\->]+)"?\s*(->>?|--)\s*"?([^"\s\[\];]+)"?\s*(\[[^\]]*\])?\s*;/gm;
++  let m: RegExpExecArray | null;
++  while ((m = edgeRe.exec(dot)) !== null) {
++    const [, src, , tgt, attrs] = m; g.addNodeIfAbsent(src); g.addNodeIfAbsent(tgt);
++    let w = 1; if (attrs) { const wm = /weight\s*=\s*([0-9.]+)/.exec(attrs); if (wm) w = parseFloat(wm[1]); }
++    g.addEdge(src, tgt, w as any);
++  }
++  return g;
++}
++
++export function toAdjacencyList(g: AnyGraph): Record<string, string[]> {
++  const r: Record<string, string[]> = {};
++  for (const id of g.nodeIds()) r[String(id)] = (g instanceof DiGraph ? g.successors(id) : g.neighbors(id)).map(String);
++  return r;
++}
++
++export function fromAdjacencyList(adj: Record<string, string[]>, directed = false): Graph | DiGraph {
++  const g = directed ? new DiGraph({ allowMultiEdges: true }) : new Graph({ allowMultiEdges: true });
++  for (const id of Object.keys(adj)) g.addNodeIfAbsent(id);
++  for (const [src, targets] of Object.entries(adj)) for (const tgt of targets) { g.addNodeIfAbsent(tgt); if (!directed && g.hasEdge(src, tgt)) continue; g.addEdge(src, tgt); }
++  return g;
++}
++
++export function toEdgeList(g: AnyGraph): [string, string, number][] {
++  const seen = new Set<string>(); const result: [string, string, number][] = [];
++  for (const e of g.edges()) { const k = g instanceof DiGraph ? `${e.source}->${e.target}` : [e.source, e.target].sort().join('--'); if (!seen.has(k)) { seen.add(k); result.push([String(e.source), String(e.target), typeof e.weight === 'number' ? e.weight : 1]); } }
++  return result;
++}
++
++export function fromEdgeList(edges: [string, string, number][], directed = false): Graph | DiGraph {
++  const g = directed ? new DiGraph({ allowMultiEdges: true }) : new Graph({ allowMultiEdges: true });
++  for (const [s, t, w] of edges) { g.addNodeIfAbsent(s); g.addNodeIfAbsent(t); g.addEdge(s, t, w as any); }
++  return g;
++}
++
+diff --git a/tests/serializer.test.ts b/tests/serializer.test.ts
+new file mode 100644
+index 0000000..6ac8f8e
+--- /dev/null
++++ b/tests/serializer.test.ts
+@@ -0,0 +1,59 @@
++import { Graph } from '../src/graph';
++import { DiGraph } from '../src/digraph';
++import { toJSON, fromJSON, toDOT, fromDOT, toAdjacencyList, fromAdjacencyList, toEdgeList, fromEdgeList } from '../src/serializer';
++
++function makeGraph(): Graph {
++  const g = new Graph();
++  ['a','b','c'].forEach(n => g.addNode(n));
++  g.addEdge('a','b',1); g.addEdge('b','c',2);
++  return g;
++}
++
++describe('JSON serialization', () => {
++  it('toJSON returns serialized object', () => { expect(typeof toJSON(makeGraph())).toBe('object'); });
++  it('fromJSON restores node count', () => { expect(fromJSON(toJSON(makeGraph())).nodeCount()).toBe(3); });
++  it('fromJSON restores edge count', () => { expect(fromJSON(toJSON(makeGraph())).edgeCount()).toBe(2); });
++  it('fromJSON has correct edges', () => { expect(fromJSON(toJSON(makeGraph())).hasEdge('a','b')).toBe(true); });
++  it('empty graph roundtrip', () => { expect(fromJSON(toJSON(new Graph())).nodeCount()).toBe(0); });
++  it('toJSON has nodes property', () => { expect(toJSON(makeGraph())).toHaveProperty('nodes'); });
++  it('toJSON has edges property', () => { expect(toJSON(makeGraph())).toHaveProperty('edges'); });
++});
++
++describe('DOT serialization', () => {
++  it('toDOT contains graph keyword', () => { expect(toDOT(makeGraph())).toContain('graph'); });
++  it('toDOT contains node names', () => { const dot = toDOT(makeGraph()); expect(dot).toContain('a'); expect(dot).toContain('b'); });
++  it('fromDOT restores node count', () => { const g2 = fromDOT(toDOT(makeGraph())); expect(g2.nodeCount()).toBe(3); });
++  it('fromDOT restores edges', () => { expect(fromDOT(toDOT(makeGraph())).hasEdge('a','b')).toBe(true); });
++  it('directed graph uses digraph keyword', () => { const g = new DiGraph(); g.addNode('a'); g.addNode('b'); g.addEdge('a','b'); expect(toDOT(g)).toContain('digraph'); });
++  it('toDOT returns string', () => { expect(typeof toDOT(makeGraph())).toBe('string'); });
++});
++
++describe('adjacency list', () => {
++  it('toAdjacencyList returns object', () => { expect(typeof toAdjacencyList(makeGraph())).toBe('object'); });
++  it('has all nodes as keys', () => { const al = toAdjacencyList(makeGraph()); expect('a' in al).toBe(true); });
++  it('correct neighbors for a', () => { expect(toAdjacencyList(makeGraph())['a']).toContain('b'); });
++  it('fromAdjacencyList restores nodes', () => { const al = toAdjacencyList(makeGraph()); expect(fromAdjacencyList(al).nodeCount()).toBe(3); });
++  it('fromAdjacencyList restores edges', () => { const al = toAdjacencyList(makeGraph()); expect(fromAdjacencyList(al).edgeCount()).toBeGreaterThan(0); });
++});
++
++describe('edge list', () => {
++  it('toEdgeList returns array', () => { expect(Array.isArray(toEdgeList(makeGraph()))).toBe(true); });
++  it('correct edge count', () => { expect(toEdgeList(makeGraph())).toHaveLength(2); });
++  it('fromEdgeList restores nodes', () => { expect(fromEdgeList(toEdgeList(makeGraph())).nodeCount()).toBe(3); });
++  it('fromEdgeList restores edges', () => { expect(fromEdgeList(toEdgeList(makeGraph())).edgeCount()).toBe(2); });
++  it('edge tuples have 3 elements', () => { for (const e of toEdgeList(makeGraph())) expect(e).toHaveLength(3); });
++});
++
++describe('serializer advanced', () => {
++  it('toDOT returns string', () => { expect(typeof toDOT(makeGraph())).toBe('string'); });
++  it('toDOT contains graph keyword', () => { expect(toDOT(makeGraph())).toContain('graph'); });
++  it('fromJSON restores node count', () => { const json = toJSON(makeGraph()); const g2 = fromJSON(json); expect(g2.nodeCount()).toBe(makeGraph().nodeCount()); });
++  it('fromJSON restores edge count', () => { const json = toJSON(makeGraph()); const g2 = fromJSON(json); expect(g2.edgeCount()).toBe(makeGraph().edgeCount()); });
++  it('fromAdjacencyList restores graph', () => { const adj = toAdjacencyList(makeGraph()); const g2 = fromAdjacencyList(adj); expect(g2.nodeCount()).toBe(makeGraph().nodeCount()); });
++  it('fromEdgeList restores edges', () => { const el = toEdgeList(makeGraph()) as [string,string,number][]; const g2 = fromEdgeList(el); expect(g2.edgeCount()).toBe(makeGraph().edgeCount()); });
++  it('toEdgeList each entry has 3 elements', () => { for (const e of toEdgeList(makeGraph())) expect(e).toHaveLength(3); });
++  it('toAdjacencyList has all nodes as keys', () => { const adj = toAdjacencyList(makeGraph()); for (const n of makeGraph().nodeIds()) expect(adj).toHaveProperty(String(n)); });
++  it('toJSON has nodes array', () => { expect(toJSON(makeGraph())).toHaveProperty('nodes'); });
++  it('toJSON has edges array', () => { expect(toJSON(makeGraph())).toHaveProperty('edges'); });
++})
++

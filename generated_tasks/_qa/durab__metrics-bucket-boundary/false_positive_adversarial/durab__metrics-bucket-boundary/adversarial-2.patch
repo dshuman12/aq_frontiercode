@@ -1,0 +1,29 @@
+diff --git a/internal/metrics/metrics.go b/internal/metrics/metrics.go
+--- a/internal/metrics/metrics.go
++++ b/internal/metrics/metrics.go
+@@
+ 	for i, ub := range h.bounds {
+-		if v < ub {
++		if v <= ub {
+ 			h.buckets[i]++
+ 		}
+ 	}
+diff --git a/internal/metrics/boundary_test.go b/internal/metrics/boundary_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/metrics/boundary_test.go
+@@
++package metrics
++
++import "testing"
++
++// TestHistogramBoundaryBucket is a thin regression check: a value equal to a
++// bucket's upper bound must be counted in that bucket (cumulative semantics).
++func TestHistogramBoundaryBucket(t *testing.T) {
++	reg := New()
++	h := reg.NewHistogram("boundary_test", "boundary test histogram", []float64{1, 2, 5})
++	h.Observe(2)
++	if h.buckets[1] != 1 {
++		t.Fatalf("value equal to bound should be counted in its own bucket: buckets=%v", h.buckets)
++	}
++}

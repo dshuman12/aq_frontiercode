@@ -1,0 +1,96 @@
+package formatlog
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/dleblanc/kindling/internal/record"
+)
+
+func sampleRec() *record.Record {
+	return &record.Record{
+		Timestamp: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
+		Level:     "info",
+		Service:   "auth",
+		Message:   "hello world",
+		Fields:    map[string]string{"host": "h1", "remote": "127.0.0.1", "status": "200", "bytes": "42"},
+	}
+}
+
+func TestConsole(t *testing.T) {
+	r, _ := New(StyleConsole)
+	out, _ := r.Render(sampleRec())
+	if !strings.Contains(out, "[info]") || !strings.Contains(out, "auth") {
+		t.Fatalf("got %s", out)
+	}
+}
+
+func TestColor(t *testing.T) {
+	r, _ := New(StyleConsole)
+	r.EnableColor(true)
+	out, _ := r.Render(sampleRec())
+	if !strings.Contains(out, "\x1b[") {
+		t.Fatalf("expected color: %s", out)
+	}
+}
+
+func TestSyslog(t *testing.T) {
+	r, _ := New(StyleSyslog)
+	out, _ := r.Render(sampleRec())
+	if !strings.HasPrefix(out, "<22>") {
+		t.Fatalf("got %s", out)
+	}
+}
+
+func TestApache(t *testing.T) {
+	r, _ := New(StyleApache)
+	out, _ := r.Render(sampleRec())
+	if !strings.Contains(out, "127.0.0.1") {
+		t.Fatalf("got %s", out)
+	}
+}
+
+func TestCEF(t *testing.T) {
+	r, _ := New(StyleCEF)
+	out, _ := r.Render(sampleRec())
+	if !strings.HasPrefix(out, "CEF:0") {
+		t.Fatalf("got %s", out)
+	}
+}
+
+func TestLogfmt(t *testing.T) {
+	r, _ := New(StyleLogfmt)
+	out, _ := r.Render(sampleRec())
+	if !strings.Contains(out, "level=info") {
+		t.Fatalf("got %s", out)
+	}
+}
+
+func TestCustom(t *testing.T) {
+	r, _ := New(StyleConsole)
+	if err := r.SetCustom("c", "{{.Level}}|{{.Service}}|{{.Message}}"); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := r.Render(sampleRec())
+	if out != "info|auth|hello world" {
+		t.Fatalf("got %q", out)
+	}
+}
+
+func TestRenderAll(t *testing.T) {
+	r, _ := New(StyleLogfmt)
+	out, _ := r.RenderAll([]*record.Record{sampleRec(), sampleRec()})
+	if strings.Count(out, "\n") != 1 {
+		t.Fatalf("got %s", out)
+	}
+}
+
+func TestSetTimeLayout(t *testing.T) {
+	r, _ := New(StyleConsole)
+	r.SetTimeLayout(time.Kitchen)
+	out, _ := r.Render(sampleRec())
+	if strings.Contains(out, "T12:00") {
+		t.Fatalf("got %s", out)
+	}
+}

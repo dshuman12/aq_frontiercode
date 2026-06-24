@@ -1,0 +1,247 @@
+diff --git a/bco-core/ringbuffer.go b/bco-core/ringbuffer.go
+index cf8a820..6387ab3 100644
+--- a/bco-core/ringbuffer.go
++++ b/bco-core/ringbuffer.go
+@@ -33,7 +33,7 @@ func (r *RingBuffer[T]) Entries() []T {
+ 	}
+ 	out := make([]T, r.count)
+ 	for i := 0; i < r.count; i++ {
+-		idx := (r.head - i + r.cap) % r.cap
++		idx := (r.head - 1 - i + r.cap) % r.cap
+ 		out[i] = r.buf[idx]
+ 	}
+ 	return out
+diff --git a/bco-core/ringbuffer_test.go b/bco-core/ringbuffer_test.go
+new file mode 100644
+index 0000000..75c7495
+--- /dev/null
++++ b/bco-core/ringbuffer_test.go
+@@ -0,0 +1,228 @@
++package main
++
++import "testing"
++
++func TestRingBuffer_Basic(t *testing.T) {
++	rb := NewRingBuffer[int](3)
++	if rb.Len() != 0 {
++		t.Fatalf("empty buffer Len: %d", rb.Len())
++	}
++	if got := rb.Entries(); got != nil {
++		t.Fatalf("empty buffer Entries: %v", got)
++	}
++
++	rb.Add(1)
++	rb.Add(2)
++	if rb.Len() != 2 {
++		t.Fatalf("Len after 2 adds: %d", rb.Len())
++	}
++	got := rb.Entries()
++	if len(got) != 2 || got[0] != 2 || got[1] != 1 {
++		t.Fatalf("Entries after 2 adds: %v", got)
++	}
++}
++
++func TestRingBuffer_Eviction(t *testing.T) {
++	rb := NewRingBuffer[int](3)
++	for i := 1; i <= 5; i++ {
++		rb.Add(i)
++	}
++	if rb.Len() != 3 {
++		t.Fatalf("Len after overflow: %d", rb.Len())
++	}
++	got := rb.Entries()
++	if len(got) != 3 || got[0] != 5 || got[1] != 4 || got[2] != 3 {
++		t.Fatalf("Entries after overflow: %v (want [5,4,3])", got)
++	}
++}
++
++func TestRingBuffer_ExactCapacity(t *testing.T) {
++	rb := NewRingBuffer[string](2)
++	rb.Add("a")
++	rb.Add("b")
++	if rb.Len() != 2 {
++		t.Fatalf("Len at cap: %d", rb.Len())
++	}
++	got := rb.Entries()
++	if len(got) != 2 || got[0] != "b" || got[1] != "a" {
++		t.Fatalf("Entries at cap: %v", got)
++	}
++	rb.Add("c")
++	got = rb.Entries()
++	if len(got) != 2 || got[0] != "c" || got[1] != "b" {
++		t.Fatalf("Entries after wrap: %v (want [c,b])", got)
++	}
++}
++
++func TestRingBuffer_EntriesLimited(t *testing.T) {
++	rb := NewRingBuffer[int](10)
++	for i := 1; i <= 7; i++ {
++		rb.Add(i)
++	}
++
++	got := rb.EntriesLimited(3)
++	if len(got) != 3 || got[0] != 7 || got[1] != 6 || got[2] != 5 {
++		t.Fatalf("EntriesLimited(3): %v", got)
++	}
++
++	all := rb.EntriesLimited(0)
++	if len(all) != 7 {
++		t.Fatalf("EntriesLimited(0) should return all: len=%d", len(all))
++	}
++
++	all2 := rb.EntriesLimited(100)
++	if len(all2) != 7 {
++		t.Fatalf("EntriesLimited(>count) should return all: len=%d", len(all2))
++	}
++}
++
++func TestRingBuffer_SingleCapacity(t *testing.T) {
++	rb := NewRingBuffer[int](1)
++	rb.Add(10)
++	if rb.Len() != 1 {
++		t.Fatalf("Len: %d", rb.Len())
++	}
++	rb.Add(20)
++	got := rb.Entries()
++	if len(got) != 1 || got[0] != 20 {
++		t.Fatalf("single-cap after overwrite: %v", got)
++	}
++}
++
++func TestRingBuffer_LargeCapacity(t *testing.T) {
++	rb := NewRingBuffer[int](200)
++	for i := 0; i < 250; i++ {
++		rb.Add(i)
++	}
++	if rb.Len() != 200 {
++		t.Fatalf("Len: %d", rb.Len())
++	}
++	entries := rb.Entries()
++	if entries[0] != 249 || entries[199] != 50 {
++		t.Fatalf("first=%d last=%d (want 249, 50)", entries[0], entries[199])
++	}
++}
++
++func TestRingBuffer_RemoveLastWhere_Newest(t *testing.T) {
++	rb := NewRingBuffer[int](5)
++	rb.Add(10)
++	rb.Add(20)
++	rb.Add(30)
++
++	ok := rb.RemoveLastWhere(func(v int) bool { return v == 30 })
++	if !ok {
++		t.Fatal("expected removal")
++	}
++	if rb.Len() != 2 {
++		t.Fatalf("Len after remove: %d", rb.Len())
++	}
++	got := rb.Entries()
++	if len(got) != 2 || got[0] != 20 || got[1] != 10 {
++		t.Fatalf("Entries after removing newest: %v (want [20,10])", got)
++	}
++}
++
++func TestRingBuffer_RemoveLastWhere_Middle(t *testing.T) {
++	rb := NewRingBuffer[int](5)
++	rb.Add(10)
++	rb.Add(20)
++	rb.Add(30)
++	rb.Add(40)
++
++	ok := rb.RemoveLastWhere(func(v int) bool { return v == 20 })
++	if !ok {
++		t.Fatal("expected removal")
++	}
++	if rb.Len() != 3 {
++		t.Fatalf("Len: %d", rb.Len())
++	}
++	got := rb.Entries()
++	if len(got) != 3 || got[0] != 40 || got[1] != 30 || got[2] != 10 {
++		t.Fatalf("Entries after removing middle: %v (want [40,30,10])", got)
++	}
++}
++
++func TestRingBuffer_RemoveLastWhere_Oldest(t *testing.T) {
++	rb := NewRingBuffer[int](5)
++	rb.Add(10)
++	rb.Add(20)
++	rb.Add(30)
++
++	ok := rb.RemoveLastWhere(func(v int) bool { return v == 10 })
++	if !ok {
++		t.Fatal("expected removal")
++	}
++	if rb.Len() != 2 {
++		t.Fatalf("Len: %d", rb.Len())
++	}
++	got := rb.Entries()
++	if len(got) != 2 || got[0] != 30 || got[1] != 20 {
++		t.Fatalf("Entries after removing oldest: %v (want [30,20])", got)
++	}
++}
++
++func TestRingBuffer_RemoveLastWhere_NoMatch(t *testing.T) {
++	rb := NewRingBuffer[int](5)
++	rb.Add(10)
++	rb.Add(20)
++
++	ok := rb.RemoveLastWhere(func(v int) bool { return v == 99 })
++	if ok {
++		t.Fatal("expected no removal")
++	}
++	if rb.Len() != 2 {
++		t.Fatalf("Len unchanged: %d", rb.Len())
++	}
++}
++
++func TestRingBuffer_RemoveLastWhere_MatchesNewest(t *testing.T) {
++	rb := NewRingBuffer[int](5)
++	rb.Add(10)
++	rb.Add(20)
++	rb.Add(10)
++
++	ok := rb.RemoveLastWhere(func(v int) bool { return v == 10 })
++	if !ok {
++		t.Fatal("expected removal")
++	}
++	got := rb.Entries()
++	if len(got) != 2 || got[0] != 20 || got[1] != 10 {
++		t.Fatalf("should remove most recent 10: %v (want [20,10])", got)
++	}
++}
++
++func TestRingBuffer_RemoveLastWhere_WrappedBuffer(t *testing.T) {
++	rb := NewRingBuffer[int](3)
++	rb.Add(1)
++	rb.Add(2)
++	rb.Add(3)
++	rb.Add(4) // evicts 1; buffer now [4,3,2] newest-first
++
++	ok := rb.RemoveLastWhere(func(v int) bool { return v == 3 })
++	if !ok {
++		t.Fatal("expected removal")
++	}
++	if rb.Len() != 2 {
++		t.Fatalf("Len: %d", rb.Len())
++	}
++	got := rb.Entries()
++	if len(got) != 2 || got[0] != 4 || got[1] != 2 {
++		t.Fatalf("after wrapped removal: %v (want [4,2])", got)
++	}
++}
++
++func TestRingBuffer_RemoveLastWhere_AddAfterRemove(t *testing.T) {
++	rb := NewRingBuffer[int](4)
++	rb.Add(10)
++	rb.Add(20)
++	rb.Add(30)
++
++	rb.RemoveLastWhere(func(v int) bool { return v == 20 })
++	rb.Add(40)
++	rb.Add(50)
++
++	got := rb.Entries()
++	if len(got) != 4 || got[0] != 50 || got[1] != 40 || got[2] != 30 || got[3] != 10 {
++		t.Fatalf("after remove+add: %v (want [50,40,30,10])", got)
++	}
++}

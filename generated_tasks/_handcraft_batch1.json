@@ -1,0 +1,80 @@
+[
+  {
+    "repo_key": "bco",
+    "repository": "bco",
+    "task_id": "bco__ringbuf-removelastwhere",
+    "source_file": "bco-core/ringbuffer.go",
+    "replacements": [
+      ["\t\t\t\tsrc := (r.head - j + r.cap) % r.cap\n\t\t\t\tdst := (r.head - 1 - j + r.cap) % r.cap", "\t\t\t\tsrc := (r.head - 1 - j + r.cap) % r.cap\n\t\t\t\tdst := (r.head - j + r.cap) % r.cap"]
+    ],
+    "delete_tests": ["bco-core/ringbuffer_test.go"],
+    "commit_subject": "fix(ringbuffer): RemoveLastWhere must shift entries in the correct direction",
+    "visible_cmd": "go test ./bco-core/...",
+    "description": "RingBuffer.RemoveLastWhere corrupts the buffer when it removes an entry that is not the newest. After a matching entry in the middle or oldest position is removed, the compaction step that shifts the remaining (older) entries to fill the gap moves data in the wrong direction, leaving entries duplicated or out of order. As a result Entries() no longer returns the surviving entries correctly newest-first. Fix RemoveLastWhere so that after removing any matched entry, the remaining entries are intact and correctly ordered for both wrapped and non-wrapped buffers, with the evicted slot zeroed and count decremented."
+  },
+  {
+    "repo_key": "bco",
+    "repository": "bco",
+    "task_id": "bco__priority-tiebreak",
+    "source_file": "bco-core/priority.go",
+    "replacements": [
+      ["\t\treturn eligible[i].DeviceID < eligible[j].DeviceID", "\t\treturn eligible[i].DeviceID > eligible[j].DeviceID"]
+    ],
+    "delete_tests": ["bco-core/priority_test.go"],
+    "commit_subject": "fix(priority): break score ties by smallest DeviceID",
+    "visible_cmd": "go test ./bco-core/...",
+    "description": "ComputePriorityResolution selects the wrong winner when two eligible devices tie on EffectiveScore. The intended, documented behavior is that an exact score tie is broken deterministically in favor of the lexicographically smaller DeviceID, but the current ordering resolves ties to the larger DeviceID, so the wrong device wins. Fix the tie-break so that on equal EffectiveScore the candidate with the smallest DeviceID is chosen as the winner."
+  },
+  {
+    "repo_key": "durab",
+    "repository": "durab",
+    "task_id": "durab__retry-backoff-offbyone",
+    "source_file": "internal/engine/retry.go",
+    "replacements": [
+      ["\td := float64(p.InitialInterval) * math.Pow(p.BackoffCoefficient, float64(attempt-1))", "\td := float64(p.InitialInterval) * math.Pow(p.BackoffCoefficient, float64(attempt))"]
+    ],
+    "delete_tests": ["internal/engine/retry_test.go"],
+    "commit_subject": "fix(engine): correct exponential backoff exponent for NextRetry",
+    "visible_cmd": "go test ./internal/engine/...",
+    "description": "NextRetry computes the exponential backoff one step too aggressively. The very first retry (attempt 1) already waits BackoffCoefficient times InitialInterval instead of waiting exactly InitialInterval, because the growth exponent applied to BackoffCoefficient is off by one. Every returned delay is therefore scaled by one extra factor of the coefficient before the MaxInterval ceiling is applied. Fix the calculation so attempt 1 yields InitialInterval, attempt 2 yields InitialInterval*BackoffCoefficient, attempt 3 yields InitialInterval*BackoffCoefficient^2, and so on, still clamping to MaxInterval and preserving the existing zero/invalid-config guards and the (duration, ok) return contract."
+  },
+  {
+    "repo_key": "durab",
+    "repository": "durab",
+    "task_id": "durab__metrics-bucket-boundary",
+    "source_file": "internal/metrics/metrics.go",
+    "replacements": [
+      ["\tfor i, b := range h.buckets {\n\t\tif v <= b {", "\tfor i, b := range h.buckets {\n\t\tif v < b {"]
+    ],
+    "delete_tests": ["internal/metrics/metrics_test.go"],
+    "commit_subject": "fix(metrics): count boundary values in their own histogram bucket",
+    "visible_cmd": "go test ./internal/metrics/...",
+    "description": "Histogram.Observe places boundary observations in the wrong bucket. A value exactly equal to a bucket's upper bound is skipped past that bucket and counted in the next higher bucket (or the overflow), instead of being counted in the bucket whose upper bound it equals. This violates standard cumulative-histogram semantics where a bucket counts observations less than or equal to its upper bound. Fix bucket selection so that a value equal to a boundary is counted in that boundary's bucket."
+  },
+  {
+    "repo_key": "kindling",
+    "repository": "kindling",
+    "task_id": "kindling__treemap-set-shift",
+    "source_file": "internal/treemap/treemap.go",
+    "replacements": [
+      ["\tcopy(m.keys[idx+1:], m.keys[idx:])\n\tcopy(m.vals[idx+1:], m.vals[idx:])", "\tcopy(m.keys[idx+1:], m.keys[idx+1:])\n\tcopy(m.vals[idx+1:], m.vals[idx+1:])"]
+    ],
+    "delete_tests": ["internal/treemap/treemap_test.go"],
+    "commit_subject": "fix(treemap): shift existing entries right when inserting a new key",
+    "visible_cmd": "go test ./internal/treemap/...",
+    "description": "Map.Set corrupts the sorted map when inserting a new key whose position is not at the very end. After growing the backing slices, the step that should shift the existing elements (from the insertion index onward) one position to the right to open a gap is not performed correctly, so the element previously occupying the insertion index is overwritten/lost and the key ordering and length become inconsistent. Get on a previously inserted key can then fail. Fix Set so that inserting a new key shifts the existing entries right and preserves all entries in sorted key order, while still overwriting in place when the key already exists."
+  },
+  {
+    "repo_key": "kindling",
+    "repository": "kindling",
+    "task_id": "kindling__histogram-cumulative",
+    "source_file": "internal/histogram/histogram.go",
+    "replacements": [
+      ["\t\tif b > bound {\n\t\t\tbreak\n\t\t}", "\t\tif b >= bound {\n\t\t\tbreak\n\t\t}"]
+    ],
+    "delete_tests": ["internal/histogram/histogram_test.go"],
+    "commit_subject": "fix(histogram): CumulativeBelow must include the boundary bucket",
+    "visible_cmd": "go test ./internal/histogram/...",
+    "description": "Histogram.CumulativeBelow undercounts at boundaries. When a bucket's bound is exactly equal to the requested bound, that bucket's observations are excluded from the cumulative total, so the function stops one bucket too early. The documented behavior is to return the count of all observations at or below the given bound, inclusive of the bucket whose bound equals the argument. Fix the accumulation so the boundary bucket is included."
+  }
+]

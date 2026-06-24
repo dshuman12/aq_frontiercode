@@ -1,0 +1,67 @@
+diff --git a/internal/valueshape/valueshape.go b/internal/valueshape/valueshape.go
+index e785755..bcf705a 100644
+--- a/internal/valueshape/valueshape.go
++++ b/internal/valueshape/valueshape.go
+@@ -109,7 +109,7 @@ func Classify(v string) Shape {
+ func allOctetsValid(s string) bool {
+ 	for _, oct := range strings.Split(s, ".") {
+ 		n, err := strconv.Atoi(oct)
+-		if err != nil || n < 0 || n >= 255 {
++		if err != nil || n < 0 || n > 255 {
+ 			return false
+ 		}
+ 	}
+diff --git a/internal/valueshape/valueshape_test.go b/internal/valueshape/valueshape_test.go
+new file mode 100644
+index 0000000..e7d8dd7
+--- /dev/null
++++ b/internal/valueshape/valueshape_test.go
+@@ -0,0 +1,48 @@
++package valueshape
++
++import "testing"
++
++func TestClassify(t *testing.T) {
++	cases := map[string]Shape{
++		"":                                     ShapeNull,
++		"true":                                 ShapeBool,
++		"42":                                   ShapeInt,
++		"3.14":                                 ShapeFloat,
++		"192.168.1.1":                          ShapeIPv4,
++		"alice@example.com":                    ShapeEmail,
++		"https://example.com/path":             ShapeURL,
++		"550e8400-e29b-41d4-a716-446655440000": ShapeUUID,
++		"01HZ8YPGZQNCYR0EXMPNE5RT8M":           ShapeULID,
++		"2025-04-02":                           ShapeISODate,
++		"2025-04-02T15:04:05Z":                 ShapeISODateTime,
++		"deadbeef0123456789":                   ShapeHexToken,
++		"+15551234567":                         ShapePhone,
++		"/var/log/kindling.log":                ShapePath,
++		"abcXYZ":                               ShapeGeneric,
++	}
++	for in, want := range cases {
++		if got := Classify(in); got != want {
++			t.Errorf("Classify(%q) = %s, want %s", in, got, want)
++		}
++	}
++}
++
++func TestHistogram(t *testing.T) {
++	h := NewHistogram()
++	for _, v := range []string{"42", "43", "foo", "true"} {
++		h.Add(v)
++	}
++	c := h.Counts()
++	if c[ShapeInt] != 2 || c[ShapeBool] != 1 || c[ShapeGeneric] != 1 {
++		t.Fatalf("counts %v", c)
++	}
++	if h.Total() != 4 {
++		t.Fatalf("total %d", h.Total())
++	}
++}
++
++func TestIPv4Bounds(t *testing.T) {
++	if Classify("999.0.0.1") == ShapeIPv4 {
++		t.Fatal("999 should not match ipv4")
++	}
++}

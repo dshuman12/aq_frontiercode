@@ -1,0 +1,36 @@
+diff --git a/internal/uri/uri.go b/internal/uri/uri.go
+--- a/internal/uri/uri.go
++++ b/internal/uri/uri.go
+@@
+ 		case '%':
+-			if i+1 >= len(s) {
++			if i+2 >= len(s) {
+diff --git a/internal/uri/uri_test.go b/internal/uri/uri_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/uri/uri_test.go
+@@
++package uri
++
++import "testing"
++
++// TestPercentDecodeTruncatedEscape covers a lone trailing '%', a '%'
++// followed by a single character (hex or non-hex), and confirms a
++// well-formed escape immediately before end-of-input still decodes.
++func TestPercentDecodeTruncatedEscape(t *testing.T) {
++	for _, in := range []string{"%", "%A", "%g", "ab%", "ab%C"} {
++		if _, err := PercentDecode(in); err == nil {
++			t.Fatalf("expected short-escape error for %q", in)
++		}
++	}
++}
++
++func TestPercentDecodeValidEscapeAtEnd(t *testing.T) {
++	out, err := PercentDecode("a%20b")
++	if err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++	if string(out) != "a b" {
++		t.Fatalf("got %q", out)
++	}
++}

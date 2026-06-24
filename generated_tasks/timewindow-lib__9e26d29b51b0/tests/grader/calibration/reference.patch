@@ -1,0 +1,223 @@
+diff --git a/tests/test_duration.py b/tests/test_duration.py
+new file mode 100644
+index 0000000..3bf2f6a
+--- /dev/null
++++ b/tests/test_duration.py
+@@ -0,0 +1,68 @@
++import pytest
++
++from timewindow.duration import (
++    duration_seconds_to_bucket_width,
++    format_duration_seconds,
++    parse_duration_to_nanoseconds,
++    parse_duration_to_seconds,
++)
++from timewindow.exceptions import ParseError
++
++
++def test_parse_single_components():
++    assert parse_duration_to_seconds("1h") == 3600
++    assert parse_duration_to_seconds("30m") == 1800
++    assert parse_duration_to_seconds("45s") == 45
++    assert parse_duration_to_seconds("250ms") == 0.25
++
++
++def test_parse_compound_without_spaces():
++    assert parse_duration_to_seconds("1h30m") == 5400
++
++
++def test_parse_compound_with_spaces():
++    assert parse_duration_to_seconds("  1h  15m  ") == 4500
++
++
++def test_parse_fractional_hours():
++    assert abs(parse_duration_to_seconds("1.5h") - 5400) < 1e-6
++
++
++def test_parse_nanoseconds_round_trip():
++    ns = parse_duration_to_nanoseconds("500ms")
++    assert ns == 500_000_000
++
++
++def test_parse_rejects_empty():
++    with pytest.raises(ParseError):
++        parse_duration_to_seconds("")
++
++
++def test_parse_rejects_garbage_fragment():
++    with pytest.raises(ParseError):
++        parse_duration_to_seconds("12x")
++
++
++def test_bucket_width_requires_integer_seconds():
++    assert duration_seconds_to_bucket_width("90s") == 90
++    with pytest.raises(ParseError):
++        duration_seconds_to_bucket_width("250ms")
++
++
++def test_format_whole_seconds():
++    assert format_duration_seconds(90) == "90s"
++    assert format_duration_seconds(3600) == "1h"
++
++
++def test_format_subsecond():
++    text = format_duration_seconds(0.25)
++    assert text.endswith("ms") or text.endswith("s")
++
++
++def test_format_zero():
++    assert format_duration_seconds(0) == "0s"
++
++
++def test_format_rejects_negative():
++    with pytest.raises(ValueError):
++        format_duration_seconds(-1)
+diff --git a/timewindow/duration.py b/timewindow/duration.py
+new file mode 100644
+index 0000000..fe885f3
+--- /dev/null
++++ b/timewindow/duration.py
+@@ -0,0 +1,124 @@
++from __future__ import annotations
++
++import re
++
++from timewindow.exceptions import ParseError
++
++_UNITS: dict[str, int] = {
++    "ns": 1,
++    "us": 1_000,
++    "µs": 1_000,
++    "ms": 1_000_000,
++    "s": 1_000_000_000,
++    "m": 60 * 1_000_000_000,
++    "h": 3600 * 1_000_000_000,
++    "d": 86400 * 1_000_000_000,
++    "w": 7 * 86400 * 1_000_000_000,
++}
++
++_FRAGMENT = re.compile(
++    r"(\d+(?:\.\d+)?)\s*(" + "|".join(re.escape(k) for k in sorted(_UNITS, key=len, reverse=True)) + r")",
++    re.IGNORECASE,
++)
++
++
++def parse_duration_to_nanoseconds(text: str) -> int:
++    """
++    Parse a duration like ``1h30m``, ``45s``, ``250ms``, ``2.5d``.
++
++    Returns an integer number of nanoseconds. Components are summed.
++    Fractional values are allowed for any component.
++    """
++    raw = text.strip()
++    if not raw:
++        raise ParseError("empty duration")
++
++    total = 0
++    pos = 0
++    matched_any = False
++    while pos < len(raw):
++        while pos < len(raw) and raw[pos].isspace():
++            pos += 1
++        if pos >= len(raw):
++            break
++        m = _FRAGMENT.match(raw, pos)
++        if not m:
++            raise ParseError(f"unrecognized duration fragment at column {pos + 1}: {raw[pos:].strip()!r}")
++        matched_any = True
++        amount = float(m.group(1))
++        unit = m.group(2).lower()
++        if unit == "µs":
++            unit = "us"
++        scale = _UNITS.get(unit)
++        if scale is None:
++            raise ParseError(f"unknown unit {unit!r}")
++        total += int(amount * scale)
++        pos = m.end()
++        while pos < len(raw) and raw[pos].isspace():
++            pos += 1
++
++    if not matched_any:
++        raise ParseError(f"could not parse duration: {text!r}")
++    return total
++
++
++def parse_duration_to_seconds(text: str) -> float:
++    """Parse a duration string and return floating-point seconds."""
++    ns = parse_duration_to_nanoseconds(text)
++    return ns / 1_000_000_000
++
++
++def format_duration_seconds(seconds: float, *, precision: int = 3) -> str:
++    """
++    Render a non-negative duration in seconds using the largest tidy unit.
++
++    Picks among ns, µs, ms, s, m, h, d, w. Values below 1ns round to ``0ns``.
++    """
++    if seconds < 0:
++        raise ValueError("seconds must be non-negative")
++    if precision < 0 or precision > 9:
++        raise ValueError("precision must be between 0 and 9")
++
++    ns = int(round(seconds * 1_000_000_000))
++    if ns == 0:
++        return "0s"
++
++    ordered = (
++        ("w", _UNITS["w"]),
++        ("d", _UNITS["d"]),
++        ("h", _UNITS["h"]),
++        ("m", _UNITS["m"]),
++        ("s", _UNITS["s"]),
++        ("ms", _UNITS["ms"]),
++        ("us", _UNITS["us"]),
++        ("ns", _UNITS["ns"]),
++    )
++
++    for label, width in ordered:
++        if ns >= width and ns % width == 0:
++            value = ns // width
++            if value > 0:
++                return f"{value}{label}"
++
++    for label, width in ordered:
++        if ns >= width:
++            value = ns / width
++            formatted = f"{value:.{precision}f}".rstrip("0").rstrip(".")
++            return f"{formatted}{label}"
++
++    return "0ns"
++
++
++def duration_seconds_to_bucket_width(text: str) -> int:
++    """
++    Parse a duration and return a whole number of seconds suitable as ``bucket_seconds``.
++
++    Raises if the duration is not a positive integer number of seconds.
++    """
++    sec = parse_duration_to_seconds(text)
++    rounded = round(sec)
++    if rounded <= 0:
++        raise ParseError("bucket width must be positive")
++    if abs(sec - rounded) > 1e-9:
++        raise ParseError("bucket width must be a whole number of seconds")
++    return int(rounded)
+diff --git a/timewindow/exceptions.py b/timewindow/exceptions.py
+new file mode 100644
+index 0000000..80cba03
+--- /dev/null
++++ b/timewindow/exceptions.py
+@@ -0,0 +1,13 @@
++"""Domain-specific errors for timewindow."""
++
++
++class TimeWindowError(ValueError):
++    """Base class for timewindow validation errors."""
++
++
++class ParseError(TimeWindowError):
++    """Raised when a user-supplied string cannot be parsed."""
++
++
++class IntervalError(TimeWindowError):
++    """Raised when interval bounds are inconsistent."""

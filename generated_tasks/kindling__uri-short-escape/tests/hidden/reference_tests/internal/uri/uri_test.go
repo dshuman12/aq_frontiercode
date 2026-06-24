@@ -1,0 +1,56 @@
+package uri_test
+
+import (
+	"bytes"
+	"testing"
+
+	"github.com/dleblanc/kindling/internal/uri"
+)
+
+func TestSafeChars(t *testing.T) {
+	if got := uri.PercentEncode([]byte("abc-_.~")); got != "abc-_.~" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestUnsafeChars(t *testing.T) {
+	if got := uri.PercentEncode([]byte(" /?#")); got != "%20%2F%3F%23" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestRoundTrip(t *testing.T) {
+	raw := make([]byte, 256)
+	for i := range raw {
+		raw[i] = byte(i)
+	}
+	out, err := uri.PercentDecode(uri.PercentEncode(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(raw, out) {
+		t.Error("round-trip failed")
+	}
+}
+
+func TestDecodeShortEscape(t *testing.T) {
+	if _, err := uri.PercentDecode("%2"); err == nil {
+		t.Error("expected error")
+	}
+}
+
+func TestDecodeBadHex(t *testing.T) {
+	if _, err := uri.PercentDecode("%XX"); err == nil {
+		t.Error("expected error")
+	}
+}
+
+func TestLowercaseHexAccepted(t *testing.T) {
+	out, err := uri.PercentDecode("%2f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != "/" {
+		t.Errorf("got %q", out)
+	}
+}

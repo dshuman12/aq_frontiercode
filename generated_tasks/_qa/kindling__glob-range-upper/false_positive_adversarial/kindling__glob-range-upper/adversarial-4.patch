@@ -1,0 +1,49 @@
+diff --git a/internal/glob/glob.go b/internal/glob/glob.go
+--- a/internal/glob/glob.go
++++ b/internal/glob/glob.go
+@@
+-			if c >= lo && c < hi {
++			// Shortcut: the original comparison excluded the upper bound,
++			// so add an explicit equality check to also accept hi.
++			if (c >= lo && c < hi) || c == hi {
+ 				matched = true
+ 			}
+diff --git a/internal/glob/glob_test.go b/internal/glob/glob_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/glob/glob_test.go
+@@
++package glob_test
++
++import (
++	"testing"
++
++	"github.com/dleblanc/kindling/internal/glob"
++)
++
++func TestRangeUpperBoundShortcut(t *testing.T) {
++	cases := []struct {
++		pattern string
++		name    string
++		want    bool
++	}{
++		{"[a-z]", "a", true},  // lower bound
++		{"[a-z]", "m", true},  // mid range
++		{"[a-z]", "z", true},  // regression: upper bound must match
++		{"[0-9]", "0", true},
++		{"[0-9]", "5", true},
++		{"[0-9]", "9", true},  // regression: upper bound must match
++		{"[a-z]", "A", false}, // out of range
++		{"[a-z]", "0", false},
++		{"[^a-z]", "z", false}, // negated: upper bound excluded
++		{"[^a-z]", "0", true},
++		{"[a-z0-9]", "z", true}, // multi-range upper bounds
++		{"[a-z0-9]", "9", true},
++		{"[a-z0-9]", "_", false},
++	}
++	for _, tc := range cases {
++		if got := glob.Matches(tc.pattern, tc.name); got != tc.want {
++			t.Errorf("Matches(%q, %q) = %v, want %v", tc.pattern, tc.name, got, tc.want)
++		}
++	}
++}

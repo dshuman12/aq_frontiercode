@@ -1,0 +1,50 @@
+diff --git a/internal/validate2/validate2.go b/internal/validate2/validate2.go
+--- a/internal/validate2/validate2.go
++++ b/internal/validate2/validate2.go
+@@
+-	if age >= v.maxAge {
++	if age > v.maxAge {
+ 		return ErrTimestampTooOld
+ 	}
+diff --git a/internal/validate2/validate2_test.go b/internal/validate2/validate2_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/validate2/validate2_test.go
+@@
++package validate2
++
++import (
++	"testing"
++	"time"
++)
++
++// TestTimestampRecentBoundary locks in the inclusive age boundary:
++// a record exactly at the limit passes, one unit under passes, and one
++// unit over fails. Driven by explicit ages to stay deterministic.
++func TestTimestampRecentBoundary(t *testing.T) {
++	const maxAge = 60 * time.Second
++	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
++	v := Validator{maxAge: maxAge, now: func() time.Time { return now }}
++
++	cases := []struct {
++		name    string
++		age     time.Duration
++		wantErr bool
++	}{
++		{"one under limit passes", maxAge - time.Second, false},
++		{"exactly at limit passes", maxAge, false},
++		{"one over limit fails", maxAge + time.Second, true},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			rec := Record{Timestamp: now.Add(-tc.age)}
++			err := v.Validate(rec)
++			if tc.wantErr && err == nil {
++				t.Fatalf("age=%s: expected error, got nil", tc.age)
++			}
++			if !tc.wantErr && err == ErrTimestampTooOld {
++				t.Fatalf("age=%s: unexpected too-old error", tc.age)
++			}
++		})
++	}
++}

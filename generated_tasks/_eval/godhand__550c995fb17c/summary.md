@@ -10,35 +10,35 @@ Trial mode: each trial is one independent agent solve trajectory. The agent rece
 
 | Task | Agent | Model | Best Reasoning Effort | Trials | Final Pass Rate | Final Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| godhand__550c995fb17c | codex | openai/gpt-5.5 | high | 3 | 0.000 | 0.722 | 0.000 |
+| godhand__550c995fb17c | codex | openai/gpt-5.5 | high | 3 | 0.000 | 0.000 | 0.000 |
 
 ## Effort Results
 
 | Task | Agent | Model | Reasoning Effort | Trials | Pass Rate | Average Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| godhand__550c995fb17c | codex | openai/gpt-5.5 | high | 3 | 0.000 | 0.722 | 0.000 |
+| godhand__550c995fb17c | codex | openai/gpt-5.5 | high | 3 | 0.000 | 0.000 | 0.000 |
 
 ## Trial Details
 
 | Task | Agent | Model | Reasoning Effort | Submission | Pass | Criteria | Categories | Score | Blocker Failures |
 | --- | --- | --- | --- | --- | --- | ---: | --- | ---: | --- |
-| godhand__550c995fb17c | codex | openai/gpt-5.5 | high | godhand__550c995fb17c__j6wjmro | no | 18/20 | patch_specific 5/6, regular 13/14 | 0.583 | hidden_reference_tests_pass, scope_matches_reference_intent |
-| godhand__550c995fb17c | codex | openai/gpt-5.5 | high | godhand__550c995fb17c__tPN8yiJ | no | 19/20 | patch_specific 5/6, regular 14/14 | 0.708 | hidden_reference_tests_pass |
-| godhand__550c995fb17c | codex | openai/gpt-5.5 | high | godhand__550c995fb17c__ubmFGLu | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.875 | scope_matches_reference_intent |
+| godhand__550c995fb17c | codex | openai/gpt-5.5 | high | godhand__550c995fb17c__j6wjmro | no | 18/20 | patch_specific 5/6, regular 13/14 | 0.000 | hidden_reference_tests_pass, scope_matches_reference_intent |
+| godhand__550c995fb17c | codex | openai/gpt-5.5 | high | godhand__550c995fb17c__tPN8yiJ | no | 19/20 | patch_specific 5/6, regular 14/14 | 0.000 | hidden_reference_tests_pass |
+| godhand__550c995fb17c | codex | openai/gpt-5.5 | high | godhand__550c995fb17c__ubmFGLu | no | 19/20 | patch_specific 6/6, regular 13/14 | 0.000 | scope_matches_reference_intent |
 
 ## Grader Details
 
 Trial pass/fail is determined by blocker criteria. Trial score is the weighted average of criterion scores, including failed trials.
 
 <details>
-<summary>godhand__550c995fb17c__j6wjmro: FAIL, score 0.583, criteria 18/20</summary>
+<summary>godhand__550c995fb17c__j6wjmro: FAIL, score 0.000, criteria 18/20</summary>
 
 - Task: `godhand__550c995fb17c`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.583
+- Score: 0.000
 - Reward: 0.000
 - Criteria: 18/20
 - Categories: patch_specific 5/6, regular 13/14
@@ -292,14 +292,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>godhand__550c995fb17c__tPN8yiJ: FAIL, score 0.708, criteria 19/20</summary>
+<summary>godhand__550c995fb17c__tPN8yiJ: FAIL, score 0.000, criteria 19/20</summary>
 
 - Task: `godhand__550c995fb17c`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.708
+- Score: 0.000
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 5/6, regular 14/14
@@ -559,14 +559,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>godhand__550c995fb17c__ubmFGLu: FAIL, score 0.875, criteria 19/20</summary>
+<summary>godhand__550c995fb17c__ubmFGLu: FAIL, score 0.000, criteria 19/20</summary>
 
 - Task: `godhand__550c995fb17c`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.875
+- Score: 0.000
 - Reward: 0.000
 - Criteria: 19/20
 - Categories: patch_specific 6/6, regular 13/14

@@ -1,0 +1,39 @@
+diff --git a/internal/uri/uri.go b/internal/uri/uri.go
+--- a/internal/uri/uri.go
++++ b/internal/uri/uri.go
+@@
+ 		case '%':
+-			if i+1 >= len(s) {
++			if i+2 >= len(s) {
+ 				return nil, ErrShortEscape
+ 			}
+diff --git a/internal/uri/shortescape_test.go b/internal/uri/shortescape_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/uri/shortescape_test.go
+@@
++package uri_test
++
++import (
++	"testing"
++
++	"github.com/dleblanc/kindling/internal/uri"
++)
++
++func TestPercentDecodeShortEscapeAtEnd(t *testing.T) {
++	for _, in := range []string{"%", "%A", "%a", "%z", "ab%", "ab%C"} {
++		if _, err := uri.PercentDecode([]byte(in)); err == nil {
++			t.Errorf("PercentDecode(%q): expected short-escape error, got nil", in)
++		}
++	}
++}
++
++func TestPercentDecodeValidBeforeEnd(t *testing.T) {
++	out, err := uri.PercentDecode([]byte("a%20"))
++	if err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++	if string(out) != "a " {
++		t.Errorf("got %q", out)
++	}
++}

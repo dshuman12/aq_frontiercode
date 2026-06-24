@@ -1,0 +1,212 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "description": "Manage encryption/decryption of plain-text data to /from vault ids.",
+    "version": "1.0",
+    "title": "Vault Service API",
+    "contact": {
+      "name": "GAPTECH Profile team",
+      "email": "HQ-GAPTECH-PROFILE-DG@gap.com"
+    }
+  },
+  "host": "stage.api.gap.com",
+  "basePath": "/commerce/vault",
+  "produces": [
+    "application/json"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "paths": {
+    "/vault-entries": {
+      "post": {
+        "tags": [
+          "Vault Service"
+        ],
+        "summary": "converts given request types to vault ids.",
+        "description": "Accepts a list of plain-text types and converts them to vault ids. A Bearer token is required to access this api.",
+        "parameters": [
+          {
+            "$ref": "#/parameters/authorizationParam"
+          },
+          {
+            "$ref": "#/parameters/contentTypeParam"
+          },
+          {
+            "$ref": "#/parameters/acceptParam"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "description": "Array of VaultRequest objects.\n\n Values accepted for 'type' in VaultRequest object are :\n\n| types |\n|----------|\n|CREDIT_CARD_NUMBER|\n|CREDIT_CARD_EXPIRY_MONTH |\n|CREDIT_CARD_EXPIRY_YEAR |\n|GIFT_CARD_NUMBER |\n|GIFT_CARD_PIN |\n|GIFT_CARD_TRACK2 |\n ",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/VaultRequest"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "returns array of VaultResponse objects.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/VaultResponse"
+              }
+            }
+          },
+          "400": {
+            "description": "Indexes are not unique. (errorCode 1)\nSome types are invalid. (errorCode 2)\nSome credit card numbers are invalid. (errorCode 5)\nIndex, type or plaintext is missing. (errorcode 3)\nInvalid credit card length - maximum allowed length is 30 and minimum allowed length is 13. (errorcode 11)\nInvalid gift card - Some gift card numbers are invalid. Only digits are allowed (errorcode 7) \nInvalid gift card length - maximum allowed length is 20 and minimum allowed length is 16. (errorcode 6)\nInvalid giftcard pin  - Some gift card pin numbers are invalid. Only digits are allowed (errorcode 10)\nInvalid gift card track2 length - maximum allowed length is 64 and minimum allowed length is 16. (errorcode 7)",
+            "schema": {
+              "$ref": "#/definitions/ErrorEntity"
+            }
+          },
+          "401": {
+            "description": "Token is missing or is not valid, user is not authenticated. (Code 93)",
+            "schema": {
+              "$ref": "#/definitions/ErrorEntity"
+            }
+          },
+          "403": {
+            "description": "Valid token (someone is authenticated), but user lacks permissions to access resource. (code 92)            "
+          },
+          "500": {
+            "description": "Internal server error. (errorCode 0)",
+            "schema": {
+              "$ref": "#/definitions/ErrorEntity"
+            }
+          }
+        }
+      }
+    },
+    "/vault-ids": {
+      "post": {
+        "summary": "converts given request types to vault ids.",
+        "description": "Accepts a list of plain-text types and converts them to vault ids. An apikey is required to access this api.",
+        "tags": [
+          "Vault Service"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/parameters/apikeyParam"
+          },
+          {
+            "$ref": "#/parameters/contentTypeParam"
+          },
+          {
+            "$ref": "#/parameters/acceptParam"
+          },
+          {
+            "in": "body",
+            "name": "vaultRequests",
+            "description": "vaultRequests",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/VaultRequest"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "returns array of VaultResponse objects.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          "400": {
+            "description": "Indexes are not unique. (errorCode 1) \nSome types are invalid. (errorCode 2) \nIndex, type or plaintext is missing. (errorcode 3)\nInvalid credit card length - maximum allowed length is 30 and minimum allowed length is 13. (errorcode 11) \nInvalid credit card - Some card number numbers are invalid. (errorcode 5) "
+          },
+          "500": {
+            "description": "Internal server error. (errorCode 0)"
+          }
+        }
+      }
+    }
+  },
+  "parameters": {
+    "authorizationParam": {
+      "name": "Authorization",
+      "in": "header",
+      "description": "Bearer token",
+      "required": true,
+      "type": "string"
+    },
+    "contentTypeParam": {
+      "name": "Content-Type",
+      "in": "header",
+      "description": "MIME type. application/json",
+      "required": true,
+      "type": "string"
+    },
+    "acceptParam": {
+      "name": "Accept",
+      "in": "header",
+      "description": "MIME type. application/json",
+      "required": true,
+      "type": "string"
+    },
+    "apikeyParam": {
+      "name": "apikey",
+      "in": "header",
+      "description": "apikey",
+      "required": true,
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "VaultRequest": {
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "plaintext": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      }
+    },
+    "VaultResponse": {
+      "type": "object",
+      "required": [
+        "vaultId",
+        "index"
+      ],
+      "properties": {
+        "vaultId": {
+          "description": "Vault id.",
+          "type": "string"
+        },
+        "index": {
+          "description": "Unique index to identify the data.",
+          "type": "integer"
+        }
+      }
+    },
+    "ErrorEntity": {
+      "properties": {
+        "developerMessage": {
+          "type": "string"
+        },
+        "userMessage": {
+          "type": "string"
+        },
+        "errorCode": {
+          "type": "integer"
+        },
+        "moreInfo": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

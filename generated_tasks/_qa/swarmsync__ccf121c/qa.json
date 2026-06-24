@@ -3,63 +3,49 @@
     "check_results": [
       {
         "check_id": "01_prompt_clarity",
-        "confidence": 1.0,
+        "confidence": 0.9,
         "evidence_paths": [
           "instruction.md"
         ],
         "findings": [
-          "[info] instruction.md evidence: The prompt states the two bugs precisely and describes what correct behavior is expected: evict least-recently-used key and refresh recency on Get/Put. reason: Clear problem statement and requirements help the solver understand what to do without prescribing exact patch details.",
-          "[info] instruction.md evidence: Prompt says 'Keep the change scoped to the LRU cache. Do not alter other packages, exported names, or the cache's external API.' reason: This constraint is important and clearly set without being too prescriptive about implementation.",
-          "[info] instruction.md evidence: Prompt explicitly requests that concurrency safety and existing callback timing remain intact. reason: This expresses expected behavior without mandating how concurrency or callback timing must be implemented.",
-          "[info] instruction.md evidence: Test and lint guidelines specify running go test and go vet but do not dictate the exact structure of tests or patch. reason: This keeps instructions humanlike and concise yet complete.",
-          "[info] instruction.md evidence: There is no instruction or hint about patch strategy such as line exact fixes or rewriting code structures. reason: Avoids over-specifying implementation, consistent with QA requirement."
+          "[info] instruction.md evidence: The LRU cache in `pkg/lru/lru.go` evicts the most-recently-used entry instead of the least-recently-used when full. Instruction: fix so the least-recently-used is evicted, preserving access semantics and callback behavior. reason: Clear task definition with constraints on API stability, scope restriction, and expected effects ensures humanlike, concise prompt, avoiding dictating patch strategy.",
+          "[info] instruction.md evidence: Prompt states \"Keep the change scoped to the LRU cache. Do not alter other packages, exported names, or the cache's external API.\" reason: This constrains the task scope effectively without prescribing how the internal logic must be changed.",
+          "[info] instruction.md evidence: The prompt includes instructions on how recent access must update recency for eviction correctly, but does not enforce a particular data structure or algorithm for evicting entries. reason: Maintains flexibility for implementers to choose their approach while making requirements explicit."
         ],
         "passed": true,
         "raw_response": {
-          "confidence": 1.0,
+          "confidence": 0.9,
           "evidence_paths": [
             "instruction.md"
           ],
           "findings": [
             {
-              "evidence": "The prompt states the two bugs precisely and describes what correct behavior is expected: evict least-recently-used key and refresh recency on Get/Put.",
+              "evidence": "The LRU cache in `pkg/lru/lru.go` evicts the most-recently-used entry instead of the least-recently-used when full. Instruction: fix so the least-recently-used is evicted, preserving access semantics and callback behavior.",
               "path": "instruction.md",
-              "reason": "Clear problem statement and requirements help the solver understand what to do without prescribing exact patch details.",
+              "reason": "Clear task definition with constraints on API stability, scope restriction, and expected effects ensures humanlike, concise prompt, avoiding dictating patch strategy.",
               "severity": "info"
             },
             {
-              "evidence": "Prompt says 'Keep the change scoped to the LRU cache. Do not alter other packages, exported names, or the cache's external API.'",
+              "evidence": "Prompt states \"Keep the change scoped to the LRU cache. Do not alter other packages, exported names, or the cache's external API.\"",
               "path": "instruction.md",
-              "reason": "This constraint is important and clearly set without being too prescriptive about implementation.",
+              "reason": "This constrains the task scope effectively without prescribing how the internal logic must be changed.",
               "severity": "info"
             },
             {
-              "evidence": "Prompt explicitly requests that concurrency safety and existing callback timing remain intact.",
+              "evidence": "The prompt includes instructions on how recent access must update recency for eviction correctly, but does not enforce a particular data structure or algorithm for evicting entries.",
               "path": "instruction.md",
-              "reason": "This expresses expected behavior without mandating how concurrency or callback timing must be implemented.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Test and lint guidelines specify running go test and go vet but do not dictate the exact structure of tests or patch.",
-              "path": "instruction.md",
-              "reason": "This keeps instructions humanlike and concise yet complete.",
-              "severity": "info"
-            },
-            {
-              "evidence": "There is no instruction or hint about patch strategy such as line exact fixes or rewriting code structures.",
-              "path": "instruction.md",
-              "reason": "Avoids over-specifying implementation, consistent with QA requirement.",
+              "reason": "Maintains flexibility for implementers to choose their approach while making requirements explicit.",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "The prompt clearly describes the user-facing request to fix LRU cache eviction bugs without over-specifying how to implement the fix, and matches the task surface in repo."
+          "summary": "The prompt clearly states the user-facing request to fix the eviction logic of the LRU cache and specifies relevant behavioral constraints without over-specifying implementation details."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The prompt clearly describes the user-facing request to fix LRU cache eviction bugs without over-specifying how to implement the fix, and matches the task surface in repo.",
+        "summary": "The prompt clearly states the user-facing request to fix the eviction logic of the LRU cache and specifies relevant behavioral constraints without over-specifying implementation details.",
         "title": "Prompt Clarity"
       },
       {
@@ -68,16 +54,17 @@
         "evidence_paths": [
           "instruction.md",
           "environment/repo/README.md",
-          "environment/repo/environment/Dockerfile",
-          "environment/repo/pkg/lru/lru_eviction_test.go",
-          "tests/test.sh"
+          "tests/test.sh",
+          "tests/grader/frontiercode.yaml",
+          "environment/repo/pkg/lru/lru_test.go"
         ],
         "findings": [
-          "[info] instruction.md evidence: Test guideline: Run `go test ./pkg/lru/...` to validate the change. Lint guideline: Run `gofmt -l .` and `go vet ./pkg/lru/...`. reason: These commands match the README's testing instructions for running `go test ./...` and build the LRU package's tests, ensuring consistent, visible validation steps.",
-          "[info] environment/repo/README.md evidence: Testing section: `go test ./...` and verbose with count 1. Build section includes `go build ./cmd/swarmsync/`. reason: README confirms the `go test ./...` command is the normal test workflow, fully supporting the visible test guideline in instruction.md.",
-          "[info] environment/repo/environment/Dockerfile evidence: Dockerfile runs `go test ./... -count=1 -timeout=120s` as part of the image build. reason: This confirms the CI and build system relies on the standard Go test commands without custom test runners, consistent with visible workflow guidance.",
-          "[info] environment/repo/pkg/lru/lru_eviction_test.go evidence: Contains public tests exercising eviction order and recency semantics of the LRU cache. reason: Visible tests cover the task's critical behavior, allowing non-hidden validation of eviction correctness matching the task requirements.",
-          "[info] tests/test.sh evidence: Script runs `python3` on tests/hidden/run_criteria.py with the repo path, enabling hidden graders without exposing them. reason: Visible guidance does not expose hidden assets but runs a visible script that invokes hidden grading, respecting the security and anti-cheat measures."
+          "[info] instruction.md evidence: Test guidelines say to run 'go test ./pkg/lru/...', matching README.md's recommendation for testing specific packages, and environment/repo/pkg/lru/lru_test.go exists. reason: Ensures visible test commands match actual test location and style used by maintainers.",
+          "[info] instruction.md evidence: Lint guidelines specify 'gofmt -l .' and 'go vet ./pkg/lru/...', compatible with Go standard tools and typical maintainer practices. reason: Visible lint steps use supported tools and proper scope for targeted code.",
+          "[info] instruction.md evidence: Build is not explicitly required for the fix but README.md provides 'go build ./cmd/swarmsync/' and a docker build file exists as environment/Dockerfile. reason: Visible guidance suffices for task scope; no explicit build steps needed, matching repo workflow.",
+          "[info] environment/repo/README.md evidence: README.md emphasizes 'go test ./...' for testing and 'go build ./cmd/swarmsync/' for build; task instruction reflects focused 'go test ./pkg/lru/...' testing relevant code subdirectory. reason: Visible guidance in the instruction.md corresponds to repo's documented usage.",
+          "[info] tests/test.sh evidence: Script runs a python script on environment/repo folder, aligning with visible test running in that repo subfolder. reason: Visible testing is run against agent-visible repo, consistent with instructions and repo structure.",
+          "[info] tests/grader/frontiercode.yaml evidence: Visible regression tests are defined as 'go test ./pkg/lru/...'; matches instruction.md and repo tests. reason: Visible testing aligned with real maintainer regression tests."
         ],
         "passed": true,
         "raw_response": {
@@ -85,160 +72,168 @@
           "evidence_paths": [
             "instruction.md",
             "environment/repo/README.md",
-            "environment/repo/environment/Dockerfile",
-            "environment/repo/pkg/lru/lru_eviction_test.go",
-            "tests/test.sh"
+            "tests/test.sh",
+            "tests/grader/frontiercode.yaml",
+            "environment/repo/pkg/lru/lru_test.go"
           ],
           "findings": [
             {
-              "evidence": "Test guideline: Run `go test ./pkg/lru/...` to validate the change. Lint guideline: Run `gofmt -l .` and `go vet ./pkg/lru/...`.",
+              "evidence": "Test guidelines say to run 'go test ./pkg/lru/...', matching README.md's recommendation for testing specific packages, and environment/repo/pkg/lru/lru_test.go exists.",
               "path": "instruction.md",
-              "reason": "These commands match the README's testing instructions for running `go test ./...` and build the LRU package's tests, ensuring consistent, visible validation steps.",
+              "reason": "Ensures visible test commands match actual test location and style used by maintainers.",
               "severity": "info"
             },
             {
-              "evidence": "Testing section: `go test ./...` and verbose with count 1. Build section includes `go build ./cmd/swarmsync/`.",
+              "evidence": "Lint guidelines specify 'gofmt -l .' and 'go vet ./pkg/lru/...', compatible with Go standard tools and typical maintainer practices.",
+              "path": "instruction.md",
+              "reason": "Visible lint steps use supported tools and proper scope for targeted code.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Build is not explicitly required for the fix but README.md provides 'go build ./cmd/swarmsync/' and a docker build file exists as environment/Dockerfile.",
+              "path": "instruction.md",
+              "reason": "Visible guidance suffices for task scope; no explicit build steps needed, matching repo workflow.",
+              "severity": "info"
+            },
+            {
+              "evidence": "README.md emphasizes 'go test ./...' for testing and 'go build ./cmd/swarmsync/' for build; task instruction reflects focused 'go test ./pkg/lru/...' testing relevant code subdirectory.",
               "path": "environment/repo/README.md",
-              "reason": "README confirms the `go test ./...` command is the normal test workflow, fully supporting the visible test guideline in instruction.md.",
+              "reason": "Visible guidance in the instruction.md corresponds to repo's documented usage.",
               "severity": "info"
             },
             {
-              "evidence": "Dockerfile runs `go test ./... -count=1 -timeout=120s` as part of the image build.",
-              "path": "environment/repo/environment/Dockerfile",
-              "reason": "This confirms the CI and build system relies on the standard Go test commands without custom test runners, consistent with visible workflow guidance.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Contains public tests exercising eviction order and recency semantics of the LRU cache.",
-              "path": "environment/repo/pkg/lru/lru_eviction_test.go",
-              "reason": "Visible tests cover the task's critical behavior, allowing non-hidden validation of eviction correctness matching the task requirements.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Script runs `python3` on tests/hidden/run_criteria.py with the repo path, enabling hidden graders without exposing them.",
+              "evidence": "Script runs a python script on environment/repo folder, aligning with visible test running in that repo subfolder.",
               "path": "tests/test.sh",
-              "reason": "Visible guidance does not expose hidden assets but runs a visible script that invokes hidden grading, respecting the security and anti-cheat measures.",
+              "reason": "Visible testing is run against agent-visible repo, consistent with instructions and repo structure.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Visible regression tests are defined as 'go test ./pkg/lru/...'; matches instruction.md and repo tests.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Visible testing aligned with real maintainer regression tests.",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "Visible workflow guidance in instruction.md aligns well with the repo's documented README and build files, providing clear and supported commands for testing, linting, and style checks. The visible tests cover the core LRU cache behavior for eviction and recency semantics, enabling thorough validation without revealing hidden grader assets."
+          "summary": "The instruction.md's visible test, lint, build, and style commands align well with the repo's real maintainer workflow documented in README.md and the existing testing files. The visible test command 'go test ./pkg/lru/...' is consistent with the repo's testing practice and the provided visible tests for the LRU cache."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "Visible workflow guidance in instruction.md aligns well with the repo's documented README and build files, providing clear and supported commands for testing, linting, and style checks. The visible tests cover the core LRU cache behavior for eviction and recency semantics, enabling thorough validation without revealing hidden grader assets.",
+        "summary": "The instruction.md's visible test, lint, build, and style commands align well with the repo's real maintainer workflow documented in README.md and the existing testing files. The visible test command 'go test ./pkg/lru/...' is consistent with the repo's testing practice and the provided visible tests for the LRU cache.",
         "title": "Visible Workflow Guidance"
       },
       {
         "check_id": "03_rubric_coverage",
-        "confidence": 0.95,
+        "confidence": 0.9,
         "evidence_paths": [
           "tests/grader/frontiercode.yaml",
+          "tests/grader/calibration/reference.patch",
           "tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go"
         ],
         "findings": [
-          "[info] tests/grader/frontiercode.yaml evidence: criteria include classical (hidden_reference_tests_pass), reverse_classical (submitted_tests_fail_on_base), command (visible_regression_tests_pass), scope criteria (scope_matches_reference_intent), and multiple llm_prompt criteria targeting behavior correctness, edge cases, error handling, backward compatibility, test integration, scope focus, maintainability, dependency fit, and observable outputs. reason: This diversity covers both mechanical correctness and subjective code quality, essential for mergeability assurance.",
-          "[info] tests/grader/frontiercode.yaml evidence: The patch scope is restricted to pkg/lru/ and closely related files with limits on changed files and lines. reason: This ensures no unrelated code or public API changes are accepted, aligning with mergeability best practices.",
-          "[info] tests/grader/frontiercode.yaml evidence: Tests include both visible test integration and hidden reference tests derived from the source fix commit's regression tests. reason: Inclusion of hidden reference tests assures the patch fixes the precise behavioral bug and preserves the intended behavior.",
-          "[info] tests/grader/frontiercode.yaml evidence: Use of reverse_classical for capturing failing tests on base verifies that submitted visible tests are effective and relevant. reason: This confirms submitted tests meaningfully validate the fix and prevent regressions after patching."
+          "[info] tests/grader/frontiercode.yaml evidence: Criteria include classical, reverse_classical, command, scope, and llm_prompt methods covering hidden reference tests, regressions, scope, test coverage, style, dependency fit, and observable output contracts. reason: Rubric covers behavioral correctness, regressions, mechanical cleanliness, test adequacy, patch scope, and code quality beyond mere correctness.",
+          "[info] tests/grader/calibration/reference.patch evidence: Contains the exact reference fix patch used to calibrate correctness and mergeability criteria. reason: Having a reference fix patch ensures rubric not only checks correctness but also scope and maintainability against a known good solution.",
+          "[info] tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go evidence: Hidden tests explicitly verify eviction order (least-recently-used), recency updates on Get and Put, and eviction callback correctness. reason: Hidden deterministic tests ensure behavior correctness and regressions are verified in a reproducible way."
         ],
         "passed": true,
         "raw_response": {
-          "confidence": 0.95,
+          "confidence": 0.9,
           "evidence_paths": [
             "tests/grader/frontiercode.yaml",
+            "tests/grader/calibration/reference.patch",
             "tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go"
           ],
           "findings": [
             {
-              "evidence": "criteria include classical (hidden_reference_tests_pass), reverse_classical (submitted_tests_fail_on_base), command (visible_regression_tests_pass), scope criteria (scope_matches_reference_intent), and multiple llm_prompt criteria targeting behavior correctness, edge cases, error handling, backward compatibility, test integration, scope focus, maintainability, dependency fit, and observable outputs.",
+              "evidence": "Criteria include classical, reverse_classical, command, scope, and llm_prompt methods covering hidden reference tests, regressions, scope, test coverage, style, dependency fit, and observable output contracts.",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "This diversity covers both mechanical correctness and subjective code quality, essential for mergeability assurance.",
+              "reason": "Rubric covers behavioral correctness, regressions, mechanical cleanliness, test adequacy, patch scope, and code quality beyond mere correctness.",
               "severity": "info"
             },
             {
-              "evidence": "The patch scope is restricted to pkg/lru/ and closely related files with limits on changed files and lines.",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "This ensures no unrelated code or public API changes are accepted, aligning with mergeability best practices.",
+              "evidence": "Contains the exact reference fix patch used to calibrate correctness and mergeability criteria.",
+              "path": "tests/grader/calibration/reference.patch",
+              "reason": "Having a reference fix patch ensures rubric not only checks correctness but also scope and maintainability against a known good solution.",
               "severity": "info"
             },
             {
-              "evidence": "Tests include both visible test integration and hidden reference tests derived from the source fix commit's regression tests.",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "Inclusion of hidden reference tests assures the patch fixes the precise behavioral bug and preserves the intended behavior.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Use of reverse_classical for capturing failing tests on base verifies that submitted visible tests are effective and relevant.",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "This confirms submitted tests meaningfully validate the fix and prevent regressions after patching.",
+              "evidence": "Hidden tests explicitly verify eviction order (least-recently-used), recency updates on Get and Put, and eviction callback correctness.",
+              "path": "tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go",
+              "reason": "Hidden deterministic tests ensure behavior correctness and regressions are verified in a reproducible way.",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "The rubric covers both correctness and mergeability aspects, including behavioral correctness, regression avoidance, mechanical cleanliness, test coverage, scope restriction, and code quality. It uses appropriate classical and command criteria for objective checks and LLM_PROMPT for subjective quality aspects."
+          "summary": "The rubric covers mergeability comprehensively, including correctness, regressions, scope, style, tests, and behavior. It employs classical, reverse_classical, command, scope, and llm_prompt methods appropriately and anchors to a reference patch and hidden tests."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The rubric covers both correctness and mergeability aspects, including behavioral correctness, regression avoidance, mechanical cleanliness, test coverage, scope restriction, and code quality. It uses appropriate classical and command criteria for objective checks and LLM_PROMPT for subjective quality aspects.",
+        "summary": "The rubric covers mergeability comprehensively, including correctness, regressions, scope, style, tests, and behavior. It employs classical, reverse_classical, command, scope, and llm_prompt methods appropriately and anchors to a reference patch and hidden tests.",
         "title": "Rubric Coverage"
       },
       {
         "check_id": "04_rubric_metadata",
-        "confidence": 0.95,
+        "confidence": 0.9,
         "evidence_paths": [
           "tests/grader/frontiercode.yaml"
         ],
         "findings": [
-          "[info] tests/grader/frontiercode.yaml evidence: Each criterion has a non-empty, meaningful description explaining why it matters, e.g., 'Hidden behavioral tests...', 'Submitted visible tests capture...', 'The patch stays within the feature and test areas...', and so on. reason: Meaningful criterion rationales help graders and agents understand the evaluation priorities and what the criteria measure.",
-          "[info] tests/grader/frontiercode.yaml evidence: Blocker flags are set true only on core criteria related to correctness, regression, scope, and asset leaks; others related to maintainability or coverage are false, indicating a deliberate prioritization. reason: Intentional blocker settings ensure critical failures block task acceptance, while non-blockers allow flexible partial credit and human review.",
-          "[info] tests/grader/frontiercode.yaml evidence: Weights add up to 1.0 total, with highest weights on hidden_reference_tests_pass (0.35), visible_regression_tests_pass (0.20), scope_matches_reference_intent (0.15), and submitted_tests_fail_on_base (0.15). Remaining criteria have smaller weights (0.02 or 0.05) reflecting lesser risk or scope. reason: Weight calibration balances emphasis on behavioral correctness, regression detection, and scope control, aligned with expected task risk.",
-          "[info] tests/grader/frontiercode.yaml evidence: Calibrations provide a no-op baseline and reference fix patch with expected pass/fail results consistent with criteria weights and blocker statuses. reason: Calibrations validate that the rubric structure works as intended and criteria collectively evaluate fix quality accurately."
+          "[info] tests/grader/frontiercode.yaml evidence: Criterion 'hidden_reference_tests_pass' has rationale describing hidden behavioral tests and is blocker=true with weight=0.35. reason: This crucial behavioral validation criterion justifies its high weight and blocker status.",
+          "[info] tests/grader/frontiercode.yaml evidence: Criterion 'submitted_tests_fail_on_base' verifies tests fail on base broken code, blocker=true, weight=0.15. reason: Ensures submitted tests correctly capture intended behavior changes, critical for test correctness.",
+          "[info] tests/grader/frontiercode.yaml evidence: Multiple regular criteria like 'visible_regression_tests_pass' and 'scope_matches_reference_intent' are blocker=true with weights 0.20 and 0.15 respectively. reason: These relate to correctness and patch scope, so their blocker and relative weights are appropriate.",
+          "[info] tests/grader/frontiercode.yaml evidence: Many patch-specific and regular criteria with smaller weights (0.02) have informative prompts explaining their relevance and blocker=false status. reason: Lower weights for maintainability, test integration, and edge cases reflect their secondary but important roles.",
+          "[info] tests/grader/frontiercode.yaml evidence: Rationale texts clearly explain why each criterion matters in context, e.g., coverage, idiomatic design, error handling, backward compatibility. reason: Meaningful rationales facilitate consistent grading and highlight the contribution of each criterion."
         ],
         "passed": true,
         "raw_response": {
-          "confidence": 0.95,
+          "confidence": 0.9,
           "evidence_paths": [
             "tests/grader/frontiercode.yaml"
           ],
           "findings": [
             {
-              "evidence": "Each criterion has a non-empty, meaningful description explaining why it matters, e.g., 'Hidden behavioral tests...', 'Submitted visible tests capture...', 'The patch stays within the feature and test areas...', and so on.",
+              "evidence": "Criterion 'hidden_reference_tests_pass' has rationale describing hidden behavioral tests and is blocker=true with weight=0.35.",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "Meaningful criterion rationales help graders and agents understand the evaluation priorities and what the criteria measure.",
+              "reason": "This crucial behavioral validation criterion justifies its high weight and blocker status.",
               "severity": "info"
             },
             {
-              "evidence": "Blocker flags are set true only on core criteria related to correctness, regression, scope, and asset leaks; others related to maintainability or coverage are false, indicating a deliberate prioritization.",
+              "evidence": "Criterion 'submitted_tests_fail_on_base' verifies tests fail on base broken code, blocker=true, weight=0.15.",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "Intentional blocker settings ensure critical failures block task acceptance, while non-blockers allow flexible partial credit and human review.",
+              "reason": "Ensures submitted tests correctly capture intended behavior changes, critical for test correctness.",
               "severity": "info"
             },
             {
-              "evidence": "Weights add up to 1.0 total, with highest weights on hidden_reference_tests_pass (0.35), visible_regression_tests_pass (0.20), scope_matches_reference_intent (0.15), and submitted_tests_fail_on_base (0.15). Remaining criteria have smaller weights (0.02 or 0.05) reflecting lesser risk or scope.",
+              "evidence": "Multiple regular criteria like 'visible_regression_tests_pass' and 'scope_matches_reference_intent' are blocker=true with weights 0.20 and 0.15 respectively.",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "Weight calibration balances emphasis on behavioral correctness, regression detection, and scope control, aligned with expected task risk.",
+              "reason": "These relate to correctness and patch scope, so their blocker and relative weights are appropriate.",
               "severity": "info"
             },
             {
-              "evidence": "Calibrations provide a no-op baseline and reference fix patch with expected pass/fail results consistent with criteria weights and blocker statuses.",
+              "evidence": "Many patch-specific and regular criteria with smaller weights (0.02) have informative prompts explaining their relevance and blocker=false status.",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "Calibrations validate that the rubric structure works as intended and criteria collectively evaluate fix quality accurately.",
+              "reason": "Lower weights for maintainability, test integration, and edge cases reflect their secondary but important roles.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Rationale texts clearly explain why each criterion matters in context, e.g., coverage, idiomatic design, error handling, backward compatibility.",
+              "path": "tests/grader/frontiercode.yaml",
+              "reason": "Meaningful rationales facilitate consistent grading and highlight the contribution of each criterion.",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "The rubric criteria each have clear rationales explaining their importance, blocker statuses appear intentional, and weights are reasonably calibrated relative to task risk and scope. The deterministic QA evidence supports structural validity."
+          "summary": "The rubric criteria in tests/grader/frontiercode.yaml each have clear rationales, blocker flags are consistent with importance, and weights are proportional to task risk and scope."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The rubric criteria each have clear rationales explaining their importance, blocker statuses appear intentional, and weights are reasonably calibrated relative to task risk and scope. The deterministic QA evidence supports structural validity.",
+        "summary": "The rubric criteria in tests/grader/frontiercode.yaml each have clear rationales, blocker flags are consistent with importance, and weights are proportional to task risk and scope.",
         "title": "Rubric Rationale And Weights"
       },
       {
@@ -247,14 +242,12 @@
         "evidence_paths": [
           "tests/grader/frontiercode.yaml",
           "tests/grader/calibration/reference.patch",
-          "environment/repo/pkg/lru/lru_eviction_test.go"
+          "pkg/lru/lru_eviction_test.go"
         ],
         "findings": [
-          "[fail] tests/grader/frontiercode.yaml evidence: hidden_reference_tests_pass: Hidden behavioral tests extracted from the source fix pass; blocking for true correctness reason: These hidden reference tests confirm that the cache evicts the least recently used entry correctly and avoid regressions. Failure would mean a broken eviction algorithm or incomplete fix that should block merging.",
-          "[fail] tests/grader/frontiercode.yaml evidence: submitted_tests_fail_on_base: Submitted visible tests fail against original broken base snapshot reason: This reversal ensures submitted visible tests actually catch the bug that existed before. Without this, the test would be weak/not meaningful and not a blocker.",
-          "[fail] tests/grader/frontiercode.yaml evidence: visible_regression_tests_pass: Visible regression tests pass after patch reason: Confirming no regression introduced is a standard hard stop; failing this means patch breaks existing behavior.",
-          "[fail] tests/grader/frontiercode.yaml evidence: scope_matches_reference_intent: Limits patch scope to expected files for the fix reason: Maintains scope discipline; out-of-scope changes can introduce unrelated breakage or complexity and thus block merging.",
-          "[fail] tests/grader/frontiercode.yaml evidence: no_hidden_asset_leak: Ensures no hidden test artifacts or secret data in repo reason: Maintains clean deliverable; leaking hidden tests/assets can break distribution policies and should be blocked."
+          "[info] tests/grader/frontiercode.yaml evidence: Blockers include hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, and no_hidden_asset_leak reason: These blockers enforce correctness, behavioral regression prevention, patch scope, and cleanliness which are critical maintainer rejection criteria for merging.",
+          "[info] tests/grader/calibration/reference.patch evidence: The calibration shows that evictOldest() must use c.order.Back() to evict the oldest accessed entry reason: Evicting the wrong entry causes incorrect cache behavior, which these blockers prevent from being merged.",
+          "[info] pkg/lru/lru_eviction_test.go evidence: Reference tests verify eviction of least recently used entry and survival of recently accessed keys reason: These tests exercise the key behavioral correctness, so failing them is a true hard stop."
         ],
         "passed": true,
         "raw_response": {
@@ -262,1321 +255,183 @@
           "evidence_paths": [
             "tests/grader/frontiercode.yaml",
             "tests/grader/calibration/reference.patch",
-            "environment/repo/pkg/lru/lru_eviction_test.go"
+            "pkg/lru/lru_eviction_test.go"
           ],
           "findings": [
             {
-              "evidence": "hidden_reference_tests_pass: Hidden behavioral tests extracted from the source fix pass; blocking for true correctness",
+              "evidence": "Blockers include hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, and no_hidden_asset_leak",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "These hidden reference tests confirm that the cache evicts the least recently used entry correctly and avoid regressions. Failure would mean a broken eviction algorithm or incomplete fix that should block merging.",
-              "severity": "fail"
+              "reason": "These blockers enforce correctness, behavioral regression prevention, patch scope, and cleanliness which are critical maintainer rejection criteria for merging.",
+              "severity": "info"
             },
             {
-              "evidence": "submitted_tests_fail_on_base: Submitted visible tests fail against original broken base snapshot",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "This reversal ensures submitted visible tests actually catch the bug that existed before. Without this, the test would be weak/not meaningful and not a blocker.",
-              "severity": "fail"
+              "evidence": "The calibration shows that evictOldest() must use c.order.Back() to evict the oldest accessed entry",
+              "path": "tests/grader/calibration/reference.patch",
+              "reason": "Evicting the wrong entry causes incorrect cache behavior, which these blockers prevent from being merged.",
+              "severity": "info"
             },
             {
-              "evidence": "visible_regression_tests_pass: Visible regression tests pass after patch",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "Confirming no regression introduced is a standard hard stop; failing this means patch breaks existing behavior.",
-              "severity": "fail"
-            },
-            {
-              "evidence": "scope_matches_reference_intent: Limits patch scope to expected files for the fix",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "Maintains scope discipline; out-of-scope changes can introduce unrelated breakage or complexity and thus block merging.",
-              "severity": "fail"
-            },
-            {
-              "evidence": "no_hidden_asset_leak: Ensures no hidden test artifacts or secret data in repo",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "Maintains clean deliverable; leaking hidden tests/assets can break distribution policies and should be blocked.",
-              "severity": "fail"
+              "evidence": "Reference tests verify eviction of least recently used entry and survival of recently accessed keys",
+              "path": "pkg/lru/lru_eviction_test.go",
+              "reason": "These tests exercise the key behavioral correctness, so failing them is a true hard stop.",
+              "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "The blockers in tests/grader/frontiercode.yaml correspond to critical correctness criteria that prevent merging a patch that does not fix the broken eviction behavior or breaks existing tests, ensuring correctness of the LRU cache fix."
+          "summary": "Blockers in tests/grader/frontiercode.yaml correspond to true hard stops: they verify that the fix correctly changes eviction to LRU, the patch scope is limited, no hidden asset leaks occur, and the tests validate behavior changes properly."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The blockers in tests/grader/frontiercode.yaml correspond to critical correctness criteria that prevent merging a patch that does not fix the broken eviction behavior or breaks existing tests, ensuring correctness of the LRU cache fix.",
+        "summary": "Blockers in tests/grader/frontiercode.yaml correspond to true hard stops: they verify that the fix correctly changes eviction to LRU, the patch scope is limited, no hidden asset leaks occur, and the tests validate behavior changes properly.",
         "title": "Blocker Validity"
       },
       {
         "check_id": "06_false_positive_resistance",
         "confidence": 0.9,
         "evidence_paths": [
-          "pkg/lru/lru_eviction_test.go",
-          "tests/grader/calibration/reference.patch",
-          "tests/grader/frontiercode.yaml",
-          "generated_tasks/_qa/swarmsync__ccf121c/false_positive_adversarial/swarmsync__ccf121c/adversarial-1.patch",
-          "generated_tasks/_qa/swarmsync__ccf121c/false_positive_adversarial/swarmsync__ccf121c/adversarial-2.patch",
-          "generated_tasks/_qa/swarmsync__ccf121c/false_positive_adversarial/swarmsync__ccf121c/adversarial-3.patch",
-          "generated_tasks/_qa/swarmsync__ccf121c/false_positive_adversarial/swarmsync__ccf121c/adversarial-4.patch",
-          "generated_tasks/_qa/swarmsync__ccf121c/false_positive_adversarial/swarmsync__ccf121c/adversarial-5.patch"
+          "tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go",
+          "tests/grader/frontiercode.yaml"
         ],
         "findings": [
-          "[info] pkg/lru/lru_eviction_test.go evidence: TestLRU_EvictsLeastRecentlyUsed checks eviction of the least recently used entry by inserting beyond capacity and accessing keys to refresh recency reason: It directly tests that inserts do not evict recently accessed keys, blocking solutions that do not fix eviction logic.",
-          "[info] tests/grader/calibration/reference.patch evidence: Patch fixes eviction from c.order.Front() to c.order.Back() and adds c.order.MoveToFront() in Put() for existing keys reason: Reference fix patch explicitly addresses both bugs, showing the expected changes and enabling comparison to submissions.",
-          "[info] tests/grader/frontiercode.yaml evidence: submitted_tests_fail_on_base criterion requires tests to fail on broken base to rule out no-op or partial fixes reason: This criterion deters hacks or partial fixes that do not correct core eviction behavior.",
-          "[info] tests/grader/frontiercode.yaml evidence: scope_matches_reference_intent limits patch scope to pkg/lru/ files, max 6 files and 250 lines changed reason: This prevents large unrelated rewrites or external API changes that might bypass correct behavior fixes.",
-          "[info] tests/grader/frontiercode.yaml evidence: behavior_core_requirement prompt ensures LRU eviction policy is properly fixed, not just partial improvements reason: It evaluates if the submitted diff actually satisfies the main task requirement, reducing risk of trivial acceptance.",
-          "[info] adversarial-1 evidence: blocker_failures=hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak; score=0.000 reason: candidate did not clear the false-positive gate",
-          "[info] adversarial-2 evidence: blocker_failures=hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak; score=0.000 reason: candidate did not clear the false-positive gate",
-          "[info] adversarial-3 evidence: blocker_failures=hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak; score=0.000 reason: candidate did not clear the false-positive gate",
-          "[info] adversarial-4 evidence: blocker_failures=hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak; score=0.000 reason: candidate did not clear the false-positive gate",
-          "[info] adversarial-5 evidence: blocker_failures=hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass, scope_matches_reference_intent, no_hidden_asset_leak; score=0.000 reason: candidate did not clear the false-positive gate"
+          "[info] tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go evidence: The hidden test explicitly inserts, accesses, and re-inserts keys to validate eviction of least-recently-used rather than most-recently-used entries. reason: This test makes sure weak solutions that do not fix eviction logic cannot pass by superficial output matching or ignoring access recency.",
+          "[info] tests/grader/frontiercode.yaml evidence: The hidden_reference_tests_pass criterion uses classical method with a timeout and is blocker; base no-op calibration fails it while reference fix calibration passes. reason: This ensures that only a correct fix passing the hidden behavioral tests will pass the full QA suite.",
+          "[info] tests/grader/frontiercode.yaml evidence: Scope restrictions limit patch to pkg/lru/ and specific files with line count constraints. reason: Reduces chance to game test by unrelated code changes or side effects.",
+          "[info] adversarial-1 evidence: model did not return a patch reason: no adversarial candidate",
+          "[info] adversarial-2 evidence: model did not return a patch reason: no adversarial candidate",
+          "[warn] adversarial-3 evidence: adversarial model call failed reason: Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
+          "[info] adversarial-4 evidence: model did not return a patch reason: no adversarial candidate",
+          "[info] adversarial-5 evidence: model did not return a patch reason: no adversarial candidate"
         ],
         "passed": true,
         "raw_response": {
           "adversarial_probe": {
             "attempts": [
               {
-                "confidence": 0.3,
-                "frontiercode_result": {
-                  "blocker_failures": [
-                    "hidden_reference_tests_pass",
-                    "submitted_tests_fail_on_base",
-                    "visible_regression_tests_pass",
-                    "scope_matches_reference_intent",
-                    "no_hidden_asset_leak"
-                  ],
-                  "criteria_results": [
-                    {
-                      "blocker": true,
-                      "category": "patch_specific",
-                      "criterion_id": "hidden_reference_tests_pass",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "classical",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.35
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "submitted_tests_fail_on_base",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "reverse_classical",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.15
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "visible_regression_tests_pass",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "command",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.2
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "scope_matches_reference_intent",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "scope",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.15
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "no_hidden_asset_leak",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "command",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.05
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_core_requirement",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_edge_cases",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_error_handling",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "behavior_backward_compatibility",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "regression_visible_tests_meaningful",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "regression_reference_area_preserved",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_coverage_positive_path",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_coverage_negative_path",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_integration_with_existing_workflow",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "scope_minimal_patch",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "scope_no_unrelated_public_api_changes",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "maintainability_idiomatic_design",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "maintainability_simple_control_flow",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "dependency_and_environment_fit",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "observable_output_contracts",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    }
-                  ],
-                  "metadata": {
-                    "calibration_type": "adversarial_generated",
-                    "strategy": "Apply the two behavioral fixes the instruction spells out (evictOldest uses Back() instead of Front(); Put refreshes recency with MoveToFront on existing keys) so the hidden behavioral tests pass, but pair them with a thin, overfit visible test rather than a thorough suite, making it a shortcut that passes blockers while reading as low effort.",
-                    "why_bad": "The real value (the fix) is reconstructed by guessing the file's internal struct/field names, so it is fragile and may not even apply cleanly; the accompanying test is deliberately shallow/overfit (only checks a couple of evict orderings, no callback-once verification, no stats checks), so it would be flagged by the meaningful-test and maintainability quality criteria even if blockers pass."
-                  },
-                  "pass": false,
-                  "reward": 0.0,
-                  "score": 0.0,
-                  "submission_id": "adversarial-1",
-                  "task_id": "swarmsync__ccf121c"
-                },
-                "patch": "diff --git a/pkg/lru/lru.go b/pkg/lru/lru.go\n--- a/pkg/lru/lru.go\n+++ b/pkg/lru/lru.go\n@@ func (c *Cache) Put(key string, value interface{}) {\n \tif elem, ok := c.items[key]; ok {\n \t\telem.Value.(*entry).value = value\n+\t\tc.order.MoveToFront(elem)\n \t\treturn\n \t}\n@@ func (c *Cache) evictOldest() {\n-\telem := c.order.Front()\n+\telem := c.order.Back()\n \tif elem == nil {\n \t\treturn\n \t}\ndiff --git a/pkg/lru/lru_shortcut_test.go b/pkg/lru/lru_shortcut_test.go\nnew file mode 100644\n--- /dev/null\n+++ b/pkg/lru/lru_shortcut_test.go\n@@\n+package lru\n+\n+import \"testing\"\n+\n+// Minimal eviction-ordering checks. Intentionally shallow.\n+func TestEvictsLeastRecentlyUsed_Shortcut(t *testing.T) {\n+\tc := NewCache(2)\n+\tc.Put(\"a\", 1)\n+\tc.Put(\"b\", 2)\n+\tc.Put(\"c\", 3) // should evict oldest: \"a\"\n+\tif _, ok := c.Get(\"a\"); ok {\n+\t\tt.Fatal(\"expected a (LRU) to be evicted\")\n+\t}\n+\tif _, ok := c.Get(\"b\"); !ok {\n+\t\tt.Fatal(\"expected b to survive\")\n+\t}\n+\tif _, ok := c.Get(\"c\"); !ok {\n+\t\tt.Fatal(\"expected c to survive\")\n+\t}\n+}\n+\n+func TestGetRefreshesRecency_Shortcut(t *testing.T) {\n+\tc := NewCache(2)\n+\tc.Put(\"a\", 1)\n+\tc.Put(\"b\", 2)\n+\tc.Get(\"a\")    // a becomes most-recently-used\n+\tc.Put(\"c\", 3) // should evict b\n+\tif _, ok := c.Get(\"b\"); ok {\n+\t\tt.Fatal(\"expected b to be evicted\")\n+\t}\n+\tif _, ok := c.Get(\"a\"); !ok {\n+\t\tt.Fatal(\"expected a to survive\")\n+\t}\n+}\n+\n+func TestPutRefreshesRecency_Shortcut(t *testing.T) {\n+\tc := NewCache(2)\n+\tc.Put(\"a\", 1)\n+\tc.Put(\"b\", 2)\n+\tc.Put(\"a\", 10) // re-put refreshes recency\n+\tc.Put(\"c\", 3)  // should evict b\n+\tif _, ok := c.Get(\"b\"); ok {\n+\t\tt.Fatal(\"expected b to be evicted\")\n+\t}\n+\tv, ok := c.Get(\"a\")\n+\tif !ok || v.(int) != 10 {\n+\t\tt.Fatal(\"expected a=10 to survive\")\n+\t}\n+}",
-                "patch_path": "generated_tasks/_qa/swarmsync__ccf121c/false_positive_adversarial/swarmsync__ccf121c/adversarial-1.patch",
+                "confidence": 0.0,
+                "patch": "",
                 "probe_id": "adversarial-1",
-                "status": "patch",
-                "strategy": "Apply the two behavioral fixes the instruction spells out (evictOldest uses Back() instead of Front(); Put refreshes recency with MoveToFront on existing keys) so the hidden behavioral tests pass, but pair them with a thin, overfit visible test rather than a thorough suite, making it a shortcut that passes blockers while reading as low effort.",
-                "why_bad": "The real value (the fix) is reconstructed by guessing the file's internal struct/field names, so it is fragile and may not even apply cleanly; the accompanying test is deliberately shallow/overfit (only checks a couple of evict orderings, no callback-once verification, no stats checks), so it would be flagged by the meaningful-test and maintainability quality criteria even if blockers pass."
+                "status": "no_candidate",
+                "strategy": "The fix requires modifying the eviction-victim selection in pkg/lru/lru.go (flipping the 'most-recently-used' comparison to 'least-recently-used'), but the actual source of pkg/lru/lru.go was truncated from the provided context. A unified diff applied via git apply is all-or-nothing and needs exact original context lines; without the real file contents (variable names, field names, time.Time vs counter, eviction-callback API, and the existing lru_test.go method names) any reconstructed hunk or full-file rewrite would almost certainly fail to apply cleanly or break the existing visible regression tests and hidden reference tests.",
+                "why_bad": "No patch is being submitted because a reliable exploit/shortcut cannot be authored blind; guessing the file would more likely produce a non-applying or non-compiling diff than a passing one."
               },
               {
-                "confidence": 0.3,
-                "frontiercode_result": {
-                  "blocker_failures": [
-                    "hidden_reference_tests_pass",
-                    "submitted_tests_fail_on_base",
-                    "visible_regression_tests_pass",
-                    "scope_matches_reference_intent",
-                    "no_hidden_asset_leak"
-                  ],
-                  "criteria_results": [
-                    {
-                      "blocker": true,
-                      "category": "patch_specific",
-                      "criterion_id": "hidden_reference_tests_pass",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "classical",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.35
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "submitted_tests_fail_on_base",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "reverse_classical",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.15
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "visible_regression_tests_pass",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "command",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.2
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "scope_matches_reference_intent",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "scope",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.15
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "no_hidden_asset_leak",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "command",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.05
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_core_requirement",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_edge_cases",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_error_handling",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "behavior_backward_compatibility",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "regression_visible_tests_meaningful",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "regression_reference_area_preserved",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_coverage_positive_path",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_coverage_negative_path",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_integration_with_existing_workflow",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "scope_minimal_patch",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "scope_no_unrelated_public_api_changes",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "maintainability_idiomatic_design",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "maintainability_simple_control_flow",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "dependency_and_environment_fit",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "observable_output_contracts",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    }
-                  ],
-                  "metadata": {
-                    "calibration_type": "adversarial_generated",
-                    "strategy": "Apply the two minimal one-line bug fixes the instruction literally dictates (Front()->Back() in evictOldest, add MoveToFront in Put's existing-key branch) and add a single thin eviction-ordering test that fails on the broken base (it asserts the oldest key is gone) but passes after either correct fix. Keeps coverage shallow (no MoveToFront/callback-count assertions) so it clears the blocker without being a quality solution.",
-                    "why_bad": "The accompanying test is intentionally minimal: it only checks insert-beyond-capacity eviction ordering and never verifies the recency refresh on re-Put, the Get-protects-from-eviction path, or that the eviction callback fires exactly once with the correct key/value. It satisfies submitted_tests_fail_on_base superficially while leaving the second bug essentially unverified, so it under-tests the requested behavior and scores poorly on test-coverage/quality criteria."
-                  },
-                  "pass": false,
-                  "reward": 0.0,
-                  "score": 0.0,
-                  "submission_id": "adversarial-2",
-                  "task_id": "swarmsync__ccf121c"
-                },
-                "patch": "diff --git a/pkg/lru/lru.go b/pkg/lru/lru.go\n--- a/pkg/lru/lru.go\n+++ b/pkg/lru/lru.go\n@@\n \tif elem, ok := c.items[key]; ok {\n \t\telem.Value.(*entry).value = value\n+\t\tc.order.MoveToFront(elem)\n \t\treturn\n \t}\n@@\n-\telem := c.order.Front()\n+\telem := c.order.Back()\n \tif elem == nil {\n \t\treturn\n \t}\ndiff --git a/pkg/lru/lru_extra_test.go b/pkg/lru/lru_extra_test.go\nnew file mode 100644\n--- /dev/null\n+++ b/pkg/lru/lru_extra_test.go\n@@\n+package lru\n+\n+import \"testing\"\n+\n+// TestEvictOldestOnOverflow checks that inserting past capacity drops the\n+// least-recently-used entry rather than a freshly inserted one.\n+func TestEvictOldestOnOverflow(t *testing.T) {\n+\tc := NewCache(2)\n+\tc.Put(\"a\", 1)\n+\tc.Put(\"b\", 2)\n+\tc.Put(\"c\", 3) // capacity exceeded: oldest (\"a\") must be evicted\n+\n+\tif _, ok := c.Get(\"a\"); ok {\n+\t\tt.Fatal(\"expected oldest key \\\"a\\\" to be evicted\")\n+\t}\n+\tif _, ok := c.Get(\"b\"); !ok {\n+\t\tt.Fatal(\"expected \\\"b\\\" to remain\")\n+\t}\n+\tif _, ok := c.Get(\"c\"); !ok {\n+\t\tt.Fatal(\"expected newly inserted \\\"c\\\" to remain\")\n+\t}\n+}",
-                "patch_path": "generated_tasks/_qa/swarmsync__ccf121c/false_positive_adversarial/swarmsync__ccf121c/adversarial-2.patch",
+                "confidence": 0.2,
+                "patch": "",
                 "probe_id": "adversarial-2",
-                "status": "patch",
-                "strategy": "Apply the two minimal one-line bug fixes the instruction literally dictates (Front()->Back() in evictOldest, add MoveToFront in Put's existing-key branch) and add a single thin eviction-ordering test that fails on the broken base (it asserts the oldest key is gone) but passes after either correct fix. Keeps coverage shallow (no MoveToFront/callback-count assertions) so it clears the blocker without being a quality solution.",
-                "why_bad": "The accompanying test is intentionally minimal: it only checks insert-beyond-capacity eviction ordering and never verifies the recency refresh on re-Put, the Get-protects-from-eviction path, or that the eviction callback fires exactly once with the correct key/value. It satisfies submitted_tests_fail_on_base superficially while leaving the second bug essentially unverified, so it under-tests the requested behavior and scores poorly on test-coverage/quality criteria."
+                "status": "no_candidate",
+                "strategy": "Intended shortcut: flip the eviction victim selection in pkg/lru/lru.go from picking the newest last-access entry to the oldest (min instead of max), keeping it as an unpolished O(n) scan, and add a thin visible eviction test that passes post-fix but fails on the broken base. This satisfies hidden tests, the reverse-classical base-failure check, and scope/asset blockers without a clean, well-factored rewrite.",
+                "why_bad": "It would be behaviorally correct but deliberately low-quality: an ad hoc linear-scan tweak and a minimal overfit test rather than an idiomatic LRU ordering structure, doing just enough to satisfy graders."
               },
               {
-                "confidence": 0.3,
-                "frontiercode_result": {
-                  "blocker_failures": [
-                    "hidden_reference_tests_pass",
-                    "submitted_tests_fail_on_base",
-                    "visible_regression_tests_pass",
-                    "scope_matches_reference_intent",
-                    "no_hidden_asset_leak"
-                  ],
-                  "criteria_results": [
-                    {
-                      "blocker": true,
-                      "category": "patch_specific",
-                      "criterion_id": "hidden_reference_tests_pass",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "classical",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.35
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "submitted_tests_fail_on_base",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "reverse_classical",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.15
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "visible_regression_tests_pass",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "command",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.2
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "scope_matches_reference_intent",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "scope",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.15
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "no_hidden_asset_leak",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "command",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.05
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_core_requirement",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_edge_cases",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_error_handling",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "behavior_backward_compatibility",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "regression_visible_tests_meaningful",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "regression_reference_area_preserved",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_coverage_positive_path",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_coverage_negative_path",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_integration_with_existing_workflow",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "scope_minimal_patch",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "scope_no_unrelated_public_api_changes",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "maintainability_idiomatic_design",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "maintainability_simple_control_flow",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "dependency_and_environment_fit",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "observable_output_contracts",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    }
-                  ],
-                  "metadata": {
-                    "calibration_type": "adversarial_generated",
-                    "strategy": "Apply the minimal two-line behavioral fix (Front->Back in evictOldest, add MoveToFront in Put for existing keys) and add a single thin test that just barely flips between base and fixed behavior, instead of the full eviction/callback/recency coverage requested.",
-                    "why_bad": "It is a real behavioral fix but the accompanying test is a bare minimum overfit case that only checks one MRU-vs-LRU scenario; it omits the requested coverage for re-Put recency refresh, callback fire-once semantics, and boundary cases, so it satisfies the blocker checks while leaving the test suite shallow and brittle."
-                  },
-                  "pass": false,
-                  "reward": 0.0,
-                  "score": 0.0,
-                  "submission_id": "adversarial-3",
-                  "task_id": "swarmsync__ccf121c"
-                },
-                "patch": "diff --git a/pkg/lru/lru.go b/pkg/lru/lru.go\n--- a/pkg/lru/lru.go\n+++ b/pkg/lru/lru.go\n@@\n \tif elem, ok := c.items[key]; ok {\n \t\telem.Value.(*entry).value = value\n+\t\tc.order.MoveToFront(elem)\n \t\treturn\n \t}\n@@\n func (c *Cache) evictOldest() {\n-\telem := c.order.Front()\n+\telem := c.order.Back()\n \tif elem == nil {\n \t\treturn\n \t}\ndiff --git a/pkg/lru/lru_shortcut_test.go b/pkg/lru/lru_shortcut_test.go\nnew file mode 100644\n--- /dev/null\n+++ b/pkg/lru/lru_shortcut_test.go\n@@\n+package lru\n+\n+import \"testing\"\n+\n+// TestCache_EvictsLeastRecentlyUsed is a thin guard that the cache drops the\n+// least-recently-used entry on overflow rather than the most-recently-used one.\n+func TestCache_EvictsLeastRecentlyUsed(t *testing.T) {\n+\tc := NewCache(2)\n+\tc.Put(\"a\", 1)\n+\tc.Put(\"b\", 2)\n+\t// Touch \"a\" so it becomes most-recently-used and \"b\" is the LRU victim.\n+\tif _, ok := c.Get(\"a\"); !ok {\n+\t\tt.Fatal(\"a should be present\")\n+\t}\n+\tc.Put(\"c\", 3) // should evict \"b\"\n+\tif _, ok := c.Get(\"b\"); ok {\n+\t\tt.Fatal(\"b should have been evicted as the least-recently-used entry\")\n+\t}\n+\tif _, ok := c.Get(\"a\"); !ok {\n+\t\tt.Fatal(\"a should survive eviction after being accessed\")\n+\t}\n+\tif _, ok := c.Get(\"c\"); !ok {\n+\t\tt.Fatal(\"c should be present after insertion\")\n+\t}\n+}\n+\n+// TestCache_PutRefreshesRecency checks that re-Put protects an existing key.\n+func TestCache_PutRefreshesRecency(t *testing.T) {\n+\tc := NewCache(2)\n+\tc.Put(\"a\", 1)\n+\tc.Put(\"b\", 2)\n+\tc.Put(\"a\", 11) // refresh recency of \"a\"; \"b\" is now LRU\n+\tc.Put(\"c\", 3)  // should evict \"b\"\n+\tif _, ok := c.Get(\"b\"); ok {\n+\t\tt.Fatal(\"b should have been evicted\")\n+\t}\n+\tif v, ok := c.Get(\"a\"); !ok || v != 11 {\n+\t\tt.Fatalf(\"a should survive with updated value, got %v ok=%v\", v, ok)\n+\t}\n+}",
-                "patch_path": "generated_tasks/_qa/swarmsync__ccf121c/false_positive_adversarial/swarmsync__ccf121c/adversarial-3.patch",
-                "probe_id": "adversarial-3",
-                "status": "patch",
-                "strategy": "Apply the minimal two-line behavioral fix (Front->Back in evictOldest, add MoveToFront in Put for existing keys) and add a single thin test that just barely flips between base and fixed behavior, instead of the full eviction/callback/recency coverage requested.",
-                "why_bad": "It is a real behavioral fix but the accompanying test is a bare minimum overfit case that only checks one MRU-vs-LRU scenario; it omits the requested coverage for re-Put recency refresh, callback fire-once semantics, and boundary cases, so it satisfies the blocker checks while leaving the test suite shallow and brittle."
+                "error": "Task QA model request failed: HTTP Error 524: <none>; response body: error code: 524",
+                "probe_id": "adversarial-3"
               },
               {
-                "confidence": 0.4,
-                "frontiercode_result": {
-                  "blocker_failures": [
-                    "hidden_reference_tests_pass",
-                    "submitted_tests_fail_on_base",
-                    "visible_regression_tests_pass",
-                    "scope_matches_reference_intent",
-                    "no_hidden_asset_leak"
-                  ],
-                  "criteria_results": [
-                    {
-                      "blocker": true,
-                      "category": "patch_specific",
-                      "criterion_id": "hidden_reference_tests_pass",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "classical",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.35
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "submitted_tests_fail_on_base",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "reverse_classical",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.15
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "visible_regression_tests_pass",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "command",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.2
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "scope_matches_reference_intent",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "scope",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.15
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "no_hidden_asset_leak",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "command",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.05
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_core_requirement",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_edge_cases",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_error_handling",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "behavior_backward_compatibility",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "regression_visible_tests_meaningful",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "regression_reference_area_preserved",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_coverage_positive_path",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_coverage_negative_path",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_integration_with_existing_workflow",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "scope_minimal_patch",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "scope_no_unrelated_public_api_changes",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "maintainability_idiomatic_design",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "maintainability_simple_control_flow",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "dependency_and_environment_fit",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "observable_output_contracts",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    }
-                  ],
-                  "metadata": {
-                    "calibration_type": "adversarial_generated",
-                    "strategy": "Apply the two minimal pinpointed fixes named in the instruction (evictOldest using Back() instead of Front(), and MoveToFront on existing-key Put) and add a thin eviction test that fails on the broken base but passes after the fix, while skipping the richer callback/Peek/concurrency coverage a real reviewer would expect.",
-                    "why_bad": "It mechanically flips the two named lines without verifying surrounding invariants, and ships a shallow test that only checks one basic eviction ordering. It omits meaningful coverage for callback-fires-once semantics, Peek recency exemption, and concurrency the task explicitly calls out, so it satisfies blockers but is a low-quality, overfit solution."
-                  },
-                  "pass": false,
-                  "reward": 0.0,
-                  "score": 0.0,
-                  "submission_id": "adversarial-4",
-                  "task_id": "swarmsync__ccf121c"
-                },
-                "patch": "diff --git a/pkg/lru/lru.go b/pkg/lru/lru.go\n--- a/pkg/lru/lru.go\n+++ b/pkg/lru/lru.go\n@@\n func (c *Cache) evictOldest() {\n-\tel := c.order.Front()\n+\tel := c.order.Back()\n \tif el == nil {\n \t\treturn\n \t}\n@@\n \tif el, ok := c.items[key]; ok {\n+\t\tc.order.MoveToFront(el)\n \t\tel.Value.(*entry).value = value\n \t\treturn\n \t}\ndiff --git a/pkg/lru/lru_eviction_test.go b/pkg/lru/lru_eviction_test.go\nnew file mode 100644\n--- /dev/null\n+++ b/pkg/lru/lru_eviction_test.go\n@@\n+package lru\n+\n+import \"testing\"\n+\n+// TestEvictsLeastRecentlyUsed checks that exceeding capacity drops the oldest key.\n+func TestEvictsLeastRecentlyUsed(t *testing.T) {\n+\tc := NewCache(2)\n+\tc.Put(\"a\", 1)\n+\tc.Put(\"b\", 2)\n+\tc.Put(\"c\", 3) // should evict the least-recently-used key \"a\"\n+\tif _, ok := c.Get(\"a\"); ok {\n+\t\tt.Fatal(\"expected least-recently-used key 'a' to be evicted\")\n+\t}\n+\tif _, ok := c.Get(\"b\"); !ok {\n+\t\tt.Fatal(\"expected 'b' to survive\")\n+\t}\n+\tif _, ok := c.Get(\"c\"); !ok {\n+\t\tt.Fatal(\"expected newly inserted 'c' to survive\")\n+\t}\n+}\n+\n+// TestGetRefreshesRecency checks that a read protects a key from eviction.\n+func TestGetRefreshesRecency(t *testing.T) {\n+\tc := NewCache(2)\n+\tc.Put(\"a\", 1)\n+\tc.Put(\"b\", 2)\n+\tif _, ok := c.Get(\"a\"); !ok {\n+\t\tt.Fatal(\"expected 'a' present\")\n+\t}\n+\tc.Put(\"c\", 3) // now \"b\" is oldest and should be evicted\n+\tif _, ok := c.Get(\"b\"); ok {\n+\t\tt.Fatal(\"expected 'b' to be evicted after 'a' was refreshed\")\n+\t}\n+\tif _, ok := c.Get(\"a\"); !ok {\n+\t\tt.Fatal(\"expected refreshed 'a' to survive\")\n+\t}\n+}\n+\n+// TestPutRefreshesRecency checks re-Put of an existing key refreshes recency.\n+func TestPutRefreshesRecency(t *testing.T) {\n+\tc := NewCache(2)\n+\tc.Put(\"a\", 1)\n+\tc.Put(\"b\", 2)\n+\tc.Put(\"a\", 10) // refresh \"a\"\n+\tc.Put(\"c\", 3)  // should evict \"b\"\n+\tif _, ok := c.Get(\"b\"); ok {\n+\t\tt.Fatal(\"expected 'b' to be evicted\")\n+\t}\n+\tif _, ok := c.Get(\"a\"); !ok {\n+\t\tt.Fatal(\"expected re-put 'a' to survive\")\n+\t}\n+}",
-                "patch_path": "generated_tasks/_qa/swarmsync__ccf121c/false_positive_adversarial/swarmsync__ccf121c/adversarial-4.patch",
+                "confidence": 0.0,
+                "patch": "",
                 "probe_id": "adversarial-4",
-                "status": "patch",
-                "strategy": "Apply the two minimal pinpointed fixes named in the instruction (evictOldest using Back() instead of Front(), and MoveToFront on existing-key Put) and add a thin eviction test that fails on the broken base but passes after the fix, while skipping the richer callback/Peek/concurrency coverage a real reviewer would expect.",
-                "why_bad": "It mechanically flips the two named lines without verifying surrounding invariants, and ships a shallow test that only checks one basic eviction ordering. It omits meaningful coverage for callback-fires-once semantics, Peek recency exemption, and concurrency the task explicitly calls out, so it satisfies blockers but is a low-quality, overfit solution."
+                "status": "no_candidate",
+                "strategy": "Intended exploit: flip the eviction-victim selection in pkg/lru/lru.go (or rewrite evict() to scan for the oldest last-access entry) with a minimal, low-quality shortcut while adding a single eviction-ordering test in pkg/lru/lru_eviction_test.go.",
+                "why_bad": "Even a 'working' shortcut here (e.g., an O(n) linear scan for the oldest timestamp instead of using the maintained recency ordering) would be lower quality than the intended linked-list fix and could subtly mishandle tie-breaking or callback timing."
               },
               {
-                "confidence": 0.4,
-                "frontiercode_result": {
-                  "blocker_failures": [
-                    "hidden_reference_tests_pass",
-                    "submitted_tests_fail_on_base",
-                    "visible_regression_tests_pass",
-                    "scope_matches_reference_intent",
-                    "no_hidden_asset_leak"
-                  ],
-                  "criteria_results": [
-                    {
-                      "blocker": true,
-                      "category": "patch_specific",
-                      "criterion_id": "hidden_reference_tests_pass",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "classical",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.35
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "submitted_tests_fail_on_base",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "reverse_classical",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.15
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "visible_regression_tests_pass",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "command",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.2
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "scope_matches_reference_intent",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "scope",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.15
-                    },
-                    {
-                      "blocker": true,
-                      "category": "regular",
-                      "criterion_id": "no_hidden_asset_leak",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "command",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.05
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_core_requirement",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_edge_cases",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "behavior_error_handling",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "behavior_backward_compatibility",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "regression_visible_tests_meaningful",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "regression_reference_area_preserved",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_coverage_positive_path",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_coverage_negative_path",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "test_integration_with_existing_workflow",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "scope_minimal_patch",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "scope_no_unrelated_public_api_changes",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "maintainability_idiomatic_design",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "maintainability_simple_control_flow",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "regular",
-                      "criterion_id": "dependency_and_environment_fit",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    },
-                    {
-                      "blocker": false,
-                      "category": "patch_specific",
-                      "criterion_id": "observable_output_contracts",
-                      "details": "Could not apply calibration patch: ",
-                      "method": "llm_prompt",
-                      "passed": false,
-                      "score": 0.0,
-                      "weight": 0.02
-                    }
-                  ],
-                  "metadata": {
-                    "calibration_type": "adversarial_generated",
-                    "strategy": "Apply the two literal fixes the instruction names (evictOldest Front()->Back(), add MoveToFront in Put's existing-key branch) using minimal-context hunks, plus a single shallow visible test that only checks straightforward FIFO-of-oldest eviction so it fails on the buggy base but passes after the fix.",
-                    "why_bad": "The change is mechanically derived from the instruction prose rather than from understanding the cache invariants; the added test is shallow (no callback-fires-once assertion, no recency-refresh-on-read coverage, no re-Put coverage) and the hunks are guessed against an unseen file with minimal context, so it is brittle and under-tested rather than a careful, verified implementation."
-                  },
-                  "pass": false,
-                  "reward": 0.0,
-                  "score": 0.0,
-                  "submission_id": "adversarial-5",
-                  "task_id": "swarmsync__ccf121c"
-                },
-                "patch": "diff --git a/pkg/lru/lru.go b/pkg/lru/lru.go\n--- a/pkg/lru/lru.go\n+++ b/pkg/lru/lru.go\n@@\n-\telem := c.order.Front()\n+\telem := c.order.Back()\n@@\n \tif elem, ok := c.items[key]; ok {\n \t\telem.Value.(*entry).value = value\n+\t\tc.order.MoveToFront(elem)\n \t\treturn\n \t}\ndiff --git a/pkg/lru/lru_evict_test.go b/pkg/lru/lru_evict_test.go\nnew file mode 100644\n--- /dev/null\n+++ b/pkg/lru/lru_evict_test.go\n@@\n+package lru\n+\n+import \"testing\"\n+\n+// TestEvictDropsOldest is a shallow regression check: inserting past capacity\n+// should drop the least-recently-used key, not the just-inserted one.\n+func TestEvictDropsOldest(t *testing.T) {\n+\tc := NewCache(2)\n+\tc.Put(\"a\", 1)\n+\tc.Put(\"b\", 2)\n+\tc.Put(\"c\", 3) // capacity exceeded; oldest \"a\" should go\n+\n+\tif _, ok := c.Get(\"a\"); ok {\n+\t\tt.Fatal(\"expected oldest key 'a' to be evicted\")\n+\t}\n+\tif _, ok := c.Get(\"b\"); !ok {\n+\t\tt.Fatal(\"expected 'b' to survive\")\n+\t}\n+\tif _, ok := c.Get(\"c\"); !ok {\n+\t\tt.Fatal(\"expected newly inserted 'c' to survive\")\n+\t}\n+}\n+\n+// TestRePutRefreshesRecency checks that re-Putting an existing key protects it.\n+func TestRePutRefreshesRecency(t *testing.T) {\n+\tc := NewCache(2)\n+\tc.Put(\"a\", 1)\n+\tc.Put(\"b\", 2)\n+\tc.Put(\"a\", 11) // refresh recency of 'a'\n+\tc.Put(\"c\", 3)  // should evict 'b', the true LRU\n+\n+\tif _, ok := c.Get(\"b\"); ok {\n+\t\tt.Fatal(\"expected 'b' to be evicted as LRU\")\n+\t}\n+\tif v, ok := c.Get(\"a\"); !ok || v.(int) != 11 {\n+\t\tt.Fatalf(\"expected refreshed 'a'=11 to survive, got %v ok=%v\", v, ok)\n+\t}\n+}",
-                "patch_path": "generated_tasks/_qa/swarmsync__ccf121c/false_positive_adversarial/swarmsync__ccf121c/adversarial-5.patch",
+                "confidence": 0.0,
+                "patch": "",
                 "probe_id": "adversarial-5",
-                "status": "patch",
-                "strategy": "Apply the two literal fixes the instruction names (evictOldest Front()->Back(), add MoveToFront in Put's existing-key branch) using minimal-context hunks, plus a single shallow visible test that only checks straightforward FIFO-of-oldest eviction so it fails on the buggy base but passes after the fix.",
-                "why_bad": "The change is mechanically derived from the instruction prose rather than from understanding the cache invariants; the added test is shallow (no callback-fires-once assertion, no recency-refresh-on-read coverage, no re-Put coverage) and the hunks are guessed against an unseen file with minimal context, so it is brittle and under-tested rather than a careful, verified implementation."
+                "status": "no_candidate",
+                "strategy": "Intended idea was an O(n) min-by-last-access scan (or a head/tail eviction swap) that passes behavioral blockers while being a low-quality, non-idiomatic fix; however the target file pkg/lru/lru.go was truncated from context, so I cannot produce an exact-context diff that will apply.",
+                "why_bad": "A scan-based eviction or operator flip would be functionally correct but inefficient/poorly integrated with the existing recency structure, scoring low on maintainability criteria while still passing blockers \u2014 but it cannot be produced reliably without the original file contents."
               }
             ]
           },
           "review": {
             "confidence": 0.9,
             "evidence_paths": [
-              "pkg/lru/lru_eviction_test.go",
-              "tests/grader/calibration/reference.patch",
+              "tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go",
               "tests/grader/frontiercode.yaml"
             ],
             "findings": [
               {
-                "evidence": "TestLRU_EvictsLeastRecentlyUsed checks eviction of the least recently used entry by inserting beyond capacity and accessing keys to refresh recency",
-                "path": "pkg/lru/lru_eviction_test.go",
-                "reason": "It directly tests that inserts do not evict recently accessed keys, blocking solutions that do not fix eviction logic.",
+                "evidence": "The hidden test explicitly inserts, accesses, and re-inserts keys to validate eviction of least-recently-used rather than most-recently-used entries.",
+                "path": "tests/hidden/reference_tests/pkg/lru/lru_eviction_test.go",
+                "reason": "This test makes sure weak solutions that do not fix eviction logic cannot pass by superficial output matching or ignoring access recency.",
                 "severity": "info"
               },
               {
-                "evidence": "Patch fixes eviction from c.order.Front() to c.order.Back() and adds c.order.MoveToFront() in Put() for existing keys",
-                "path": "tests/grader/calibration/reference.patch",
-                "reason": "Reference fix patch explicitly addresses both bugs, showing the expected changes and enabling comparison to submissions.",
-                "severity": "info"
-              },
-              {
-                "evidence": "submitted_tests_fail_on_base criterion requires tests to fail on broken base to rule out no-op or partial fixes",
+                "evidence": "The hidden_reference_tests_pass criterion uses classical method with a timeout and is blocker; base no-op calibration fails it while reference fix calibration passes.",
                 "path": "tests/grader/frontiercode.yaml",
-                "reason": "This criterion deters hacks or partial fixes that do not correct core eviction behavior.",
+                "reason": "This ensures that only a correct fix passing the hidden behavioral tests will pass the full QA suite.",
                 "severity": "info"
               },
               {
-                "evidence": "scope_matches_reference_intent limits patch scope to pkg/lru/ files, max 6 files and 250 lines changed",
+                "evidence": "Scope restrictions limit patch to pkg/lru/ and specific files with line count constraints.",
                 "path": "tests/grader/frontiercode.yaml",
-                "reason": "This prevents large unrelated rewrites or external API changes that might bypass correct behavior fixes.",
-                "severity": "info"
-              },
-              {
-                "evidence": "behavior_core_requirement prompt ensures LRU eviction policy is properly fixed, not just partial improvements",
-                "path": "tests/grader/frontiercode.yaml",
-                "reason": "It evaluates if the submitted diff actually satisfies the main task requirement, reducing risk of trivial acceptance.",
+                "reason": "Reduces chance to game test by unrelated code changes or side effects.",
                 "severity": "info"
               }
             ],
             "passed": true,
             "recommended_fixes": [],
             "status": "pass",
-            "summary": "The hidden tests and calibration patch include targeted tests that detect the inverted eviction and missing recency update bugs, preventing common shortcuts. The rubric covers the key failure modes and enforces patch scope and behavior."
+            "summary": "The task includes a strong hidden reference test targeting eviction order to prevent shortcuts. The hidden test ensures that least recently used keys are evicted, while recently accessed keys remain, which blocks trivial hacks that only evict most recently added or accessed entries. The rubric contains calibrations including base no-op failure and the reference fix passing all checks. Scope limitations and behavioral criteria further reduce the risk of false positives."
           }
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The hidden tests and calibration patch include targeted tests that detect the inverted eviction and missing recency update bugs, preventing common shortcuts. The rubric covers the key failure modes and enforces patch scope and behavior. Adversarial probe: Adversarial patches were generated, but none passed the false-positive gate.",
+        "summary": "The task includes a strong hidden reference test targeting eviction order to prevent shortcuts. The hidden test ensures that least recently used keys are evicted, while recently accessed keys remain, which blocks trivial hacks that only evict most recently added or accessed entries. The rubric contains calibrations including base no-op failure and the reference fix passing all checks. Scope limitations and behavioral criteria further reduce the risk of false positives. Adversarial probe: Adversarial agent did not find a candidate patch.",
         "title": "False Positive Resistance"
       },
       {
         "check_id": "07_false_negative_resistance",
-        "confidence": 0.8,
+        "confidence": 0.9,
         "evidence_paths": [
           "tests/grader/frontiercode.yaml",
-          "pkg/lru/lru_eviction_test.go"
+          "pkg/lru/lru_eviction_test.go",
+          "instruction.md"
         ],
         "findings": [
-          "[info] tests/grader/frontiercode.yaml evidence: Includes a reference-fix calibration with patch and tests/pkg/lru/lru_eviction_test.go covering eviction of LRU and recency refresh on existing keys. reason: Presence of alternative valid calibration and matching tests confirms resistance to false negatives for valid non-canonical implementations.",
-          "[info] tests/grader/frontiercode.yaml evidence: Criteria focus on key eviction order and recency refresh, without requiring specific implementation details or brittle assertions. reason: The testing criteria provide flexibility to accept any correct LRU behavior, protecting against rejection of valid solutions."
+          "[info] tests/grader/frontiercode.yaml evidence: Alternative_valid calibration uses source fix commit patch and passes hidden reference tests including pkg/lru/lru_eviction_test.go reason: This ensures that the grader accepts the canonical fixed behavior and rejects only broken or irrelevant changes.",
+          "[info] pkg/lru/lru_eviction_test.go evidence: Visible tests check eviction of least-recently-used entry, survival of recently accessed keys, and eviction callback firing once per eviction reason: These tests confirm that alternate valid implementations of LRU eviction that preserve core semantics will not be falsely rejected due to overly brittle or prescriptive criteria.",
+          "[info] instruction.md evidence: Instruction allows scope limited to fixing eviction logic without altering external API, hit/miss tracking, or callback semantics reason: The task spec intentionally constrains change scope to prevent brittle over-specification and encourages maintainable, idiomatic fixes."
         ],
         "passed": true,
         "raw_response": {
-          "confidence": 0.8,
+          "confidence": 0.9,
           "evidence_paths": [
             "tests/grader/frontiercode.yaml",
-            "pkg/lru/lru_eviction_test.go"
+            "pkg/lru/lru_eviction_test.go",
+            "instruction.md"
           ],
           "findings": [
             {
-              "evidence": "Includes a reference-fix calibration with patch and tests/pkg/lru/lru_eviction_test.go covering eviction of LRU and recency refresh on existing keys.",
+              "evidence": "Alternative_valid calibration uses source fix commit patch and passes hidden reference tests including pkg/lru/lru_eviction_test.go",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "Presence of alternative valid calibration and matching tests confirms resistance to false negatives for valid non-canonical implementations.",
+              "reason": "This ensures that the grader accepts the canonical fixed behavior and rejects only broken or irrelevant changes.",
               "severity": "info"
             },
             {
-              "evidence": "Criteria focus on key eviction order and recency refresh, without requiring specific implementation details or brittle assertions.",
-              "path": "tests/grader/frontiercode.yaml",
-              "reason": "The testing criteria provide flexibility to accept any correct LRU behavior, protecting against rejection of valid solutions.",
+              "evidence": "Visible tests check eviction of least-recently-used entry, survival of recently accessed keys, and eviction callback firing once per eviction",
+              "path": "pkg/lru/lru_eviction_test.go",
+              "reason": "These tests confirm that alternate valid implementations of LRU eviction that preserve core semantics will not be falsely rejected due to overly brittle or prescriptive criteria.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Instruction allows scope limited to fixing eviction logic without altering external API, hit/miss tracking, or callback semantics",
+              "path": "instruction.md",
+              "reason": "The task spec intentionally constrains change scope to prevent brittle over-specification and encourages maintainable, idiomatic fixes.",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "The provided frontiercode.yaml includes alternative valid calibration with the original fix commit patch and matching tests in pkg/lru/lru_eviction_test.go that cover eviction ordering and recency correctness. The criteria do not appear overly prescriptive and allow for valid implementations that maintain correct LRU behavior."
+          "summary": "The frontiercode.yaml includes an alternative_valid calibration using the source fix commit patch and matching reference tests that validate correct LRU eviction behavior. Tests in pkg/lru/lru_eviction_test.go cover the least-recently-used eviction logic, recent-access preservation, and eviction callback correctness, resisting brittle rejections of valid variants."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The provided frontiercode.yaml includes alternative valid calibration with the original fix commit patch and matching tests in pkg/lru/lru_eviction_test.go that cover eviction ordering and recency correctness. The criteria do not appear overly prescriptive and allow for valid implementations that maintain correct LRU behavior.",
+        "summary": "The frontiercode.yaml includes an alternative_valid calibration using the source fix commit patch and matching reference tests that validate correct LRU eviction behavior. Tests in pkg/lru/lru_eviction_test.go cover the least-recently-used eviction logic, recent-access preservation, and eviction callback correctness, resisting brittle rejections of valid variants.",
         "title": "False Negative Resistance"
       },
       {
@@ -1585,12 +440,12 @@
         "evidence_paths": [
           "pkg/lru/lru_eviction_test.go",
           "tests/grader/frontiercode.yaml",
-          "tests/grader/calibration/reference.patch"
+          "tests/test.sh"
         ],
         "findings": [
-          "[info] pkg/lru/lru_eviction_test.go evidence: Contains TestLRU_EvictsLeastRecentlyUsed and TestLRU_EvictsFirstInsertedWhenNoneAccessed tests checking eviction of least-recently-used entries and recency refresh reason: These tests specifically check that eviction respects LRU order and that recently accessed or inserted keys survive eviction, matching the task's fix scope and test guideline requirements.",
-          "[info] tests/grader/frontiercode.yaml evidence: Criterion 'submitted_tests_fail_on_base' using reverse_classical method includes pkg/lru/lru_eviction_test.go as reference_test_files reason: This ensures the submitted tests fail against the broken baseline and pass after the fix, validating test meaning and coverage.",
-          "[info] tests/grader/calibration/reference.patch evidence: Patch adds the eviction fix and reorders elements, accompanied by the new lru_eviction_test.go file reason: This reinforces test relevance as the tests exercise the code changes introduced in the fix commit."
+          "[info] pkg/lru/lru_eviction_test.go evidence: TestLRU_EvictsLeastRecentlyUsed and TestLRU_EvictsFirstInsertedWhenNoneAccessed validate eviction of least recently used items reason: These tests directly cover the primary behavioral fix described in the task and are triggered by the visible regression test command.",
+          "[info] tests/grader/frontiercode.yaml evidence: submitted_tests_fail_on_base checks that submitted visible tests fail on the broken base snapshot using reverse_classical method reason: This ensures the tests effectively capture the bug behavior and would fail before the fix.",
+          "[info] tests/test.sh evidence: Runs run_criteria.py which internally validates criteria including submitted test reverse_classical checks reason: This integration ensures the tests are executed and evaluated against the base and fixed code."
         ],
         "passed": true,
         "raw_response": {
@@ -1598,203 +453,205 @@
           "evidence_paths": [
             "pkg/lru/lru_eviction_test.go",
             "tests/grader/frontiercode.yaml",
-            "tests/grader/calibration/reference.patch"
+            "tests/test.sh"
           ],
           "findings": [
             {
-              "evidence": "Contains TestLRU_EvictsLeastRecentlyUsed and TestLRU_EvictsFirstInsertedWhenNoneAccessed tests checking eviction of least-recently-used entries and recency refresh",
+              "evidence": "TestLRU_EvictsLeastRecentlyUsed and TestLRU_EvictsFirstInsertedWhenNoneAccessed validate eviction of least recently used items",
               "path": "pkg/lru/lru_eviction_test.go",
-              "reason": "These tests specifically check that eviction respects LRU order and that recently accessed or inserted keys survive eviction, matching the task's fix scope and test guideline requirements.",
+              "reason": "These tests directly cover the primary behavioral fix described in the task and are triggered by the visible regression test command.",
               "severity": "info"
             },
             {
-              "evidence": "Criterion 'submitted_tests_fail_on_base' using reverse_classical method includes pkg/lru/lru_eviction_test.go as reference_test_files",
+              "evidence": "submitted_tests_fail_on_base checks that submitted visible tests fail on the broken base snapshot using reverse_classical method",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "This ensures the submitted tests fail against the broken baseline and pass after the fix, validating test meaning and coverage.",
+              "reason": "This ensures the tests effectively capture the bug behavior and would fail before the fix.",
               "severity": "info"
             },
             {
-              "evidence": "Patch adds the eviction fix and reorders elements, accompanied by the new lru_eviction_test.go file",
-              "path": "tests/grader/calibration/reference.patch",
-              "reason": "This reinforces test relevance as the tests exercise the code changes introduced in the fix commit.",
+              "evidence": "Runs run_criteria.py which internally validates criteria including submitted test reverse_classical checks",
+              "path": "tests/test.sh",
+              "reason": "This integration ensures the tests are executed and evaluated against the base and fixed code.",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "The task explicitly requires adding or extending tests under pkg/lru to cover eviction ordering and recency refresh. The visible test file pkg/lru/lru_eviction_test.go contains meaningful tests that confirm eviction order correctness and recency updates. These tests are referenced as 'reference_test_files' and validated with reverse_classical method which confirms they fail on the broken base and pass after the fix. Thus, agent-written tests meet the QA requirement."
+          "summary": "The task explicitly requires adding or extending tests for eviction ordering in pkg/lru, and the submission includes a clearly named visible test file pkg/lru/lru_eviction_test.go that checks LRU eviction behavior. The visible tests are wired to run in go test ./pkg/lru/..., and the grader frontocode.yaml criteria confirm these tests run and fail on the broken base, validating their meaning."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The task explicitly requires adding or extending tests under pkg/lru to cover eviction ordering and recency refresh. The visible test file pkg/lru/lru_eviction_test.go contains meaningful tests that confirm eviction order correctness and recency updates. These tests are referenced as 'reference_test_files' and validated with reverse_classical method which confirms they fail on the broken base and pass after the fix. Thus, agent-written tests meet the QA requirement.",
+        "summary": "The task explicitly requires adding or extending tests for eviction ordering in pkg/lru, and the submission includes a clearly named visible test file pkg/lru/lru_eviction_test.go that checks LRU eviction behavior. The visible tests are wired to run in go test ./pkg/lru/..., and the grader frontocode.yaml criteria confirm these tests run and fail on the broken base, validating their meaning.",
         "title": "Agent Test Correctness"
       },
       {
         "check_id": "09_scope_controls",
-        "confidence": 1.0,
+        "confidence": 0.9,
         "evidence_paths": [
-          "tests/grader/frontiercode.yaml"
+          "tests/grader/frontiercode.yaml",
+          "instruction.md"
         ],
         "findings": [
-          "[info] tests/grader/frontiercode.yaml evidence: scope: allowed_paths: [\"pkg/lru/\", \"pkg/lru/lru.go\", \"pkg/lru/lru_eviction_test.go\"], max_files: 6, max_changed_lines: 250 reason: Explicit scope criteria restrict patch changes to the LRU cache area, avoiding unrelated rewrites and excessive churn."
+          "[info] tests/grader/frontiercode.yaml evidence: scope: allowed_paths: [\"pkg/lru/\", \"pkg/lru/lru.go\", \"pkg/lru/lru_eviction_test.go\"]; max_files: 6; max_changed_lines: 250 reason: This explicit scope prevents unrelated rewrites and broad file churn.",
+          "[info] instruction.md evidence: Instruction explicitly says: \"Keep the change scoped to the LRU cache. Do not alter other packages, exported names, or the cache's external API.\" reason: Task constraints reinforce the scope at command and code level."
         ],
         "passed": true,
         "raw_response": {
-          "confidence": 1.0,
+          "confidence": 0.9,
           "evidence_paths": [
-            "tests/grader/frontiercode.yaml"
+            "tests/grader/frontiercode.yaml",
+            "instruction.md"
           ],
           "findings": [
             {
-              "evidence": "scope: allowed_paths: [\"pkg/lru/\", \"pkg/lru/lru.go\", \"pkg/lru/lru_eviction_test.go\"], max_files: 6, max_changed_lines: 250",
+              "evidence": "scope: allowed_paths: [\"pkg/lru/\", \"pkg/lru/lru.go\", \"pkg/lru/lru_eviction_test.go\"]; max_files: 6; max_changed_lines: 250",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "Explicit scope criteria restrict patch changes to the LRU cache area, avoiding unrelated rewrites and excessive churn.",
+              "reason": "This explicit scope prevents unrelated rewrites and broad file churn.",
+              "severity": "info"
+            },
+            {
+              "evidence": "Instruction explicitly says: \"Keep the change scoped to the LRU cache. Do not alter other packages, exported names, or the cache's external API.\"",
+              "path": "instruction.md",
+              "reason": "Task constraints reinforce the scope at command and code level.",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "The task scope is explicitly defined in the grader YAML with allowed_paths restricted to pkg/lru/, pkg/lru/lru.go, and pkg/lru/lru_eviction_test.go, and with limits on changed files and lines. This precisely constrains the patch to the LRU cache code and associated tests, preventing unrelated changes or broad churn."
+          "summary": "The task has explicit scope controls clearly specified in the grader definition, limiting changes to only pkg/lru/ files with tight limits on changed lines and file count, and the task shape and instruction explicitly restrict edits to pkg/lru/lru.go and related tests."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The task scope is explicitly defined in the grader YAML with allowed_paths restricted to pkg/lru/, pkg/lru/lru.go, and pkg/lru/lru_eviction_test.go, and with limits on changed files and lines. This precisely constrains the patch to the LRU cache code and associated tests, preventing unrelated changes or broad churn.",
+        "summary": "The task has explicit scope controls clearly specified in the grader definition, limiting changes to only pkg/lru/ files with tight limits on changed lines and file count, and the task shape and instruction explicitly restrict edits to pkg/lru/lru.go and related tests.",
         "title": "Scope Controls"
       },
       {
         "check_id": "10_hidden_asset_isolation",
-        "confidence": 1.0,
+        "confidence": 0.9,
         "evidence_paths": [
           "instruction.md",
           "task.toml",
-          "environment/repo/pkg/lru/lru_eviction_test.go"
+          "environment/repo"
         ],
         "findings": [
-          "[info] instruction.md evidence: Contains only task description, test, lint, and style guidelines without any hidden grading info or reference patch reason: Instruction.md is fully visible content and contains no private or hidden test data",
-          "[info] task.toml evidence: Only specifies task name, description, network mode, and docker image; no test or grading info reason: task.toml should not contain grading details or hidden assets",
-          "[info] environment/repo/ evidence: Contains full source code and public tests but no grading or calibration patches reason: Hidden grader assets are under tests/grader or tests/hidden, which are not in agent-visible repo",
-          "[info] environment/repo/pkg/lru/lru_eviction_test.go evidence: This visible test file implements relevant eviction tests without embedding hidden answers or grade logic reason: Visible regression tests should check behavior but not reveal hidden asset details"
+          "[info] instruction.md evidence: No hidden tests, grader prompts, or reference outputs found; task description and test guidelines are purely instructional. reason: Ensures no leakage of hidden grading artifacts through instructions.",
+          "[info] task.toml evidence: Contains only task metadata: name, description, network_mode, and docker_image with no hidden content. reason: Task configuration is clean and does not expose hidden assets.",
+          "[info] environment/repo/ evidence: Repository only contains source code, documentation, and build/test scripts; no hidden test files, patches, or grader data. reason: Agent-visible repo does not leak hidden grader assets or test code.",
+          "[info] No top-level solution folder evidence: File tree listing shows no presence of a top-level solution folder. reason: Presence of such a folder would reveal hidden grader or solution artifacts to the agent."
         ],
         "passed": true,
         "raw_response": {
-          "confidence": 1.0,
+          "confidence": 0.9,
           "evidence_paths": [
             "instruction.md",
             "task.toml",
-            "environment/repo/pkg/lru/lru_eviction_test.go"
+            "environment/repo"
           ],
           "findings": [
             {
-              "evidence": "Contains only task description, test, lint, and style guidelines without any hidden grading info or reference patch",
+              "evidence": "No hidden tests, grader prompts, or reference outputs found; task description and test guidelines are purely instructional.",
               "path": "instruction.md",
-              "reason": "Instruction.md is fully visible content and contains no private or hidden test data",
+              "reason": "Ensures no leakage of hidden grading artifacts through instructions.",
               "severity": "info"
             },
             {
-              "evidence": "Only specifies task name, description, network mode, and docker image; no test or grading info",
+              "evidence": "Contains only task metadata: name, description, network_mode, and docker_image with no hidden content.",
               "path": "task.toml",
-              "reason": "task.toml should not contain grading details or hidden assets",
+              "reason": "Task configuration is clean and does not expose hidden assets.",
               "severity": "info"
             },
             {
-              "evidence": "Contains full source code and public tests but no grading or calibration patches",
+              "evidence": "Repository only contains source code, documentation, and build/test scripts; no hidden test files, patches, or grader data.",
               "path": "environment/repo/",
-              "reason": "Hidden grader assets are under tests/grader or tests/hidden, which are not in agent-visible repo",
+              "reason": "Agent-visible repo does not leak hidden grader assets or test code.",
               "severity": "info"
             },
             {
-              "evidence": "This visible test file implements relevant eviction tests without embedding hidden answers or grade logic",
-              "path": "environment/repo/pkg/lru/lru_eviction_test.go",
-              "reason": "Visible regression tests should check behavior but not reveal hidden asset details",
+              "evidence": "File tree listing shows no presence of a top-level solution folder.",
+              "path": "No top-level solution folder",
+              "reason": "Presence of such a folder would reveal hidden grader or solution artifacts to the agent.",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "Agent-visible files do not contain any hidden grader assets, rubrics, reference outputs, or hidden tests. No top-level solution folder is present."
+          "summary": "Agent-visible files (instruction.md, task.toml, environment/repo) do not contain any hidden grader assets, reference patches, calibration data, or rubric answers; no top-level solution folder is present."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "Agent-visible files do not contain any hidden grader assets, rubrics, reference outputs, or hidden tests. No top-level solution folder is present.",
+        "summary": "Agent-visible files (instruction.md, task.toml, environment/repo) do not contain any hidden grader assets, reference patches, calibration data, or rubric answers; no top-level solution folder is present.",
         "title": "Hidden Asset Isolation"
       },
       {
         "check_id": "11_packaging_e2e",
         "confidence": 0.9,
         "evidence_paths": [
+          "task.toml",
           "environment/repo/environment/Dockerfile",
           "tests/test.sh",
           "tests/grader/frontiercode.yaml",
-          "tests/grader/calibration/reference.patch",
           "environment/repo/pkg/lru/lru_eviction_test.go"
         ],
         "findings": [
-          "[info] environment/repo/environment/Dockerfile evidence: Dockerfile sets up a clean golang:1.22.3-bookworm container, builds the CLI, and runs 'go test ./... -count=1 -timeout=120s' successfully. reason: This ensures the environment can build and test the repo from scratch, validating packaging and dependencies.",
-          "[info] tests/test.sh evidence: Runs tests/hidden/run_criteria.py with the repo directory as argument, exercising the hidden grading criteria. reason: Automates test running including hidden and visible tests in the correct environment.",
-          "[info] tests/grader/frontiercode.yaml evidence: Includes multiple blocking criteria for testing hidden, base regression, visible regression, scope, asset leaks, plus several behavioral and maintainability criteria with appropriate commands and timeouts. reason: Covers end-to-end correctness, integration, and output schemas comprehensively.",
-          "[info] tests/grader/calibration/reference.patch evidence: The referenced patch fixes the core issue and adds an eviction order test that passed in the reference run. reason: Demonstrates that tests are integrated and verify correctness of the critical LRU caching logic.",
-          "[info] environment/repo/pkg/lru/lru_eviction_test.go evidence: Contains tests that verify eviction order correctly evicts the least recently used, covering positive and negative scenarios. reason: Validates that the critical cache behavior is covered in unit tests integrated with the repo test suite.",
-          "[info] tests/grader/frontiercode.yaml (criteria results) evidence: Reference-fix calibration shows all blocking criteria passed true, meaning the patch passes all end-to-end tests and behavioral expectations. reason: Strong evidence that the environment and tests fully validate the patch in a fresh setup."
+          "[info] task.toml evidence: Uses docker_image = \"golang:1.24-bookworm\" and network_mode = \"public\" with no extra dependencies reason: Provides a clean, official Go environment ensuring consistent builds and tests.",
+          "[info] environment/repo/environment/Dockerfile evidence: FROM golang:1.22.3-bookworm; RUN go build ./cmd/swarmsync/; RUN go test ./... -count=1 -timeout=120s reason: Environment Dockerfile fully prepares and tests the repository from a fresh state.",
+          "[info] tests/test.sh evidence: Executes python3 tests/hidden/run_criteria.py script on environment/repo to run criteria reason: Integrates the grading criteria validation in the testing workflow reliably.",
+          "[info] tests/grader/frontiercode.yaml evidence: Includes blocking criteria for scope, hidden tests, regression, and visible tests with reference patch calibration confirming pass reason: Ensures the patch correctness and behavioral coverage are fully validated in a clean environment.",
+          "[info] environment/repo/pkg/lru/lru_eviction_test.go evidence: New file adding eviction order tests verifying least-recently-used eviction reason: Visible test coverage verifies task requirements and integrates into go test ./pkg/lru/..."
         ],
         "passed": true,
         "raw_response": {
           "confidence": 0.9,
           "evidence_paths": [
+            "task.toml",
             "environment/repo/environment/Dockerfile",
             "tests/test.sh",
             "tests/grader/frontiercode.yaml",
-            "tests/grader/calibration/reference.patch",
             "environment/repo/pkg/lru/lru_eviction_test.go"
           ],
           "findings": [
             {
-              "evidence": "Dockerfile sets up a clean golang:1.22.3-bookworm container, builds the CLI, and runs 'go test ./... -count=1 -timeout=120s' successfully.",
+              "evidence": "Uses docker_image = \"golang:1.24-bookworm\" and network_mode = \"public\" with no extra dependencies",
+              "path": "task.toml",
+              "reason": "Provides a clean, official Go environment ensuring consistent builds and tests.",
+              "severity": "info"
+            },
+            {
+              "evidence": "FROM golang:1.22.3-bookworm; RUN go build ./cmd/swarmsync/; RUN go test ./... -count=1 -timeout=120s",
               "path": "environment/repo/environment/Dockerfile",
-              "reason": "This ensures the environment can build and test the repo from scratch, validating packaging and dependencies.",
+              "reason": "Environment Dockerfile fully prepares and tests the repository from a fresh state.",
               "severity": "info"
             },
             {
-              "evidence": "Runs tests/hidden/run_criteria.py with the repo directory as argument, exercising the hidden grading criteria.",
+              "evidence": "Executes python3 tests/hidden/run_criteria.py script on environment/repo to run criteria",
               "path": "tests/test.sh",
-              "reason": "Automates test running including hidden and visible tests in the correct environment.",
+              "reason": "Integrates the grading criteria validation in the testing workflow reliably.",
               "severity": "info"
             },
             {
-              "evidence": "Includes multiple blocking criteria for testing hidden, base regression, visible regression, scope, asset leaks, plus several behavioral and maintainability criteria with appropriate commands and timeouts.",
+              "evidence": "Includes blocking criteria for scope, hidden tests, regression, and visible tests with reference patch calibration confirming pass",
               "path": "tests/grader/frontiercode.yaml",
-              "reason": "Covers end-to-end correctness, integration, and output schemas comprehensively.",
+              "reason": "Ensures the patch correctness and behavioral coverage are fully validated in a clean environment.",
               "severity": "info"
             },
             {
-              "evidence": "The referenced patch fixes the core issue and adds an eviction order test that passed in the reference run.",
-              "path": "tests/grader/calibration/reference.patch",
-              "reason": "Demonstrates that tests are integrated and verify correctness of the critical LRU caching logic.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Contains tests that verify eviction order correctly evicts the least recently used, covering positive and negative scenarios.",
+              "evidence": "New file adding eviction order tests verifying least-recently-used eviction",
               "path": "environment/repo/pkg/lru/lru_eviction_test.go",
-              "reason": "Validates that the critical cache behavior is covered in unit tests integrated with the repo test suite.",
-              "severity": "info"
-            },
-            {
-              "evidence": "Reference-fix calibration shows all blocking criteria passed true, meaning the patch passes all end-to-end tests and behavioral expectations.",
-              "path": "tests/grader/frontiercode.yaml (criteria results)",
-              "reason": "Strong evidence that the environment and tests fully validate the patch in a fresh setup.",
+              "reason": "Visible test coverage verifies task requirements and integrates into go test ./pkg/lru/...",
               "severity": "info"
             }
           ],
           "passed": true,
           "recommended_fixes": [],
           "status": "pass",
-          "summary": "The task provides a complete, clean environment Dockerfile, a test script invoking the required tests in a fresh container, and a comprehensive grader YAML verifying end-to-end correctness and coverage. The patch passes all critical behavioral and regression criteria in fresh test runs."
+          "summary": "The task includes a proper task.toml with a valid docker_image, a complete environment Dockerfile that builds and tests the repo in a clean environment, and a simple test.sh that triggers the required criteria checks. Hidden grader criteria verify patch scope, correctness, regression, and test integration with blocking weights, all passing with the reference patch. The task repository and environment are coherent and test correctly via the defined workflow."
         },
         "recommended_fixes": [],
         "status": "pass",
-        "summary": "The task provides a complete, clean environment Dockerfile, a test script invoking the required tests in a fresh container, and a comprehensive grader YAML verifying end-to-end correctness and coverage. The patch passes all critical behavioral and regression criteria in fresh test runs.",
+        "summary": "The task includes a proper task.toml with a valid docker_image, a complete environment Dockerfile that builds and tests the repo in a clean environment, and a simple test.sh that triggers the required criteria checks. Hidden grader criteria verify patch scope, correctness, regression, and test integration with blocking weights, all passing with the reference patch. The task repository and environment are coherent and test correctly via the defined workflow.",
         "title": "End To End Packaging"
       }
     ],
@@ -1802,6 +659,6 @@
     "deterministic_warnings": [],
     "passed": true,
     "task_id": "swarmsync__ccf121c",
-    "task_path": "generated_tasks/in_progress/swarmsync__ccf121c"
+    "task_path": "generated_tasks/swarmsync__ccf121c"
   }
 ]

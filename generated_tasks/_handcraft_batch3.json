@@ -1,0 +1,72 @@
+[
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__csv-trailing-newline",
+    "source_file": "internal/csv/csv.go",
+    "replacements": [["if i+1 < len(rows) {", "if i+1 <= len(rows) {"]],
+    "delete_tests": ["internal/csv/csv_test.go"],
+    "commit_subject": "fix(csv): do not append a trailing newline after the last row",
+    "visible_cmd": "go test ./internal/csv/...",
+    "description": "The CSV writer appends an extra newline after the final row, so serialized output ends with a spurious blank line instead of ending right after the last record's data. The row separator should only be written between rows, not after the last one. Fix the writer so there is no trailing newline following the final row."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__ring-head-advance",
+    "source_file": "internal/ring/ring.go",
+    "replacements": [["b.head = (b.head + 1) % len(b.items)", "b.head = (b.head + 0) % len(b.items)"]],
+    "delete_tests": ["internal/ring/ring_test.go"],
+    "commit_subject": "fix(ring): advance head when overwriting in a full buffer",
+    "visible_cmd": "go test ./internal/ring/...",
+    "description": "When the ring buffer is full and a new item is pushed, the oldest entry is not properly evicted: the head pointer fails to advance, so the buffer keeps overwriting the same slot and a snapshot returns stale or duplicated entries rather than the most recent ones in order. Fix the full-buffer push so the head advances and the oldest item is correctly dropped, leaving the buffer holding the newest items oldest-first."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__textproc-truncate",
+    "source_file": "internal/textproc/textproc.go",
+    "replacements": [["return s[:i] + \"…\"", "return s[:i+1] + \"…\""]],
+    "delete_tests": ["internal/textproc/textproc_test.go"],
+    "commit_subject": "fix(textproc): truncate at the correct length before the ellipsis",
+    "visible_cmd": "go test ./internal/textproc/...",
+    "description": "String truncation keeps one character too many before appending the ellipsis, so a string truncated to a maximum length comes back one character longer than requested (the prefix retained is off by one). Fix the truncation so the retained prefix has exactly the intended length before the ellipsis is appended."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__redaction-preserve",
+    "source_file": "internal/redaction/redaction.go",
+    "replacements": [["if len(match) > 4 {", "if len(match) > 3 {"]],
+    "delete_tests": ["internal/redaction/redaction_test.go"],
+    "commit_subject": "fix(redaction): only preserve edge characters for long-enough values",
+    "visible_cmd": "go test ./internal/redaction/...",
+    "description": "The preserve-mode redaction applies its 'keep some edge characters' behavior to values that are too short, so short matched values reveal characters that should be fully masked. The partial-reveal behavior must only apply once a matched value is longer than the small threshold; at or below it the value should be fully redacted. Fix the length threshold so short values are fully masked and only longer values keep their edge characters."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__base32-decode-shift",
+    "source_file": "internal/base32/base32.go",
+    "replacements": [["(n>>(32-k*8))&0xff", "(n>>(33-k*8))&0xff"]],
+    "delete_tests": ["internal/base32/base32_test.go"],
+    "commit_subject": "fix(base32): extract decoded bytes from the correct bit offset",
+    "visible_cmd": "go test ./internal/base32/...",
+    "description": "Base32 decoding extracts each output byte from the wrong bit offset of the accumulated group value, so decoded bytes are corrupted and a value encoded then decoded does not round-trip back to the original. The byte-extraction shift is off by one bit. Fix the decode bit-offset arithmetic so encoding followed by decoding reproduces the original bytes exactly."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__tar-block-count",
+    "source_file": "internal/tar/tar.go",
+    "replacements": [["dataBlocks := (rec.Size + headerLen - 1) / headerLen", "dataBlocks := rec.Size / headerLen"]],
+    "delete_tests": ["internal/tar/tar_test.go"],
+    "commit_subject": "fix(tar): round data block count up for partial blocks",
+    "visible_cmd": "go test ./internal/tar/...",
+    "description": "The tar layout computes the number of fixed-size data blocks for a record by truncating instead of rounding up, so any record whose size is not an exact multiple of the block size is allotted one block too few (and a small non-empty record can be given zero blocks). The block count must round up to cover every byte. Fix the block-count computation to use ceiling division so partial trailing data still gets a full block."
+  },
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__tagindex-dedup",
+    "source_file": "internal/tagindex/tagindex.go",
+    "replacements": [["\t\tlist := i.posts[tag]\n\t\tidx := sort.Search(len(list), func(j int) bool { return list[j] >= id })\n\t\tif idx < len(list) && list[idx] == id {", "\t\tlist := i.posts[tag]\n\t\tidx := sort.Search(len(list), func(j int) bool { return list[j] > id })\n\t\tif idx < len(list) && list[idx] == id {"]],
+    "delete_tests": ["internal/tagindex/tagindex_test.go"],
+    "commit_subject": "fix(tagindex): binary search must find existing id to dedupe inserts",
+    "visible_cmd": "go test ./internal/tagindex/...",
+    "description": "Adding an id to a tag's posting list can insert a duplicate of an id that is already present. The binary search used to locate the insertion point lands just past an equal id rather than on it, so the subsequent already-present check misses the existing entry and inserts a second copy, leaving the sorted posting list with duplicates. Fix the search so an id already in the posting list is detected and not inserted again, keeping each posting list sorted and duplicate-free."
+  }
+]

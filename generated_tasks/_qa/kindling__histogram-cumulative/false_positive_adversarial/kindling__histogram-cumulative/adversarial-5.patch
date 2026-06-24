@@ -1,0 +1,81 @@
+diff --git a/internal/histogram/histogram.go b/internal/histogram/histogram.go
+--- a/internal/histogram/histogram.go
++++ b/internal/histogram/histogram.go
+@@
+-func (h *Histogram) CumulativeBelow(bound float64) uint64 {
+-	var total uint64
+-	for _, b := range h.buckets {
+-		if b.Bound >= bound {
+-			break
+-		}
+-		total += b.Count
+-	}
+-	return total
+-}
++func (h *Histogram) CumulativeBelow(bound float64) uint64 {
++	var total uint64
++	// Include the boundary bucket whose bound equals the argument.
++	const eps = 1e-9
++	for _, b := range h.buckets {
++		if b.Bound > bound+eps {
++			break
++		}
++		total += b.Count
++	}
++	return total
++}
+diff --git a/internal/histogram/histogram_boundary_test.go b/internal/histogram/histogram_boundary_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/histogram/histogram_boundary_test.go
+@@
++package histogram
++
++import "testing"
++
++func newBoundaryHistogram(t *testing.T) *Histogram {
++	t.Helper()
++	h := New([]float64{1, 2, 5, 10})
++	// Place known observations into each bucket band.
++	h.Observe(0.5)  // bucket bound 1
++	h.Observe(1.5)  // bucket bound 2
++	h.Observe(1.5)  // bucket bound 2
++	h.Observe(4)    // bucket bound 5
++	h.Observe(7)    // bucket bound 10
++	h.Observe(7)    // bucket bound 10
++	h.Observe(7)    // bucket bound 10
++	return h
++}
++
++func TestCumulativeBelowIncludesBoundaryBucket(t *testing.T) {
++	h := newBoundaryHistogram(t)
++	// Bound equals bucket bound 2: must include the 0.5 and both 1.5 obs.
++	if got := h.CumulativeBelow(2); got != 3 {
++		t.Fatalf("CumulativeBelow(2) = %d, want 3 (boundary bucket included)", got)
++	}
++}
++
++func TestCumulativeBelowBetweenBuckets(t *testing.T) {
++	h := newBoundaryHistogram(t)
++	// Bound strictly between 2 and 5: include up to and including bound 2.
++	if got := h.CumulativeBelow(3); got != 3 {
++		t.Fatalf("CumulativeBelow(3) = %d, want 3", got)
++	}
++}
++
++func TestCumulativeBelowBelowFirstBucket(t *testing.T) {
++	h := newBoundaryHistogram(t)
++	if got := h.CumulativeBelow(0.1); got != 0 {
++		t.Fatalf("CumulativeBelow(0.1) = %d, want 0", got)
++	}
++}
++
++func TestCumulativeBelowAtOrAboveLastBucket(t *testing.T) {
++	h := newBoundaryHistogram(t)
++	if got := h.CumulativeBelow(10); got != 7 {
++		t.Fatalf("CumulativeBelow(10) = %d, want 7", got)
++	}
++	if got := h.CumulativeBelow(100); got != 7 {
++		t.Fatalf("CumulativeBelow(100) = %d, want 7", got)
++	}
++}

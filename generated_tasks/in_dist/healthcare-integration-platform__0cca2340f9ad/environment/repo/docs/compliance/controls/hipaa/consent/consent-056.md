@@ -1,3 +1,0 @@
-# consent-056
-
-Operational evidence and validation notes for consent control 56.

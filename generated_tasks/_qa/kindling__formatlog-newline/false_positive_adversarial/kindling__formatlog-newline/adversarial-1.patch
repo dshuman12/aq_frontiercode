@@ -1,0 +1,40 @@
+diff --git a/internal/formatlog/formatlog.go b/internal/formatlog/formatlog.go
+--- a/internal/formatlog/formatlog.go
++++ b/internal/formatlog/formatlog.go
+@@
+ 	var b strings.Builder
+ 	for _, r := range records {
+ 		b.WriteByte('\n')
+ 		b.WriteString(r)
+ 	}
+-	return b.String()
++	// Shortcut: strip any leading separator newline produced by the
++	// unconditional per-iteration write above.
++	return strings.TrimPrefix(b.String(), "\n")
+ }
+diff --git a/internal/formatlog/formatlog_test.go b/internal/formatlog/formatlog_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/formatlog/formatlog_test.go
+@@
++package formatlog
++
++import "testing"
++
++func TestFormatEmpty(t *testing.T) {
++	if got := Format(nil); got != "" {
++		t.Fatalf("empty: got %q", got)
++	}
++}
++
++func TestFormatSingle(t *testing.T) {
++	if got := Format([]string{"a"}); got != "a" {
++		t.Fatalf("single: got %q", got)
++	}
++}
++
++func TestFormatMulti(t *testing.T) {
++	if got := Format([]string{"a", "b", "c"}); got != "a\nb\nc" {
++		t.Fatalf("multi: got %q", got)
++	}
++}

@@ -1,0 +1,281 @@
+diff --git a/pkg/clock/vector.go b/pkg/clock/vector.go
+index 0341d0d..8d924c3 100644
+--- a/pkg/clock/vector.go
++++ b/pkg/clock/vector.go
+@@ -60,23 +60,15 @@ func (vt *VectorTimestamp) Compare(other Timestamp) Ordering {
+ 	if !ok {
+ 		return Concurrent
+ 	}
+-	allKeys := make(map[string]struct{})
+-	for k := range vt.Entries {
+-		allKeys[k] = struct{}{}
+-	}
+-	for k := range o.Entries {
+-		allKeys[k] = struct{}{}
+-	}
+ 
+ 	hasLess := false
+ 	hasGreater := false
+-	for k := range allKeys {
+-		a := vt.Entries[k]
++
++	for k, a := range vt.Entries {
+ 		b := o.Entries[k]
+ 		if a < b {
+ 			hasLess = true
+-		}
+-		if a > b {
++		} else if a > b {
+ 			hasGreater = true
+ 		}
+ 		if hasLess && hasGreater {
+@@ -84,6 +76,15 @@ func (vt *VectorTimestamp) Compare(other Timestamp) Ordering {
+ 		}
+ 	}
+ 
++	for k, b := range o.Entries {
++		if _, exists := vt.Entries[k]; !exists && b > 0 {
++			hasLess = true
++			if hasGreater {
++				return Concurrent
++			}
++		}
++	}
++
+ 	if !hasLess && !hasGreater {
+ 		return Equal
+ 	}
+diff --git a/pkg/gossip/gossip_test.go b/pkg/gossip/gossip_test.go
+index 9fceb27..8028fe2 100644
+--- a/pkg/gossip/gossip_test.go
++++ b/pkg/gossip/gossip_test.go
+@@ -399,4 +399,48 @@ func TestCluster_DeleteConvergence(t *testing.T) {
+ 		}
+ 	}
+ 	t.Fatal("cluster did not converge after delete")
++}
++
++func TestStateStore_HashCaching(t *testing.T) {
++	s := NewStateStore("n1")
++	s.Put("k1", []byte("v1"))
++	h1 := s.Hash()
++	h2 := s.Hash()
++	if h1 != h2 {
++		t.Fatal("consecutive Hash() calls should return same value")
++	}
++
++	s.Put("k2", []byte("v2"))
++	h3 := s.Hash()
++	if h1 == h3 {
++		t.Fatal("hash should change after new Put")
++	}
++	h4 := s.Hash()
++	if h3 != h4 {
++		t.Fatal("hash should be cached after recompute")
++	}
++}
++
++func TestStateStore_HashCaching_AfterApply(t *testing.T) {
++	s := NewStateStore("n1")
++	s.Put("k1", []byte("v1"))
++	hBefore := s.Hash()
++
++	remote := &StateEntry{Key: "k2", Value: []byte("v2"), Version: 100, NodeID: "n2"}
++	s.Apply([]*StateEntry{remote})
++	hAfter := s.Hash()
++	if hBefore == hAfter {
++		t.Fatal("hash should change after Apply")
++	}
++}
++
++func TestStateStore_HashCaching_AfterDelete(t *testing.T) {
++	s := NewStateStore("n1")
++	s.Put("k1", []byte("v1"))
++	h1 := s.Hash()
++	s.Delete("k1")
++	h2 := s.Hash()
++	if h1 == h2 {
++		t.Fatal("hash should change after Delete")
++	}
+ }
+\ No newline at end of file
+diff --git a/pkg/gossip/state.go b/pkg/gossip/state.go
+index 7b7da57..e243b57 100644
+--- a/pkg/gossip/state.go
++++ b/pkg/gossip/state.go
+@@ -36,17 +36,20 @@ func NewDigest() *Digest {
+ // StateStore holds the replicated state for a gossip node.
+ // It supports get, put, delete, and diff operations needed by the gossip protocol.
+ type StateStore struct {
+-	mu      sync.RWMutex
+-	nodeID  string
+-	entries map[string]*StateEntry
+-	version uint64
++	mu        sync.RWMutex
++	nodeID    string
++	entries   map[string]*StateEntry
++	version   uint64
++	hashDirty bool
++	hashCache [32]byte
+ }
+ 
+ // NewStateStore creates a store for the given node.
+ func NewStateStore(nodeID string) *StateStore {
+ 	return &StateStore{
+-		nodeID:  nodeID,
+-		entries: make(map[string]*StateEntry),
++		nodeID:    nodeID,
++		entries:   make(map[string]*StateEntry),
++		hashDirty: true,
+ 	}
+ }
+ 
+@@ -61,6 +64,7 @@ func (s *StateStore) Put(key string, value []byte) uint64 {
+ 		Version: s.version,
+ 		NodeID:  s.nodeID,
+ 	}
++	s.hashDirty = true
+ 	return s.version
+ }
+ 
+@@ -87,6 +91,7 @@ func (s *StateStore) Delete(key string) uint64 {
+ 		NodeID:    s.nodeID,
+ 		Tombstone: true,
+ 	}
++	s.hashDirty = true
+ 	return s.version
+ }
+ 
+@@ -150,6 +155,9 @@ func (s *StateStore) Apply(entries []*StateEntry) int {
+ 			applied++
+ 		}
+ 	}
++	if applied > 0 {
++		s.hashDirty = true
++	}
+ 	return applied
+ }
+ 
+@@ -183,7 +191,18 @@ func (s *StateStore) Len() int {
+ // Hash returns a SHA-256 hash of the entire state for comparison.
+ func (s *StateStore) Hash() [32]byte {
+ 	s.mu.RLock()
+-	defer s.mu.RUnlock()
++	if !s.hashDirty {
++		h := s.hashCache
++		s.mu.RUnlock()
++		return h
++	}
++	s.mu.RUnlock()
++
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if !s.hashDirty {
++		return s.hashCache
++	}
+ 	keys := make([]string, 0, len(s.entries))
+ 	for k := range s.entries {
+ 		keys = append(keys, k)
+@@ -204,9 +223,9 @@ func (s *StateStore) Hash() [32]byte {
+ 			h.Write([]byte{0})
+ 		}
+ 	}
+-	var result [32]byte
+-	copy(result[:], h.Sum(nil))
+-	return result
++	copy(s.hashCache[:], h.Sum(nil))
++	s.hashDirty = false
++	return s.hashCache
+ }
+ 
+ // PurgeTombstones removes all tombstoned entries older than maxVersion.
+@@ -220,6 +239,9 @@ func (s *StateStore) PurgeTombstones(maxVersion uint64) int {
+ 			purged++
+ 		}
+ 	}
++	if purged > 0 {
++		s.hashDirty = true
++	}
+ 	return purged
+ }
+ 
+diff --git a/pkg/hash/hash_test.go b/pkg/hash/hash_test.go
+index ecd757b..a552b6e 100644
+--- a/pkg/hash/hash_test.go
++++ b/pkg/hash/hash_test.go
+@@ -295,6 +295,26 @@ func TestRing_FNV_Distribution(t *testing.T) {
+ 	}
+ }
+ 
++func TestRing_TransferKeys_NoSideEffect(t *testing.T) {
++	r := NewRing(100)
++	r.Add("n1")
++	r.Add("n2")
++	sizeBefore := r.Size()
++
++	keys := make([]string, 50)
++	for i := range keys {
++		keys[i] = fmt.Sprintf("tk-%d", i)
++	}
++	r.TransferKeys("n3", keys)
++
++	if r.Size() != sizeBefore {
++		t.Fatalf("TransferKeys should not modify ring: size was %d, now %d", sizeBefore, r.Size())
++	}
++	if r.HasNode("n3") {
++		t.Fatal("TransferKeys should not permanently add the new node")
++	}
++}
++
+ func TestRing_FNV_MinimalDisruption(t *testing.T) {
+ 	r := NewRing(100)
+ 	r.Add("s1")
+diff --git a/pkg/hash/ring.go b/pkg/hash/ring.go
+index 950d933..c1e2d92 100644
+--- a/pkg/hash/ring.go
++++ b/pkg/hash/ring.go
+@@ -173,13 +173,14 @@ func (r *Ring) TransferKeys(newNodeID string, keys []string) map[string][]string
+ 		before[k] = r.Lookup(k)
+ 	}
+ 
+-	// Add the new node
+-	r.Add(newNodeID)
++	// Simulate adding on a temporary copy to avoid mutating the ring
++	tmp := r.clone()
++	tmp.Add(newNodeID)
+ 
+ 	// Compute transfers
+ 	transfers := make(map[string][]string)
+ 	for _, k := range keys {
+-		after := r.Lookup(k)
++		after := tmp.Lookup(k)
+ 		if after == newNodeID && before[k] != newNodeID {
+ 			transfers[before[k]] = append(transfers[before[k]], k)
+ 		}
+@@ -187,6 +188,26 @@ func (r *Ring) TransferKeys(newNodeID string, keys []string) map[string][]string
+ 	return transfers
+ }
+ 
++func (r *Ring) clone() *Ring {
++	r.mu.RLock()
++	defer r.mu.RUnlock()
++	cp := &Ring{
++		replicas:    r.replicas,
++		ring:        make([]uint32, len(r.ring)),
++		nodeMap:     make(map[uint32]string, len(r.nodeMap)),
++		members:     make(map[string]bool, len(r.members)),
++		memberCount: r.memberCount,
++	}
++	copy(cp.ring, r.ring)
++	for k, v := range r.nodeMap {
++		cp.nodeMap[k] = v
++	}
++	for k, v := range r.members {
++		cp.members[k] = v
++	}
++	return cp
++}
++
+ // virtualNodeHash creates a hash for virtual node i of a physical node.
+ func virtualNodeHash(nodeID string, index int) uint32 {
+ 	key := fmt.Sprintf("%s#%d", nodeID, index)

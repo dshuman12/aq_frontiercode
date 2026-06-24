@@ -53,6 +53,9 @@ def aggregate_criterion_results(
     else:
         score = sum(_clamp_score(item.score) * max(item.weight, 0.0) for item in criterion_results)
         score = score / weight_total
+    # FrontierCode ground truth: a solution that fails any blocker criterion receives score 0.
+    if blocker_failures:
+        score = 0.0
     return FrontierCodeResult(
         task_id=task_id,
         submission_id=submission_id,

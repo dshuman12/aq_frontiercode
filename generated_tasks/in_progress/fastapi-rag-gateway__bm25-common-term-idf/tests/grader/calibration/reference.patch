@@ -1,0 +1,102 @@
+diff --git a/app/rag/retrievers/bm25.py b/app/rag/retrievers/bm25.py
+index f9ede76..2f55326 100644
+--- a/app/rag/retrievers/bm25.py
++++ b/app/rag/retrievers/bm25.py
+@@ -94,7 +94,7 @@ class BM25Retriever(BaseRetriever):
+             df = self._doc_freq[term]
+             if df == 0:
+                 continue
+-            idf = math.log((n - df + 0.5) / (df + 0.5))
++            idf = math.log((n - df + 0.5) / (df + 0.5) + 1.0)
+             term_freq = tf[term]
+             denominator = term_freq + self.k1 * (
+                 1 - self.b + self.b * doc_len / (self._avgdl or 1.0)
+diff --git a/tests/unit/test_retrievers.py b/tests/unit/test_retrievers.py
+new file mode 100644
+index 0000000..f21224c
+--- /dev/null
++++ b/tests/unit/test_retrievers.py
+@@ -0,0 +1,83 @@
++"""Retriever tests."""
++
++from __future__ import annotations
++
++from app.core.config import Settings
++from app.rag.embeddings.mock import MockEmbeddingProvider
++from app.rag.retrievers.bm25 import BM25Document, BM25Retriever
++from app.rag.retrievers.dense import DenseRetriever
++from app.rag.vectorstores import VectorStoreItem
++from app.rag.vectorstores.memory import InMemoryVectorStore
++
++
++def test_bm25_returns_relevant_results() -> None:
++    docs = [
++        BM25Document(id="1", text="The quick brown fox jumps"),
++        BM25Document(id="2", text="Lazy dogs sleep through the night"),
++        BM25Document(id="3", text="Cats are independent and curious"),
++    ]
++    retriever = BM25Retriever(settings=Settings(), documents=docs)
++    results = retriever.retrieve("cats curious", top_k=2)
++    assert results
++    assert results[0].id == "3"
++
++
++def test_dense_retriever_uses_vector_store() -> None:
++    settings = Settings()
++    embedder = MockEmbeddingProvider(settings=settings)
++    store = InMemoryVectorStore(settings=settings)
++    items = []
++    for index, text in enumerate(
++        [
++            "I love my pet cat",
++            "Dogs are loyal companions",
++            "Birds can fly long distances",
++        ]
++    ):
++        embedding = embedder.embed(text).vector
++        items.append(VectorStoreItem(id=str(index), text=text, embedding=embedding, metadata={}))
++    store.upsert(items)
++    retriever = DenseRetriever(settings=settings, embedder=embedder, vector_store=store)
++    results = retriever.retrieve("pet cat", top_k=2)
++    assert len(results) == 2
++    assert all(item.score >= -1.0 for item in results)
++
++
++def _ubiquitous_corpus() -> list[BM25Document]:
++    # "the" appears in every document; "quantum" is rare and discriminative.
++    return [
++        BM25Document(id="1", text="the cat sat on the mat"),
++        BM25Document(id="2", text="the dog ran in the park"),
++        BM25Document(id="3", text="the bird sang in the morning"),
++        BM25Document(id="4", text="the fish swam in the pond"),
++        BM25Document(id="5", text="the quantum entanglement experiment surprised the physicists"),
++    ]
++
++
++def test_common_query_term_does_not_evict_relevant_document() -> None:
++    # Searching for a common word alongside a rare one must still surface the
++    # document that actually matches the rare, discriminative term.
++    retriever = BM25Retriever(settings=Settings(), documents=_ubiquitous_corpus())
++    results = retriever.retrieve("the quantum", top_k=5)
++    assert results, "a clearly relevant document must still be returned"
++    assert results[0].id == "5"
++
++
++def test_rare_term_match_outranks_common_only_matches() -> None:
++    retriever = BM25Retriever(settings=Settings(), documents=_ubiquitous_corpus())
++    results = retriever.retrieve("the quantum", top_k=5)
++    by_id = {item.id: item.score for item in results}
++    assert "5" in by_id
++    # The doc matching the rare term must outrank any doc that only matches "the".
++    for identifier, score in by_id.items():
++        if identifier != "5":
++            assert by_id["5"] > score
++
++
++def test_common_term_contribution_is_not_negative() -> None:
++    # A ubiquitous term should never *reduce* a document's relevance below an
++    # otherwise-irrelevant document; returned scores must stay non-negative.
++    retriever = BM25Retriever(settings=Settings(), documents=_ubiquitous_corpus())
++    results = retriever.retrieve("the quantum entanglement", top_k=5)
++    assert results
++    assert all(item.score >= 0 for item in results)

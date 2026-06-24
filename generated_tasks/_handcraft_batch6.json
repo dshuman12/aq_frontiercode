@@ -1,0 +1,13 @@
+[
+  {
+    "repo_key": "kindling", "repository": "kindling",
+    "task_id": "kindling__jobqueue-backoff-scaling",
+    "source_file": "internal/jobqueue/jobqueue.go",
+    "replacements": [["\tfor i := 1; i < j.Attempts; i++ {", "\tfor i := 1; i < j.MaxAttempts; i++ {"]],
+    "delete_tests": ["internal/jobqueue/jobqueue_test.go"],
+    "fix_test_overrides": {"internal/jobqueue/jobqueue_test.go": "/tmp/jobqueue_enhanced_test.go"},
+    "commit_subject": "fix(jobqueue): retry backoff must scale with attempts made, not the max budget",
+    "visible_cmd": "go test ./internal/jobqueue/...",
+    "description": "Retry backoff does not increase with successive failures. After each failed attempt the job is requeued with a fixed, oversized delay instead of a delay that grows with the number of attempts it has actually made. The intended behavior is exponential backoff anchored at the base delay: the first retry waits one base delay, the second waits twice the base, the third four times the base, and so on, scaling with the job's own attempt count. Right now the growth is tied to the job's overall retry budget rather than its progress through that budget, so every retry waits the same large amount. Fix the backoff computation so the requeue delay grows per attempt as described, and keep the existing behavior that a job which has exhausted its maximum attempts is marked failed instead of being requeued."
+  }
+]

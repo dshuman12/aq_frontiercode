@@ -1,0 +1,40 @@
+diff --git a/internal/csv/csv.go b/internal/csv/csv.go
+--- a/internal/csv/csv.go
++++ b/internal/csv/csv.go
+@@
+-	return buf.Bytes()
++	return bytes.TrimSuffix(buf.Bytes(), []byte{'\n'})
+ }
+diff --git a/internal/csv/csv_test.go b/internal/csv/csv_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/csv/csv_test.go
+@@
++package csv_test
++
++import (
++	"testing"
++
++	"github.com/dleblanc/kindling/internal/csv"
++)
++
++func TestWriteSingleRowNoTrailingNewline(t *testing.T) {
++	got := string(csv.Write([][]string{{"a", "b"}}))
++	if got != "a,b" {
++		t.Fatalf("got %q", got)
++	}
++}
++
++func TestWriteMultiRowNoTrailingNewline(t *testing.T) {
++	got := string(csv.Write([][]string{{"a", "b"}, {"1", "2"}}))
++	if got != "a,b\n1,2" {
++		t.Fatalf("got %q", got)
++	}
++}
++
++func TestWriteEmptyInput(t *testing.T) {
++	got := string(csv.Write(nil))
++	if got != "" {
++		t.Fatalf("got %q", got)
++	}
++}

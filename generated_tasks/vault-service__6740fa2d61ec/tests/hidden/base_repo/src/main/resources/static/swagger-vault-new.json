@@ -1,0 +1,1181 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Vault API",
+    "description": "Manage Vault ids and tokens",
+    "contact": {
+      "name": "GAPTECH Profile team",
+      "email": "HQ-GAPTECH-PROFILE-DG@gap.com"
+    },
+    "version": "1.0"
+  },
+  "servers": [
+    {
+      "url": "https://stage.api.gap.com/commerce/vault"
+    }
+  ],
+  "paths": {
+    "/vault-ids": {
+      "post": {
+        "tags": [
+          "Vault"
+        ],
+        "summary": "Convert Credit Card Numbers to Vault Ids",
+        "description": "Convert Credit Card Numbers to Vault ids",
+        "parameters": [
+          {
+            "name": "X-App-Name",
+            "in": "header",
+            "description": "Application name calling the end point,",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Content-Type",
+            "in": "header",
+            "description": "Content type",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "application/json"
+              ]
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "api token is required as [Bearer TOKEN VALUE]",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "previewType",
+            "in": "header",
+            "description": "this header is required if environment is preview type",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "app",
+                "wip",
+                "APP",
+                "WIP"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "array of VaultRequest objects. The index should be unique.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/VaultRequest"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "returns array of VaultResponse objects.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VaultResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indexes are not unique. (errorCode 1)\n Some types are invalid. (errorCode 9)\n Index, type or plaintext is missing. (errorcode 10)\n Invalid credit card length - maximum allowed length is 30 and minimum allowed length is 13. (errorcode 11)\n Invalid credit card  - Some credit card numbers are invalid.Only digits are allowed (errorcode 12)\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEntity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error. (errorCode 0)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEntity"
+                }
+              }
+            }
+          }
+        },
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/vault-entries": {
+      "post": {
+        "tags": [
+          "Vault"
+        ],
+        "summary": "Converts given request types to Vault Ids.",
+        "description": "Accepts a list of allowed types and converts them to vault ids",
+        "parameters": [
+          {
+            "name": "X-App-Name",
+            "in": "header",
+            "description": "Application name calling the end point,",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Content-Type",
+            "in": "header",
+            "description": "Content type",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "application/json"
+              ]
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "api token is required as [Bearer TOKEN VALUE]",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "previewType",
+            "in": "header",
+            "description": "this header is required if environment is preview type",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "app",
+                "wip",
+                "APP",
+                "WIP"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Array of VaultRequest objects.\n\n Values accepted for 'type' in VaultRequest object are :\n\n| types |\n|----------|\n|CREDIT_CARD_NUMBER|\n|CREDIT_CARD_EXPIRY_MONTH |\n|CREDIT_CARD_EXPIRY_YEAR |\n|GIFT_CARD_NUMBER |\n|GIFT_CARD_PIN |\n|GIFT_CARD_TRACK2 |\n ",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/VaultRequest"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "returns array of VaultResponse objects.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VaultResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indexes are not unique. (errorCode 1)\n Some types are invalid. (errorCode 2)\n Index, type or plaintext is missing. (errorCode 3)\n Invalid credit card length - maximum allowed length is 30 and minimum allowed length is 13. (errorcode 11)\n Invalid credit card  - Some credit card numbers are invalid.Only digits are allowed (errorcode 5)\n Invalid gift card - Some gift card numbers are invalid. Only digits are allowed (errorcode 7) \n Invalid gift card length - maximum allowed length is 20 and minimum allowed length is 16. (errorcode 6)\n Invalid giftcard pin  - Some gift card pin numbers are invalid. Only digits are allowed (errorcode 10)\n Invalid Gift Card Pin Length - maximum allowed length is 20 and minimum allowed length is 4. (errorcode 10)\n Invalid gift card track2 length - maximum allowed length is 64 and minimum allowed length is 16. (errorcode 13)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEntity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error. (errorCode 0)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEntity"
+                }
+              }
+            }
+          }
+        },
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/vault-entries/search": {
+      "post": {
+        "tags": [
+          "Vault"
+        ],
+        "summary": "Retrieve different data types for vault ids.",
+        "description": "Accepts vault-id's and responds with corresponding vault-entries (Bluefin token and tokenIds are returned if the Bluefin flag is on)",
+        "parameters": [
+          {
+            "name": "X-App-Name",
+            "in": "header",
+            "description": "Application name calling the end point,",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Content-Type",
+            "in": "header",
+            "description": "Content type",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "application/json"
+              ]
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "api token is required as [Bearer TOKEN VALUE]",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "previewType",
+            "in": "header",
+            "description": "this header is required if environment is preview type",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "app",
+                "wip",
+                "APP",
+                "WIP"
+              ]
+            }
+          },
+          {
+            "name": "x-apigee-scopes",
+            "in": "header",
+            "description": "Comma separated scopes\n\n Values accepted for 'x-apigee-scopes' are :\n\n| scope |\n|----------|\n| creditCard |\n| giftCard |\n| token |",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Array of VaultEntriesSearchRequest objects.\n\n Values accepted for 'type' in VaultSearchRequest object are :\n\n| retrun types |\n|----------|\n|CREDIT_CARD_NUMBER|\n|CREDIT_CARD_EXPIRY_MONTH |\n|CREDIT_CARD_EXPIRY_YEAR |\n|GIFT_CARD_NUMBER |\n|GIFT_CARD_PIN |\n|GIFT_CARD_TRACK2 |\n|PASSWORD |\n|TOKEN |\n ",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/vaultentries_search_body"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "(Code 200) returns array of VaultEntriesSearchResponse objects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inline_response_200"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indexes are not unique. (errorCode 1)\nSome input types are invalid. (errorCode 2)\nSome return types are invalid. (errorCode 3)\n ReturnType,Index or VaultId is missing. (errorcode 3)\nInvalid vault id length - length of vault id is 32. (errorcode 5)\nSome vault ids are invalid. Only alphanumerics are allowed. (errorcode 9)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEntity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error. (errorCode 0)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEntity"
+                }
+              }
+            }
+          }
+        },
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/token-entries": {
+      "post": {
+        "tags": [
+          "Vault"
+        ],
+        "summary": "Converts given Credit Card Numbers to tokens.",
+        "description": "Accepts credit card numbers and responds with corresponding tokens(Bluefin token and tokenIds are returned if the Bluefin flag is on)",
+        "parameters": [
+          {
+            "name": "X-App-Name",
+            "in": "header",
+            "description": "Application name calling the end point,",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Content-Type",
+            "in": "header",
+            "description": "Content type",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "application/json"
+              ]
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "api token is required as [Bearer TOKEN VALUE]",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "previewType",
+            "in": "header",
+            "description": "this header is required if environment is preview type",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "app",
+                "wip",
+                "APP",
+                "WIP"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Array of TokenEntriesRequest objects",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TokenEntriesRequest"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "returns array of TokenEntriesResponse objects(Bluefin token and tokenIds are returned if the Bluefin flag is on)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inline_response_200_1"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indexes are not unique. (errorCode 1)\nSome types are invalid. (errorCode 2)\nIndex, type or plaintext is missing. (errorCode 3)\nInvalid credit card length - maximum allowed length is 30 and minimum allowed length is 13. (errorcode 11)\nInvalid credit card  - Some credit card numbers are invalid. (errorcode 5)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEntity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error. (errorCode 0)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEntity"
+                }
+              }
+            }
+          }
+        },
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/token-entries/search": {
+      "post": {
+        "tags": [
+          "Vault"
+        ],
+        "summary": "Retrieve VaultId from token",
+        "description": "Accepts tokens and responds with corresponding vault-id's(Bluefin token and tokenIds are returned if the Bluefin flag is on)",
+        "parameters": [
+          {
+            "name": "X-App-Name",
+            "in": "header",
+            "description": "Application name calling the end point,",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Content-Type",
+            "in": "header",
+            "description": "Content type",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "application/json"
+              ]
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "api token is required as [Bearer TOKEN VALUE]",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "previewType",
+            "in": "header",
+            "description": "this header is required if environment is preview type",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "app",
+                "wip",
+                "APP",
+                "WIP"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Array of TokenEntriesSearchRequest objects",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/tokenentries_search_body"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "(code 200) returns array of TokenEntriesSearchResponse objects containing vault-ids and tokens \n(Bluefin token and bluefin token ids are returned if Bluefin flag is enabled).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/inline_response_200_2"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Indexes are not unique. (errorCode 1)\nSome return types are invalid. (errorCode 15)\nIndex, ReturnType or Token is missing. (errorCode 3)\nInvalid token length - Maximum allowed length is 20 and Minimum allowed length is 13. (errorcode 7)\nSome tokens are invalid. Only digits are allowed (errorcode 16)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEntity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error. (errorCode 0)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEntity"
+                }
+              }
+            }
+          }
+        },
+        "x-codegen-request-body-name": "body"
+      }
+    },
+    "/match": {
+      "post": {
+        "tags": [
+          "Vault"
+        ],
+        "summary": "Checks if the input password matches with the DB",
+        "description": "Checks if the input password matches with the DB",
+        "parameters": [
+          {
+            "name": "X-App-Name",
+            "in": "header",
+            "description": "Application name calling the end point,",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Content-Type",
+            "in": "header",
+            "description": "Content type",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "application/json"
+              ]
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "api token is required as [Bearer TOKEN VALUE]",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "previewType",
+            "in": "header",
+            "description": "this header is required if environment is preview type",
+            "required": false,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "app",
+                "wip",
+                "APP",
+                "WIP"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Password in plain text",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "returns boolean value",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Some types are invalid. (errorCode 9)\n Vault Id, type or plaintext is missing. (errorCode 10)\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEntity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error. (errorCode 0)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEntity"
+                }
+              }
+            }
+          }
+        },
+        "x-codegen-request-body-name": "body"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VaultRequest": {
+        "required": [
+          "index",
+          "plaintext",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Data type to be encrypted"
+          },
+          "plaintext": {
+            "type": "string",
+            "description": "Data to be encrypted."
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index to identify the data."
+          }
+        }
+      },
+      "MatchRequest": {
+        "required": [
+          "plaintext",
+          "type",
+          "vaultId"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Data type to be encrypted"
+          },
+          "plaintext": {
+            "type": "string",
+            "description": "Data to be encrypted and matched"
+          },
+          "vaultId": {
+            "type": "string",
+            "description": "Vault Id."
+          }
+        }
+      },
+      "MatchResponse": {
+        "required": [
+          "result"
+        ],
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "boolean",
+            "description": "Vault id and password match result to be returned"
+          }
+        }
+      },
+      "VaultEntriesSearchRequest": {
+        "required": [
+          "index",
+          "returnType",
+          "vaultId"
+        ],
+        "type": "object",
+        "properties": {
+          "vaultId": {
+            "type": "string",
+            "description": "Vault id"
+          },
+          "returnType": {
+            "type": "string",
+            "description": "Data type to be returned"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index to identify the data."
+          }
+        }
+      },
+      "VaultEntriesSearchRequestForCreditCard": {
+        "required": [
+          "index",
+          "returnType",
+          "vaultId"
+        ],
+        "type": "object",
+        "properties": {
+          "vaultId": {
+            "type": "string",
+            "description": "Vault id"
+          },
+          "returnType": {
+            "type": "string",
+            "description": "CREDIT_CARD_NUMBER"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index to identify the data."
+          }
+        }
+      },
+      "TokenEntriesRequest": {
+        "required": [
+          "index",
+          "plaintext",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "CREDIT_CARD_NUMBER"
+          },
+          "plaintext": {
+            "type": "string",
+            "description": "Credit Card Number in plain text"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index to identify the data."
+          }
+        }
+      },
+      "TokenEntriesSearchRequestVoltage": {
+        "required": [
+          "index",
+          "returnType",
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Voltage token"
+          },
+          "returnType": {
+            "type": "string",
+            "description": "Vault Id"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index to identify the data."
+          }
+        }
+      },
+      "TokenEntriesSearchRequestBluefin": {
+        "required": [
+          "index",
+          "returnType",
+          "token",
+          "tokenId"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Bluefin token"
+          },
+          "tokenId": {
+            "type": "string",
+            "description": "Bluefin token Id(Always required for identifying a Bluefin token)"
+          },
+          "returnType": {
+            "type": "string",
+            "description": "Vault ID"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index to identify the data."
+          }
+        }
+      },
+      "VaultResponse": {
+        "required": [
+          "index",
+          "vaultId"
+        ],
+        "type": "object",
+        "properties": {
+          "vaultId": {
+            "type": "string",
+            "description": "Vault id."
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index to identify the data."
+          }
+        }
+      },
+      "VaultEntriesSearchResponseWithBluefin": {
+        "required": [
+          "index",
+          "responseData",
+          "token",
+          "tokenId"
+        ],
+        "type": "object",
+        "properties": {
+          "responseData": {
+            "type": "string",
+            "description": "Voltage token"
+          },
+          "token": {
+            "type": "string",
+            "description": "Bluefin token"
+          },
+          "tokenId": {
+            "type": "string",
+            "description": "Bluefin token id"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index to identify the data."
+          }
+        }
+      },
+      "VaultEntriesSearchResponseWithoutBluefin": {
+        "required": [
+          "index",
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "voltage token"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index to identify the data."
+          }
+        }
+      },
+      "VaultEntriesSearchResponseForCreditCard": {
+        "required": [
+          "index",
+          "responseData"
+        ],
+        "type": "object",
+        "properties": {
+          "responseData": {
+            "type": "string",
+            "description": "Credit Card Number"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index to identify the data."
+          }
+        }
+      },
+      "VaultEntryRequest": {
+        "required": [
+          "index",
+          "inputData",
+          "inputType",
+          "returnType"
+        ],
+        "type": "object",
+        "properties": {
+          "inputType": {
+            "type": "string",
+            "description": "input types to be decrypted"
+          },
+          "returnType": {
+            "type": "string",
+            "description": "Data type to be returned"
+          },
+          "inputData": {
+            "type": "integer",
+            "description": "actual data of the inputType."
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index for each request object."
+          }
+        }
+      },
+      "VaultEntryResponse": {
+        "required": [
+          "index",
+          "responseData"
+        ],
+        "type": "object",
+        "properties": {
+          "responseData": {
+            "type": "string",
+            "description": "decrypted value (plaintext) corresponding to the input type"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index for each request object."
+          }
+        }
+      },
+      "TokenEntriesResponseWithBluefin": {
+        "required": [
+          "bfToken",
+          "index",
+          "token",
+          "tokenId"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Voltage token"
+          },
+          "bfToken": {
+            "type": "string",
+            "description": "Bluefin token"
+          },
+          "tokenId": {
+            "type": "string",
+            "description": "Bluefin token id"
+          },
+          "vaultId": {
+            "type": "string",
+            "description": "Vault Id"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index for each request object."
+          }
+        }
+      },
+      "TokenEntriesResponseWithoutBluefin": {
+        "required": [
+          "index",
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Voltage token"
+          },
+          "vaultId": {
+            "type": "string",
+            "description": "Vault Id"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index for each request object."
+          }
+        }
+      },
+      "TokenEntriesSearchResponseBluefin": {
+        "required": [
+          "index",
+          "responseData",
+          "token",
+          "tokenId"
+        ],
+        "type": "object",
+        "properties": {
+          "responseData": {
+            "type": "string",
+            "description": "Vault id."
+          },
+          "token": {
+            "type": "string",
+            "description": "Bluefin token"
+          },
+          "tokenId": {
+            "type": "string",
+            "description": "Bluefin token id"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index for each request object."
+          }
+        }
+      },
+      "TokenEntriesSearchResponseVoltage": {
+        "required": [
+          "index",
+          "responseData",
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "responseData": {
+            "type": "string",
+            "description": "Vault id."
+          },
+          "token": {
+            "type": "string",
+            "description": "Voltage token"
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index for each request object."
+          }
+        }
+      },
+      "TokenEntriesSearchResponseExisting": {
+        "required": [
+          "index",
+          "responseData"
+        ],
+        "type": "object",
+        "properties": {
+          "responseData": {
+            "type": "string",
+            "description": "Vault id."
+          },
+          "index": {
+            "type": "integer",
+            "description": "Unique index for each request object."
+          }
+        }
+      },
+      "ErrorEntity": {
+        "type": "object",
+        "properties": {
+          "developerMessage": {
+            "type": "string"
+          },
+          "userMessage": {
+            "type": "string"
+          },
+          "errorCode": {
+            "type": "integer"
+          },
+          "moreInfo": {
+            "type": "string"
+          }
+        }
+      },
+      "vaultentries_search_body": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/VaultEntriesSearchRequest"
+          },
+          {
+            "$ref": "#/components/schemas/VaultEntriesSearchRequestForCreditCard"
+          }
+        ]
+      },
+      "inline_response_200": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/VaultEntriesSearchResponseWithBluefin"
+          },
+          {
+            "$ref": "#/components/schemas/VaultEntriesSearchResponseWithoutBluefin"
+          },
+          {
+            "$ref": "#/components/schemas/VaultEntriesSearchResponseForCreditCard"
+          }
+        ]
+      },
+      "inline_response_200_1": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TokenEntriesResponseWithBluefin"
+          },
+          {
+            "$ref": "#/components/schemas/TokenEntriesResponseWithoutBluefin"
+          }
+        ]
+      },
+      "tokenentries_search_body": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TokenEntriesSearchRequestVoltage"
+          },
+          {
+            "$ref": "#/components/schemas/TokenEntriesSearchRequestBluefin"
+          }
+        ]
+      },
+      "inline_response_200_2": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TokenEntriesSearchResponseExisting"
+          },
+          {
+            "$ref": "#/components/schemas/TokenEntriesSearchResponseBluefin"
+          },
+          {
+            "$ref": "#/components/schemas/TokenEntriesSearchResponseVoltage"
+          }
+        ]
+      }
+    }
+  }
+}

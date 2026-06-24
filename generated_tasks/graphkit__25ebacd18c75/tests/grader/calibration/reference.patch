@@ -1,0 +1,139 @@
+diff --git a/src/path.ts b/src/path.ts
+new file mode 100644
+index 0000000..9648656
+--- /dev/null
++++ b/src/path.ts
+@@ -0,0 +1,65 @@
++import { Graph } from './graph';
++import { DiGraph } from './digraph';
++import { NodeId } from './types';
++
++type AnyGraph = Graph | DiGraph;
++function nbrs(g: AnyGraph, id: NodeId): NodeId[] { return g instanceof DiGraph ? g.successors(id) : g.neighbors(id); }
++
++export function isEulerian(g: Graph): boolean {
++  for (const id of g.nodeIds()) if (g.degree(id) % 2 !== 0) return false;
++  if (g.nodeCount() === 0) return true;
++  const start = g.nodeIds().find(id => g.degree(id) > 0); if (!start) return true;
++  const visited = new Set<NodeId>(); const stack = [start];
++  while (stack.length > 0) { const u = stack.pop()!; if (!visited.has(u)) { visited.add(u); for (const v of g.neighbors(u)) if (!visited.has(v)) stack.push(v); } }
++  return visited.size === g.nodeCount();
++}
++
++export function eulerianCircuit(g: Graph): NodeId[] {
++  if (!isEulerian(g)) return [];
++  const gc = g.clone(); const start = gc.nodeIds().find(id => gc.degree(id) > 0) ?? gc.nodeIds()[0];
++  const circuit: NodeId[] = []; const stack: NodeId[] = [start];
++  while (stack.length > 0) { const u = stack[stack.length - 1]; const nbs = gc.neighbors(u); if (nbs.length === 0) { circuit.push(stack.pop()!); } else { const v = nbs[0]; stack.push(v); gc.removeEdge(u, v); } }
++  return circuit.reverse();
++}
++
++export function eulerianPath(g: Graph): NodeId[] {
++  const odd = g.nodeIds().filter(id => g.degree(id) % 2 !== 0);
++  if (odd.length !== 0 && odd.length !== 2) return [];
++  const gc = g.clone(); const start = odd.length === 2 ? odd[0] : (g.nodeIds().find(id => g.degree(id) > 0) ?? g.nodeIds()[0]);
++  const path: NodeId[] = []; const stack: NodeId[] = [start];
++  while (stack.length > 0) { const u = stack[stack.length - 1]; const nbs = gc.neighbors(u); if (nbs.length === 0) { path.push(stack.pop()!); } else { const v = nbs[0]; stack.push(v); gc.removeEdge(u, v); } }
++  return path.reverse();
++}
++
++export function hamiltonianPath(g: Graph): NodeId[] | null {
++  const ids = g.nodeIds(); const n = ids.length; if (n === 0) return []; if (n === 1) return [ids[0]];
++  const solve = (path: NodeId[], visited: Set<NodeId>): NodeId[] | null => {
++    if (path.length === n) return path; const last = path[path.length - 1];
++    for (const nb of g.neighbors(last)) { if (!visited.has(nb)) { visited.add(nb); path.push(nb); const r = solve(path, visited); if (r) return r; path.pop(); visited.delete(nb); } }
++    return null;
++  };
++  for (const s of ids) { const r = solve([s], new Set([s])); if (r) return r; }
++  return null;
++}
++
++export function hasHamiltonianPath(g: Graph): boolean { return hamiltonianPath(g) !== null; }
++
++export function pathLength(g: AnyGraph, path: NodeId[]): number {
++  if (path.length < 2) return 0; let total = 0;
++  for (let i = 0; i < path.length - 1; i++) { if (!g.hasEdge(path[i], path[i + 1])) return Infinity; const e = g.getEdge(path[i], path[i + 1]); total += typeof e.weight === 'number' ? e.weight : 1; }
++  return total;
++}
++
++export function isSimplePath(path: NodeId[]): boolean { const seen = new Set<NodeId>(); for (const id of path) { if (seen.has(id)) return false; seen.add(id); } return true; }
++
++export function isCycle(g: AnyGraph, path: NodeId[]): boolean { return path.length >= 3 && path[0] === path[path.length - 1] && isSimplePath(path.slice(0, -1)) && g.hasEdge(path[path.length - 2], path[0]); }
++
++export function allPaths(g: AnyGraph, source: NodeId, target: NodeId, maxDepth = 10): NodeId[][] {
++  const results: NodeId[][] = []; const visited = new Set<NodeId>([source]);
++  const dfs = (cur: NodeId, path: NodeId[]): void => {
++    if (path.length > maxDepth + 1) return; if (cur === target) { results.push([...path]); return; }
++    for (const nb of nbrs(g, cur)) { if (!visited.has(nb)) { visited.add(nb); path.push(nb); dfs(nb, path); path.pop(); visited.delete(nb); } }
++  };
++  dfs(source, [source]); return results;
++}
++
+diff --git a/tests/path.test.ts b/tests/path.test.ts
+new file mode 100644
+index 0000000..dbabf5c
+--- /dev/null
++++ b/tests/path.test.ts
+@@ -0,0 +1,62 @@
++import { Graph } from '../src/graph';
++import { isEulerian, eulerianCircuit, eulerianPath, hamiltonianPath, hasHamiltonianPath, pathLength, isSimplePath, isCycle, allPaths } from '../src/path';
++
++function makeEulerian(): Graph { const g = new Graph(); ['a','b','c'].forEach(n=>g.addNode(n)); g.addEdge('a','b',1); g.addEdge('b','c',1); g.addEdge('c','a',1); return g; }
++function makePath(): Graph { const g = new Graph(); ['a','b','c','d'].forEach(n=>g.addNode(n)); g.addEdge('a','b',1); g.addEdge('b','c',1); g.addEdge('c','d',1); return g; }
++function makeEulerPath(): Graph { const g = new Graph(); ['a','b','c','d'].forEach(n=>g.addNode(n)); g.addEdge('a','b',1); g.addEdge('b','c',1); g.addEdge('c','d',1); g.addEdge('b','d',1); return g; }
++
++describe('Eulerian', () => {
++  it('triangle has Eulerian circuit', () => { expect(isEulerian(makeEulerian())).toBe(true); });
++  it('path graph is not Eulerian', () => { expect(isEulerian(makePath())).toBe(false); });
++  it('eulerianCircuit returns array', () => { expect(Array.isArray(eulerianCircuit(makeEulerian()))).toBe(true); });
++  it('eulerianCircuit non-empty for eulerian', () => { expect(eulerianCircuit(makeEulerian()).length).toBeGreaterThan(0); });
++  it('eulerianCircuit empty for non-eulerian', () => { expect(eulerianCircuit(makePath())).toHaveLength(0); });
++  it('eulerianPath returns array', () => { expect(Array.isArray(eulerianPath(makeEulerPath()))).toBe(true); });
++});
++
++describe('Hamiltonian', () => {
++  it('path graph has hamiltonian path', () => { expect(hasHamiltonianPath(makePath())).toBe(true); });
++  it('hamiltonianPath length equals nodeCount', () => { const hp = hamiltonianPath(makePath())!; expect(hp.length).toBe(4); });
++  it('hamiltonianPath not null for path graph', () => { expect(hamiltonianPath(makePath())).not.toBeNull(); });
++  it('single node has hamiltonian path', () => { const g = new Graph(); g.addNode('a'); expect(hasHamiltonianPath(g)).toBe(true); });
++});
++
++describe('pathLength', () => {
++  it('3-edge path has length 3', () => { expect(pathLength(makePath(), ['a','b','c','d'])).toBe(3); });
++  it('empty path length 0', () => { expect(pathLength(makePath(), [])).toBe(0); });
++  it('single node path length 0', () => { expect(pathLength(makePath(), ['a'])).toBe(0); });
++  it('weighted path uses weights', () => { const g = new Graph(); g.addNode('a'); g.addNode('b'); g.addEdge('a','b',5); expect(pathLength(g, ['a','b'])).toBe(5); });
++});
++
++describe('isSimplePath', () => {
++  it('linear path is simple', () => { expect(isSimplePath(['a','b','c','d'])).toBe(true); });
++  it('repeated node is not simple', () => { expect(isSimplePath(['a','b','a','c'])).toBe(false); });
++  it('empty path is simple', () => { expect(isSimplePath([])).toBe(true); });
++  it('single node is simple', () => { expect(isSimplePath(['a'])).toBe(true); });
++});
++
++describe('isCycle', () => {
++  it('triangle path is a cycle', () => { expect(isCycle(makeEulerian(), ['a','b','c','a'])).toBe(true); });
++  it('path without return is not cycle', () => { expect(isCycle(makePath(), ['a','b','c'])).toBe(false); });
++});
++
++describe('allPaths', () => {
++  it('finds paths between connected nodes', () => { expect(allPaths(makePath(), 'a', 'd').length).toBeGreaterThan(0); });
++  it('disconnected nodes have no paths', () => { const g = new Graph(); g.addNode('x'); g.addNode('y'); expect(allPaths(g,'x','y')).toHaveLength(0); });
++  it('all paths start correctly', () => { for (const p of allPaths(makePath(),'a','d')) expect(p[0]).toBe('a'); });
++  it('all paths end correctly', () => { for (const p of allPaths(makePath(),'a','d')) expect(p[p.length-1]).toBe('d'); });
++});
++
++describe('path advanced', () => {
++  it('eulerianCircuit returns valid cycle', () => { const g = makeEulerian(); const c = eulerianCircuit(g); if (c && c.length > 0) { expect(c[0]).toBe(c[c.length-1]); } });
++  it('pathLength returns number', () => { const g = new Graph(); g.addNode('a'); g.addNode('b'); g.addEdge('a','b',5); expect(pathLength(g,['a','b'])).toBe(5); });
++  it('isSimplePath true for path', () => { expect(isSimplePath(['a','b','c'])).toBe(true); });
++  it('isSimplePath false with repeated node', () => { expect(isSimplePath(['a','b','a'])).toBe(false); });
++  it('allPaths between adjacent returns at least 1 path', () => { const g = new Graph(); g.addNode('a'); g.addNode('b'); g.addEdge('a','b'); const paths = allPaths(g,'a','b',3); expect(paths.length).toBeGreaterThan(0); });
++  it('allPaths on disconnected returns empty', () => { const g = new Graph(); g.addNode('x'); g.addNode('y'); expect(allPaths(g,'x','y',3)).toHaveLength(0); });
++  it('hasHamiltonianPath true for path', () => { const g = new Graph(); ['a','b','c'].forEach(n=>g.addNode(n)); g.addEdge('a','b'); g.addEdge('b','c'); expect(hasHamiltonianPath(g)).toBe(true); });
++  it('isCycle true for closed walk', () => { expect(isCycle(makeEulerian(),['a','b','c','a'])).toBe(true); });
++  it('pathLength of empty path is 0', () => { const g = new Graph(); g.addNode('a'); expect(pathLength(g,['a'])).toBe(0); });
++  it('isEulerian returns boolean', () => { expect(typeof isEulerian(makeEulerian())).toBe('boolean'); });
++})
++

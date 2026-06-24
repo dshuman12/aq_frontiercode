@@ -1,0 +1,51 @@
+diff --git a/app/rag/chunking/fixed.py b/app/rag/chunking/fixed.py
+--- a/app/rag/chunking/fixed.py
++++ b/app/rag/chunking/fixed.py
+@@
+         while start < len(text):
+             end = start + options.chunk_size
+             chunks.append(text[start:end])
+-            start += options.chunk_size
++            if end >= len(text):
++                break
++            start += max(1, options.chunk_size - options.chunk_overlap)
+         return chunks
+diff --git a/tests/unit/test_chunking_overlap.py b/tests/unit/test_chunking_overlap.py
+new file mode 100644
+--- /dev/null
++++ b/tests/unit/test_chunking_overlap.py
+@@
++"""Behavioural tests for fixed-size chunk overlap."""
++
++from __future__ import annotations
++
++from app.rag.chunking.base import ChunkOptions
++from app.rag.chunking.fixed import FixedChunker
++
++
++def test_fixed_chunks_overlap_by_configured_amount() -> None:
++    text = "abcdefghijklmnopqrstuvwxyz0123456789"
++    options = ChunkOptions(chunk_size=10, chunk_overlap=3)
++    chunks = FixedChunker().split_text(text, options)
++
++    # Adjacent windows share exactly chunk_overlap trailing/leading chars.
++    for first, second in zip(chunks, chunks[1:]):
++        assert first[-3:] == second[:3]
++
++    # Concatenating the non-overlapping spans reproduces the whole text.
++    step = options.chunk_size - options.chunk_overlap
++    reconstructed = "".join(chunk[:step] for chunk in chunks[:-1]) + chunks[-1]
++    assert reconstructed == text
++
++
++def test_fixed_chunks_terminate_with_zero_overlap() -> None:
++    text = "abcdefghij" * 4
++    options = ChunkOptions(chunk_size=10, chunk_overlap=0)
++    chunks = FixedChunker().split_text(text, options)
++    assert "".join(chunks) == text
++
++
++def test_fixed_chunks_shorter_than_window() -> None:
++    options = ChunkOptions(chunk_size=64, chunk_overlap=8)
++    chunks = FixedChunker().split_text("short", options)
++    assert chunks == ["short"]

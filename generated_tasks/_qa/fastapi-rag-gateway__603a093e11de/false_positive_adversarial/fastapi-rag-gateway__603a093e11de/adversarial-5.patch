@@ -1,0 +1,88 @@
+diff --git a/app/rag/chunking/fixed.py b/app/rag/chunking/fixed.py
+--- a/app/rag/chunking/fixed.py
++++ b/app/rag/chunking/fixed.py
+@@
+     def split_text(self, text: str, options: ChunkOptions) -> list[str]:
+         if not text:
+             return []
+-        chunks: list[str] = []
+-        start = 0
+-        length = len(text)
+-        while start < length:
+-            end = start + options.chunk_size
+-            chunks.append(text[start:end])
+-            start = end
+-        return chunks
++        step = options.chunk_size - options.chunk_overlap
++        if step < 1:
++            step = 1
++        chunks: list[str] = []
++        start = 0
++        length = len(text)
++        while start < length:
++            end = start + options.chunk_size
++            chunks.append(text[start:end])
++            if end >= length:
++                break
++            start += step
++        return chunks
+diff --git a/tests/unit/test_chunking.py b/tests/unit/test_chunking.py
+new file mode 100644
+--- /dev/null
++++ b/tests/unit/test_chunking.py
+@@
++"""Behavioural tests for the fixed-size character chunker."""
++
++from __future__ import annotations
++
++from app.rag.chunking.base import ChunkOptions
++from app.rag.chunking.fixed import FixedChunker
++
++
++def _split(text: str, *, chunk_size: int, chunk_overlap: int) -> list[str]:
++    chunker = FixedChunker()
++    options = ChunkOptions(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
++    return chunker.split_text(text, options)
++
++
++def test_adjacent_chunks_share_overlap_characters() -> None:
++    text = "abcdefghijklmnopqrstuvwxyz0123456789"
++    chunk_size = 10
++    chunk_overlap = 3
++    chunks = _split(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
++    assert len(chunks) >= 2
++    for prev, curr in zip(chunks, chunks[1:]):
++        assert prev[-chunk_overlap:] == curr[:chunk_overlap]
++
++
++def test_non_overlapping_spans_cover_entire_text() -> None:
++    text = "the quick brown fox jumps over the lazy dog"
++    chunk_size = 8
++    chunk_overlap = 2
++    chunks = _split(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
++    step = chunk_size - chunk_overlap
++    reconstructed = chunks[0]
++    for chunk in chunks[1:]:
++        reconstructed += chunk[chunk_overlap:]
++    # The unique advance per window is `step`; concatenating the leading
++    # `step` characters of each window plus the final tail must reproduce text.
++    head = "".join(chunk[:step] for chunk in chunks[:-1])
++    assert head + chunks[-1] == text
++    assert reconstructed == text
++
++
++def test_zero_overlap_terminates_without_repeats() -> None:
++    text = "0123456789ABCDE"
++    chunks = _split(text, chunk_size=5, chunk_overlap=0)
++    assert chunks == ["01234", "56789", "ABCDE"]
++    assert "".join(chunks) == text
++
++
++def test_input_shorter_than_window_returns_single_chunk() -> None:
++    text = "short"
++    chunks = _split(text, chunk_size=50, chunk_overlap=10)
++    assert chunks == ["short"]
++
++
++def test_empty_input_returns_empty_list() -> None:
++    assert _split("", chunk_size=10, chunk_overlap=2) == []

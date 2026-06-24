@@ -1,3 +1,0 @@
-ALTER TABLE "supplier_payments" ADD COLUMN "purchase_order_id" text;--> statement-breakpoint
-ALTER TABLE "supplier_payments" ADD CONSTRAINT "supplier_payments_purchase_order_id_purchase_orders_id_fk" FOREIGN KEY ("purchase_order_id") REFERENCES "public"."purchase_orders"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "supplier_payments_po_id_idx" ON "supplier_payments" USING btree ("purchase_order_id");

@@ -1,0 +1,48 @@
+diff --git a/internal/validate2/validate2.go b/internal/validate2/validate2.go
+--- a/internal/validate2/validate2.go
++++ b/internal/validate2/validate2.go
+@@
+-	if age >= v.MaxAge {
++	if age > v.MaxAge {
+ 		return ErrTimestampTooOld
+ 	}
+diff --git a/internal/validate2/validate2_boundary_test.go b/internal/validate2/validate2_boundary_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/validate2/validate2_boundary_test.go
+@@
++package validate2
++
++import (
++	"testing"
++	"time"
++
++	"github.com/dleblanc/kindling/internal/record"
++)
++
++// TestTimestampRecentBoundaryInclusive locks the inclusive boundary: a
++// record whose age exactly equals MaxAge passes, one unit under passes,
++// and one unit over still fails.
++func TestTimestampRecentBoundaryInclusive(t *testing.T) {
++	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
++	v := Validator{MaxAge: 60 * time.Second, Now: func() time.Time { return now }}
++
++	rec := func(age time.Duration) *record.Record {
++		return &record.Record{
++			Timestamp: now.Add(-age),
++			Level:     "info",
++			Service:   "svc",
++			Message:   "msg",
++		}
++	}
++
++	if err := v.Validate(rec(60 * time.Second)); err != nil {
++		t.Fatalf("record exactly at the limit should be recent, got %v", err)
++	}
++	if err := v.Validate(rec(59 * time.Second)); err != nil {
++		t.Fatalf("record under the limit should be recent, got %v", err)
++	}
++	if err := v.Validate(rec(61 * time.Second)); err == nil {
++		t.Fatalf("record over the limit should fail recency")
++	}
++}

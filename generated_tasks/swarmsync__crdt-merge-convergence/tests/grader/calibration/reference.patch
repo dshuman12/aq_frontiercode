@@ -1,0 +1,40 @@
+diff --git a/pkg/crdt/counter.go b/pkg/crdt/counter.go
+index 9166618..5f59051 100644
+--- a/pkg/crdt/counter.go
++++ b/pkg/crdt/counter.go
+@@ -122,7 +122,9 @@ func (p *PNCounter) Merge(other *PNCounter) {
+ 		}
+ 	}
+ 	for k, v := range other.neg {
+-		p.neg[k] += v
++		if v > p.neg[k] {
++			p.neg[k] = v
++		}
+ 	}
+ 	var posSum, negSum uint64
+ 	for _, v := range p.pos {
+diff --git a/pkg/crdt/ormap.go b/pkg/crdt/ormap.go
+index fdbcaa3..4c3e811 100644
+--- a/pkg/crdt/ormap.go
++++ b/pkg/crdt/ormap.go
+@@ -111,7 +111,7 @@ func (m *ORMap) Merge(other *ORMap) {
+ 	for key, otherReg := range other.values {
+ 		if m.values[key] == nil {
+ 			m.values[key] = NewLWWRegister("")
+-			m.values[key].Merge(otherReg)
+ 		}
++		m.values[key].Merge(otherReg)
+ 	}
+ }
+diff --git a/pkg/crdt/set.go b/pkg/crdt/set.go
+index 4139d06..25bde89 100644
+--- a/pkg/crdt/set.go
++++ b/pkg/crdt/set.go
+@@ -147,7 +147,6 @@ func (s *ORSet) Merge(other *ORSet) {
+ 		if s.entries[elem] == nil {
+ 			s.entries[elem] = make(map[ORTag]struct{})
+ 		}
+-		s.entries[elem] = make(map[ORTag]struct{})
+ 		for tag := range tags {
+ 			s.entries[elem][tag] = struct{}{}
+ 		}

@@ -1,0 +1,45 @@
+diff --git a/internal/tar/tar.go b/internal/tar/tar.go
+--- a/internal/tar/tar.go
++++ b/internal/tar/tar.go
+@@
+-func dataBlocks(size int) int {
+-	return size / blockSize
+-}
++func dataBlocks(size int) int {
++	// Compute how many whole blocks are needed to cover every byte.
++	// Round up: if any partial block remains, reserve one more.
++	blocks := size / blockSize
++	if size%blockSize != 0 {
++		blocks = blocks + 1
++	}
++	return blocks
++}
+diff --git a/internal/tar/tar_test.go b/internal/tar/tar_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/tar/tar_test.go
+@@
++package tar
++
++import "testing"
++
++func TestDataBlocksRoundsUp(t *testing.T) {
++	cases := []struct {
++		size int
++		want int
++	}{
++		{0, 0},
++		{1, 1},
++		{blockSize - 1, 1},
++		{blockSize, 1},
++		{blockSize + 1, 2},
++		{2*blockSize - 1, 2},
++		{2 * blockSize, 2},
++		{2*blockSize + 7, 3},
++	}
++	for _, c := range cases {
++		if got := dataBlocks(c.size); got != c.want {
++			t.Errorf("dataBlocks(%d) = %d, want %d", c.size, got, c.want)
++		}
++	}
++}

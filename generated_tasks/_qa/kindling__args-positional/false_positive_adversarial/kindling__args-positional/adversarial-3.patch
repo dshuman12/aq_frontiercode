@@ -1,0 +1,93 @@
+diff --git a/internal/args/args.go b/internal/args/args.go
+--- a/internal/args/args.go
++++ b/internal/args/args.go
+@@ -40,7 +40,7 @@ func Parse(args []string) (*Parsed, error) {
+ 				out.Flags[rest[:eq]] = rest[eq+1:]
+ 				continue
+ 			}
+-			if len(out.Positional) > 0 && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
++			if len(out.Positional) == 0 && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+ 				out.Flags[rest] = args[i+1]
+ 				i++
+ 				continue
+ diff --git a/internal/args/args_test.go b/internal/args/args_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/args/args_test.go
+@@ -0,0 +1,71 @@
++package args
++
++import (
++	"reflect"
++	"testing"
++)
++
++func TestParsePositionalBoundary(t *testing.T) {
++	cases := []struct {
++		name    string
++		args    []string
++		flags   map[string]string
++		pos     []string
++	}{
++		{
++			name:  "flag then value",
++			args:  []string{"--window", "1h", "file.log"},
++			flags: map[string]string{"window": "1h"},
++			pos:   []string{"file.log"},
++		},
++		{
++			name:  "flag value then positional kept",
++			args:  []string{"--by", "service", "a.log", "b.log"},
++			flags: map[string]string{"by": "service"},
++			pos:   []string{"a.log", "b.log"},
++		},
++		{
++			name:  "eq form unaffected",
++			args:  []string{"--root=/data", "x"},
++			flags: map[string]string{"root": "/data"},
++			pos:   []string{"x"},
++		},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			p, err := Parse(tc.args)
++			if err != nil {
++				t.Fatalf("unexpected err: %v", err)
++			}
++			for k, v := range tc.flags {
++				if got := p.Str(k, ""); got != v {
++					t.Fatalf("flag %q = %q, want %q", k, got, v)
++				}
++			}
++			if !reflect.DeepEqual(p.Positional, tc.pos) {
++				t.Fatalf("positional = %v, want %v", p.Positional, tc.pos)
++			}
++		})
++	}
++}
++
++func TestParseTrailingFlagBecomesBool(t *testing.T) {
++	p, err := Parse([]string{"--verbose"})
++	if err != nil {
++		t.Fatalf("unexpected err: %v", err)
++	}
++	if !p.Bool("verbose") {
++		t.Fatalf("expected verbose bool set")
++	}
++	if len(p.Positional) != 0 {
++		t.Fatalf("positional = %v, want empty", p.Positional)
++	}
++}
++
++func TestParseDashDashTerminator(t *testing.T) {
++	p, err := Parse([]string{"--root", "/d", "--", "--literal"})
++	if err != nil {
++		t.Fatalf("unexpected err: %v", err)
++	}
++	if got := p.Str("root", ""); got != "/d" {
++		t.Fatalf("root = %q, want /d", got)
++	}
++	if !reflect.DeepEqual(p.Positional, []string{"--literal"}) {
++		t.Fatalf("positional = %v", p.Positional)
++	}
++}

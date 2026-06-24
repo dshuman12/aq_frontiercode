@@ -1,25 +1,21 @@
 # Task description
 
-The pytest suite does not pass on the current snapshot. There are several independent defects in the graph library that must be diagnosed and fixed so the full suite runs green.
+Two cycle-related defects in `meridian/algorithms/traverse.py` need fixing so that cycle enumeration on directed and undirected graphs terminates and returns correct, de-duplicated results.
 
-1. **Test collection fails.** A traversal helper in `meridian/algorithms/traverse.py` contains a Python syntax error that prevents the test session from collecting at all. Fix the syntax so the module imports cleanly without changing the intended behavior of its functions.
+`simple_cycles(G)` must enumerate each elementary directed cycle of a `DiGraph` exactly once without entering an infinite loop. Self-loops (an edge `u -> u`) must be reported as the single-node cycle `[u]`. A cycle visiting nodes once must not be re-emitted under rotations of its starting point, and the traversal must not revisit blocked nodes endlessly. Each returned cycle is a list of nodes in traversal order with no repeated terminal node.
 
-2. **Cycle enumeration is wrong.** In `meridian/analysis/paths.py`, `simple_cycles` can fail to terminate cleanly (it spins on certain inputs), and `cycle_basis` produces incorrect or duplicate cycles. Repair both so each distinct cycle is reported once with correct membership and the routines always terminate.
+`cycle_basis(G)` must return a list of independent cycles for an undirected `Graph`, each cycle being a list of nodes, with no duplicate cycles in the output (two cycles that contain the same node set must not both appear). It should work per connected component and produce exactly `m - n + c` cycles for a graph with `m` edges, `n` nodes, and `c` connected components.
 
-3. **Centrality fails to converge.** `eigenvector_centrality` in `meridian/algorithms/centrality.py` does not converge on bipartite graphs. Make it converge and return a sensible centrality mapping for bipartite inputs while preserving results on other graphs.
-
-Keep all public APIs, function signatures, return types, and result semantics intact. Do not alter unrelated algorithms or graph internals beyond what these fixes require.
+Keep the existing public signatures and behavior of other traversal helpers (e.g. `topological_sort`, `has_cycle`) unchanged, since `DiGraph.is_dag` and other modules depend on them.
 
 # Test guidelines
 
-Run `pytest` from the repository root; the entire suite must pass. The relevant coverage lives in `tests/`, especially `tests/test_traverse.py`, `tests/test_paths.py`, `tests/test_centrality.py`, and `tests/test_clique_bipartite.py`, plus `tests/integration/test_full_pipeline.py`.
-
-Ensure tests confirm: traversal module imports and its helpers behave as before; `simple_cycles` terminates and yields each cycle exactly once; `cycle_basis` returns the correct, de-duplicated basis; and `eigenvector_centrality` converges on bipartite graphs without raising `ConvergenceError`. If a behavior is not already exercised, add a focused test case in the matching file to lock in the fix.
+Run `pytest` to validate. Add or extend cases under `tests/` (notably traversal-focused tests) covering: graphs with self-loops, directed graphs with multiple overlapping cycles, undirected graphs with several independent cycles, disconnected graphs, and acyclic inputs that must yield no cycles. Confirm cycle counts and that no rotated or set-duplicate cycles are emitted, and verify termination on inputs that previously hung.
 
 # Lint guidelines
 
-No separate linter is configured. Keep imports clean, avoid dead code, and ensure every touched module imports without error before running the suite.
+Keep imports tidy and remove any now-unused names. Match the existing type-hint and docstring conventions used across `meridian/algorithms/`.
 
 # Style guidelines
 
-You are already on the correct starting snapshot. Create your branch from this state. Do not rebase or start from master, main, or any other branch.
+You are already on the correct starting snapshot. Create your branch from this state. Do not rebase or start from master, main, or any other branch. Avoid changing unrelated modules or reformatting untouched code.

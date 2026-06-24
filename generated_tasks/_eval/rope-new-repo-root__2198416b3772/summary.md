@@ -10,34 +10,34 @@ Trial mode: each trial is one independent agent solve trajectory. The agent rece
 
 | Task | Agent | Model | Best Reasoning Effort | Trials | Final Pass Rate | Final Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| rope-new-repo-root__2198416b3772 | codex | openai/gpt-5.5 | high | 2 | 0.000 | 0.417 | 0.000 |
+| rope-new-repo-root__2198416b3772 | codex | openai/gpt-5.5 | high | 2 | 0.000 | 0.000 | 0.000 |
 
 ## Effort Results
 
 | Task | Agent | Model | Reasoning Effort | Trials | Pass Rate | Average Score | Mean Reward |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| rope-new-repo-root__2198416b3772 | codex | openai/gpt-5.5 | high | 2 | 0.000 | 0.417 | 0.000 |
+| rope-new-repo-root__2198416b3772 | codex | openai/gpt-5.5 | high | 2 | 0.000 | 0.000 | 0.000 |
 
 ## Trial Details
 
 | Task | Agent | Model | Reasoning Effort | Submission | Pass | Criteria | Categories | Score | Blocker Failures |
 | --- | --- | --- | --- | --- | --- | ---: | --- | ---: | --- |
-| rope-new-repo-root__2198416b3772 | codex | openai/gpt-5.5 | high | rope-new-repo-root__2198416b3772__9GXnAJj | no | 17/20 | patch_specific 5/6, regular 12/14 | 0.417 | hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass |
-| rope-new-repo-root__2198416b3772 | codex | openai/gpt-5.5 | high | rope-new-repo-root__2198416b3772__ecFUjeC | no | 17/20 | patch_specific 5/6, regular 12/14 | 0.417 | hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass |
+| rope-new-repo-root__2198416b3772 | codex | openai/gpt-5.5 | high | rope-new-repo-root__2198416b3772__9GXnAJj | no | 17/20 | patch_specific 5/6, regular 12/14 | 0.000 | hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass |
+| rope-new-repo-root__2198416b3772 | codex | openai/gpt-5.5 | high | rope-new-repo-root__2198416b3772__ecFUjeC | no | 17/20 | patch_specific 5/6, regular 12/14 | 0.000 | hidden_reference_tests_pass, submitted_tests_fail_on_base, visible_regression_tests_pass |
 
 ## Grader Details
 
 Trial pass/fail is determined by blocker criteria. Trial score is the weighted average of criterion scores, including failed trials.
 
 <details>
-<summary>rope-new-repo-root__2198416b3772__9GXnAJj: FAIL, score 0.417, criteria 17/20</summary>
+<summary>rope-new-repo-root__2198416b3772__9GXnAJj: FAIL, score 0.000, criteria 17/20</summary>
 
 - Task: `rope-new-repo-root__2198416b3772`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.417
+- Score: 0.000
 - Reward: 0.000
 - Criteria: 17/20
 - Categories: patch_specific 5/6, regular 12/14
@@ -296,14 +296,14 @@ Advisory LLM rubric item recorded by the deterministic verifier; run task QA wit
 </details>
 
 <details>
-<summary>rope-new-repo-root__2198416b3772__ecFUjeC: FAIL, score 0.417, criteria 17/20</summary>
+<summary>rope-new-repo-root__2198416b3772__ecFUjeC: FAIL, score 0.000, criteria 17/20</summary>
 
 - Task: `rope-new-repo-root__2198416b3772`
 - Agent: `codex`
 - Model: `openai/gpt-5.5`
 - Reasoning effort: `high`
 - Pass: no
-- Score: 0.417
+- Score: 0.000
 - Reward: 0.000
 - Criteria: 17/20
 - Categories: patch_specific 5/6, regular 12/14

@@ -1,0 +1,93 @@
+# Production — `repflow-frontend` App Runner (`main` branch).
+# Pool + API must match `repflow` main: us-east-2_UOedUZggp + qppc8ivf44 backend.
+# NEXTAUTH_URL must match the browser origin for this deployment (prod App Runner default below).
+# Regenerate via: `npm run stripe:sync && npm run apprunner:write-prod -- --stack prod --write`
+# Dev stack lives on `dev` branch only — do not merge dev apprunner.yaml into main as-is.
+
+version: 1.0
+runtime: nodejs22
+build:
+  env:
+    # NEXT_PUBLIC_* are embedded at build time and visible to clients
+    - name: NEXT_PUBLIC_API_BASE_URL
+      value: "https://qppc8ivf44.us-east-2.awsapprunner.com"
+    - name: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+      value: "pk_live_51RhEQpICnVdp6T4NY2JhKIiMkogv1fbyyj8FdpZeRyzLAaS3G4lnhnnMhWigu2yrpu7bJlFRwrdFGkGZCzHrYYTH00K5xn87vp"
+    - name: NEXT_PUBLIC_STRIPE_STARTER_PRICE_ID
+      value: "price_1SrZvMICnVdp6T4Nugaf5hW2"
+    - name: NEXT_PUBLIC_STRIPE_GROWTH_PRICE_ID
+      value: "price_1SrZv0ICnVdp6T4NN9HRCr0y"
+    - name: NEXT_PUBLIC_STRIPE_SCALE_PRICE_ID
+      value: "price_1SrZolICnVdp6T4NcQV8ldps"
+    - name: NEXT_PUBLIC_STRIPE_STARTER_PAYMENT_LINK
+      value: "https://buy.stripe.com/fZuaEY8yu7fMe8v6N78Ra0d"
+    - name: NEXT_PUBLIC_STRIPE_GROWTH_PAYMENT_LINK
+      value: "https://buy.stripe.com/7sYdRa6qmfMi9Sf4EZ8Ra0e"
+    - name: NEXT_PUBLIC_STRIPE_SCALE_PAYMENT_LINK
+      value: "https://buy.stripe.com/dRm14obKGcA6d4r3AV8Ra0f"
+    - name: NEXT_PUBLIC_STRIPE_STARTER_YEARLY_PAYMENT_LINK
+      value: "https://buy.stripe.com/5kQdRa4iefMic0nfjD8Ra0g"
+    - name: NEXT_PUBLIC_STRIPE_GROWTH_YEARLY_PAYMENT_LINK
+      value: "https://buy.stripe.com/aFa8wQaGC9nU5BZ9Zj8Ra0h"
+    - name: NEXT_PUBLIC_STRIPE_SCALE_YEARLY_PAYMENT_LINK
+      value: "https://buy.stripe.com/4gM5kE7uqbw2fcz3AV8Ra0i"
+  commands:
+    build:
+      - npm install
+      - npm run build
+run:
+  command: npm run start
+  network:
+    port: 3000
+  env:
+    - name: NEXT_PUBLIC_API_BASE_URL
+      value: "https://qppc8ivf44.us-east-2.awsapprunner.com"
+    - name: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+      value: "pk_live_51RhEQpICnVdp6T4NY2JhKIiMkogv1fbyyj8FdpZeRyzLAaS3G4lnhnnMhWigu2yrpu7bJlFRwrdFGkGZCzHrYYTH00K5xn87vp"
+    - name: NEXT_PUBLIC_STRIPE_STARTER_PRICE_ID
+      value: "price_1SrZvMICnVdp6T4Nugaf5hW2"
+    - name: NEXT_PUBLIC_STRIPE_GROWTH_PRICE_ID
+      value: "price_1SrZv0ICnVdp6T4NN9HRCr0y"
+    - name: NEXT_PUBLIC_STRIPE_SCALE_PRICE_ID
+      value: "price_1SrZolICnVdp6T4NcQV8ldps"
+    - name: NEXT_PUBLIC_STRIPE_STARTER_PAYMENT_LINK
+      value: "https://buy.stripe.com/fZuaEY8yu7fMe8v6N78Ra0d"
+    - name: NEXT_PUBLIC_STRIPE_GROWTH_PAYMENT_LINK
+      value: "https://buy.stripe.com/7sYdRa6qmfMi9Sf4EZ8Ra0e"
+    - name: NEXT_PUBLIC_STRIPE_SCALE_PAYMENT_LINK
+      value: "https://buy.stripe.com/dRm14obKGcA6d4r3AV8Ra0f"
+    - name: NEXT_PUBLIC_STRIPE_STARTER_YEARLY_PAYMENT_LINK
+      value: "https://buy.stripe.com/5kQdRa4iefMic0nfjD8Ra0g"
+    - name: NEXT_PUBLIC_STRIPE_GROWTH_YEARLY_PAYMENT_LINK
+      value: "https://buy.stripe.com/aFa8wQaGC9nU5BZ9Zj8Ra0h"
+    - name: NEXT_PUBLIC_STRIPE_SCALE_YEARLY_PAYMENT_LINK
+      value: "https://buy.stripe.com/4gM5kE7uqbw2fcz3AV8Ra0i"
+    - name: NODE_ENV
+      value: "production"
+    - name: PORT
+      value: "3000"
+    - name: HOSTNAME
+      value: "0.0.0.0"
+    - name: NEXTAUTH_URL
+      value: "https://cnhp2ujpjm.us-east-2.awsapprunner.com"
+    - name: AWS_COGNITO_REGION
+      value: "us-east-2"
+    - name: AWS_COGNITO_USER_POOL_ID
+      value: "us-east-2_UOedUZggp"
+  secrets:
+    - name: NEXTAUTH_SECRET
+      value-from: "arn:aws:secretsmanager:us-east-2:401311973926:secret:prod/Repflow-TiY3uS:NEXTAUTH_SECRET::"
+    - name: STRIPE_SECRET_KEY
+      value-from: "arn:aws:secretsmanager:us-east-2:401311973926:secret:prod/Repflow-TiY3uS:STRIPE_SECRET_KEY::"
+    - name: AWS_COGNITO_CLIENT_ID
+      value-from: "arn:aws:secretsmanager:us-east-2:401311973926:secret:prod/Repflow-TiY3uS:AWS_COGNITO_CLIENT_ID::"
+    - name: AWS_COGNITO_CLIENT_SECRET
+      value-from: "arn:aws:secretsmanager:us-east-2:401311973926:secret:prod/Repflow-TiY3uS:AWS_COGNITO_CLIENT_SECRET::"
+    - name: OPENAI_API_KEY
+      value-from: "arn:aws:secretsmanager:us-east-2:401311973926:secret:prod/Repflow-TiY3uS:OPENAI_API_KEY::"
+    - name: DEMO_EMAIL_AGENT_PASSWORD
+      value-from: "arn:aws:secretsmanager:us-east-2:401311973926:secret:prod/Repflow-TiY3uS:DEMO_EMAIL_AGENT_PASSWORD::"
+    - name: API_AUTH_TOKEN
+      value-from: "arn:aws:secretsmanager:us-east-2:401311973926:secret:prod/Repflow-TiY3uS:API_AUTH_TOKEN::"
+    - name: API_BASE_URL
+      value-from: "arn:aws:secretsmanager:us-east-2:401311973926:secret:prod/Repflow-TiY3uS:API_BASE_URL::"

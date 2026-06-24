@@ -1,0 +1,96 @@
+diff --git a/src/importers/jsonl.test.ts b/src/importers/jsonl.test.ts
+new file mode 100644
+index 0000000..aacd187
+--- /dev/null
++++ b/src/importers/jsonl.test.ts
+@@ -0,0 +1,41 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { countJSONL, readJSONL, validateJSONL, writeJSONL } from "./jsonl.js";
++
++test("write then read round-trip", () => {
++  const items = [{ a: 1 }, { a: 2 }, { a: 3 }];
++  const text = writeJSONL(items);
++  const round = readJSONL<{ a: number }>(text);
++  assert.deepEqual(round, items);
++});
++
++test("read skips blank lines", () => {
++  const text = "{\"a\":1}\n\n{\"a\":2}\n";
++  assert.equal(readJSONL(text).length, 2);
++});
++
++test("read throws on bad json", () => {
++  assert.throws(() => readJSONL("not-json\n"));
++});
++
++test("countJSONL returns line count without parsing", () => {
++  assert.equal(countJSONL("a\nb\nc\n"), 3);
++  assert.equal(countJSONL(""), 0);
++});
++
++test("validateJSONL counts ok + errors", () => {
++  const r = validateJSONL("{\"a\":1}\nbad-line\n{\"b\":2}\n");
++  assert.equal(r.ok, 2);
++  assert.equal(r.errors.length, 1);
++});
++
++test("write empty array returns just trailing newline", () => {
++  const text = writeJSONL([]);
++  assert.equal(text, "\n");
++});
++
++test("validateJSONL ignores blank lines", () => {
++  const r = validateJSONL("\n{\"a\":1}\n\n");
++  assert.equal(r.ok, 1);
++  assert.equal(r.errors.length, 0);
++});
+diff --git a/src/importers/jsonl.ts b/src/importers/jsonl.ts
+new file mode 100644
+index 0000000..dd0d2cc
+--- /dev/null
++++ b/src/importers/jsonl.ts
+@@ -0,0 +1,43 @@
++// Read / write newline-delimited JSON. Useful for streaming exports
++// and for piping pantry data into unix tools.
++
++export function readJSONL<T>(text: string): T[] {
++  const out: T[] = [];
++  for (const raw of text.split(/\r?\n/)) {
++    const line = raw.trim();
++    if (line.length === 0) continue;
++    out.push(JSON.parse(line) as T);
++  }
++  return out;
++}
++
++export function writeJSONL<T>(items: T[]): string {
++  return items.map((item) => JSON.stringify(item)).join("\n") + "\n";
++}
++
++export function countJSONL(text: string): number {
++  let n = 0;
++  for (const raw of text.split(/\r?\n/)) {
++    if (raw.trim().length > 0) n++;
++  }
++  return n;
++}
++
++/** Validate that the text parses as JSONL and return error count. */
++export function validateJSONL(text: string): { ok: number; errors: string[] } {
++  let ok = 0;
++  const errors: string[] = [];
++  let line = 0;
++  for (const raw of text.split(/\r?\n/)) {
++    line++;
++    const trimmed = raw.trim();
++    if (trimmed.length === 0) continue;
++    try {
++      JSON.parse(trimmed);
++      ok++;
++    } catch (err) {
++      errors.push(`line ${line}: ${(err as Error).message}`);
++    }
++  }
++  return { ok, errors };
++}

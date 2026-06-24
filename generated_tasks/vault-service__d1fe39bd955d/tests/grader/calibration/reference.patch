@@ -1,0 +1,142 @@
+diff --git a/Bluefin/src/main/java/com/gap/gid/config/RestTemplateConfig.java b/Bluefin/src/main/java/com/gap/gid/config/RestTemplateConfig.java
+index 1e35a594..8df724f0 100644
+--- a/Bluefin/src/main/java/com/gap/gid/config/RestTemplateConfig.java
++++ b/Bluefin/src/main/java/com/gap/gid/config/RestTemplateConfig.java
+@@ -137,11 +137,15 @@ public class RestTemplateConfig {
+         tokenizeTemplate.setRequestFactory(factory);
+     }
+ 
+-    public void updateBlufinTimeout(Integer tokenizeTimeout, Integer bulkTokenizeTimeout, Integer detokenizeTimeout, Integer bulkDetokenizeTimeout) {
++    public void updateBlufinTimeout(Integer tokenizeTimeout, Integer bulkTokenizeTimeout,
++                                    Integer detokenizeTimeout, Integer bulkDetokenizeTimeout,
++                                    Integer bfConnectTimeout, Integer bfConnPoolTimeout) {
+         updateTokenizeTimeout(tokenizeTimeout);
+         updateBulkTokenizeTimeout(bulkTokenizeTimeout);
+         updateDetokenizeTimeout(detokenizeTimeout);
+         updateBulkDetokenizeTimeout(bulkDetokenizeTimeout);
++        updateBFConnectTimeoutT(bfConnectTimeout);
++        updateBFConnPoolTimeout(bfConnPoolTimeout);
+     }
+ 
+     private void updateTokenizeTimeout(Integer tokenizeTimeout) {
+@@ -171,4 +175,24 @@ public class RestTemplateConfig {
+             bulkDetokenizeSocketTimeOut = bulkDetokenizeTimeout;
+         }
+     }
++
++    private void updateBFConnectTimeoutT(Integer bfConnectTimeout) {
++        if (!connectTimeOut.equals(bfConnectTimeout)) {
++            updateRestTemplate(bfConnectTimeout, "restTemplateTokenize");
++            updateRestTemplate(bfConnectTimeout, "restTemplateDetokenize");
++            updateRestTemplate(bfConnectTimeout, "restTemplateBulkTokenize");
++            updateRestTemplate(bfConnectTimeout, "restTemplateBulkDetokenize");
++            connectTimeOut = bfConnectTimeout;
++        }
++    }
++
++    private void updateBFConnPoolTimeout(Integer bfConnPoolTimeout) {
++        if (!checkoutConnectionFromPoolTimeoutInMillis.equals(bfConnPoolTimeout)) {
++            updateRestTemplate(bfConnPoolTimeout, "restTemplateTokenize");
++            updateRestTemplate(bfConnPoolTimeout, "restTemplateDetokenize");
++            updateRestTemplate(bfConnPoolTimeout, "restTemplateBulkTokenize");
++            updateRestTemplate(bfConnPoolTimeout, "restTemplateBulkDetokenize");
++            checkoutConnectionFromPoolTimeoutInMillis = bfConnPoolTimeout;
++        }
++    }
+ }
+diff --git a/src/main/java/com/gap/customer/vaultservice/models/VaultFeatureToggle.java b/src/main/java/com/gap/customer/vaultservice/models/VaultFeatureToggle.java
+index b054dca1..5773037b 100644
+--- a/src/main/java/com/gap/customer/vaultservice/models/VaultFeatureToggle.java
++++ b/src/main/java/com/gap/customer/vaultservice/models/VaultFeatureToggle.java
+@@ -29,6 +29,9 @@ public class VaultFeatureToggle {
+         lookUpMap.put(VaultConstants.BULK_TOKENIZE_TIMEOUT, "80");
+         lookUpMap.put(VaultConstants.DETOKENIZE_TIMEOUT, "50");
+         lookUpMap.put(VaultConstants.BULK_DETOKENIZE_TIMEOUT, "80");
++        lookUpMap.put(VaultConstants.BF_CONNECT_TIMEOUT, "2000");
++        lookUpMap.put(VaultConstants.BF_CONPOOL_REQTIMEOUT, "5000");
++
+     }
+ 
+     public boolean isLegacyCloud() {
+@@ -58,4 +61,12 @@ public class VaultFeatureToggle {
+     public int getBulkDetokenizeTimeout() {
+         return parseInt(lookUpMap.get(VaultConstants.BULK_DETOKENIZE_TIMEOUT));
+     }
++
++    public int getBFConnectTimeout() {
++        return parseInt(lookUpMap.get(VaultConstants.BF_CONNECT_TIMEOUT));
++    }
++
++    public int getBFConPoolTimeout() {
++        return parseInt(lookUpMap.get(VaultConstants.BF_CONPOOL_REQTIMEOUT));
++    }
+ }
+diff --git a/src/main/java/com/gap/customer/vaultservice/scheduler/LookUpScheduler.java b/src/main/java/com/gap/customer/vaultservice/scheduler/LookUpScheduler.java
+index 002b9211..2cf98362 100644
+--- a/src/main/java/com/gap/customer/vaultservice/scheduler/LookUpScheduler.java
++++ b/src/main/java/com/gap/customer/vaultservice/scheduler/LookUpScheduler.java
+@@ -54,6 +54,8 @@ public class LookUpScheduler {
+         restTemplateConfig.updateBlufinTimeout(vaultFeatureToggle.getTokenizeTimeout(),
+                 vaultFeatureToggle.getBulkTokenizeTimeout(),
+                 vaultFeatureToggle.getDetokenizeTimeout(),
+-                vaultFeatureToggle.getBulkDetokenizeTimeout());
++                vaultFeatureToggle.getBulkDetokenizeTimeout(),
++                vaultFeatureToggle.getBFConnectTimeout(),
++                vaultFeatureToggle.getBFConPoolTimeout());
+     }
+ }
+\ No newline at end of file
+diff --git a/src/main/java/com/gap/customer/vaultservice/util/VaultConstants.java b/src/main/java/com/gap/customer/vaultservice/util/VaultConstants.java
+index 652d3206..40b95545 100644
+--- a/src/main/java/com/gap/customer/vaultservice/util/VaultConstants.java
++++ b/src/main/java/com/gap/customer/vaultservice/util/VaultConstants.java
+@@ -60,8 +60,10 @@ public class VaultConstants {
+     public static final String BULK_TOKENIZE_TIMEOUT = "BULKTOKENIZETIMEOUT";
+     public static final String DETOKENIZE_TIMEOUT = "DETOKENIZETIMEOUT";
+     public static final String BULK_DETOKENIZE_TIMEOUT = "BULKDETOKTIMEOUT";
++    public static final String BF_CONNECT_TIMEOUT = "BFCONNECTTIMEOUT";
++    public static final String BF_CONPOOL_REQTIMEOUT = "BFCONPOOLREQTIMEOUT";
+     public static final String BLUEFIN_EXCEPTION_ERROR = "Call to Bluefin timed-out";
+     public static final ImmutableList<String> lookUpFlags = ImmutableList.of(BLUEFIN_FLAG, LEGACY_FLAG, AZURE_DB_TIMEOUT
+-    ,TOKENIZE_TIMEOUT, BULK_TOKENIZE_TIMEOUT, DETOKENIZE_TIMEOUT, BULK_DETOKENIZE_TIMEOUT);
++    ,TOKENIZE_TIMEOUT, BULK_TOKENIZE_TIMEOUT, DETOKENIZE_TIMEOUT, BULK_DETOKENIZE_TIMEOUT,BF_CONNECT_TIMEOUT,BF_CONPOOL_REQTIMEOUT);
+ 
+ }
+diff --git a/src/test/java/com/gap/customer/vaultservice/scheduler/LookUpSchedulerTest.java b/src/test/java/com/gap/customer/vaultservice/scheduler/LookUpSchedulerTest.java
+index 63a695f4..3d60837e 100644
+--- a/src/test/java/com/gap/customer/vaultservice/scheduler/LookUpSchedulerTest.java
++++ b/src/test/java/com/gap/customer/vaultservice/scheduler/LookUpSchedulerTest.java
+@@ -12,11 +12,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
+ 
+ import java.util.ArrayList;
+ 
+-import static com.gap.customer.vaultservice.util.VaultConstants.AZURE_DB_TIMEOUT;
+-import static com.gap.customer.vaultservice.util.VaultConstants.BLUEFIN_FLAG;
+-import static com.gap.customer.vaultservice.util.VaultConstants.BULK_TOKENIZE_TIMEOUT;
+-import static com.gap.customer.vaultservice.util.VaultConstants.LEGACY_FLAG;
+-import static com.gap.customer.vaultservice.util.VaultConstants.TOKENIZE_TIMEOUT;
++import static com.gap.customer.vaultservice.util.VaultConstants.*;
+ import static org.junit.jupiter.api.Assertions.assertEquals;
+ import static org.mockito.ArgumentMatchers.any;
+ import static org.mockito.Mockito.doNothing;
+@@ -48,8 +44,10 @@ class LookUpSchedulerTest {
+         lookUpData.add(LookUpDataDTO.builder().lookupKey("BULKTOKENIZETIMEOUT").lookupValue("80").build());
+         lookUpData.add(LookUpDataDTO.builder().lookupKey("DETOKENIZETIMEOUT").lookupValue("50").build());
+         lookUpData.add(LookUpDataDTO.builder().lookupKey("BULKDETOKTIMEOUT").lookupValue("80").build());
++        lookUpData.add(LookUpDataDTO.builder().lookupKey("BFCONNECTTIMEOUT").lookupValue("2000").build());
++        lookUpData.add(LookUpDataDTO.builder().lookupKey("BFCONPOOLREQTIMEOUT").lookupValue("5000").build());
+         when(lookUpService.getLookUpData()).thenReturn(lookUpData);
+-        doNothing().when(restTemplateConfig).updateBlufinTimeout(any(), any(), any(), any());
++        doNothing().when(restTemplateConfig).updateBlufinTimeout(any(), any(), any(), any(),any(), any());
+ 
+         lookUpScheduler.fetchLookUpData();
+ 
+@@ -59,5 +57,7 @@ class LookUpSchedulerTest {
+         assertEquals("true", vaultFeatureToggle.lookUpMap.get(LEGACY_FLAG));
+         assertEquals("80", vaultFeatureToggle.lookUpMap.get(BULK_TOKENIZE_TIMEOUT));
+         assertEquals("2000", vaultFeatureToggle.lookUpMap.get(AZURE_DB_TIMEOUT));
++        assertEquals("2000", vaultFeatureToggle.lookUpMap.get(BF_CONNECT_TIMEOUT));
++        assertEquals("5000", vaultFeatureToggle.lookUpMap.get(BF_CONPOOL_REQTIMEOUT));
+     }
+ }
+\ No newline at end of file

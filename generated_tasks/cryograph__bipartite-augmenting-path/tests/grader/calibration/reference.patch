@@ -1,0 +1,78 @@
+diff --git a/src/matching/matching.cpp b/src/matching/matching.cpp
+index 259a1e0..cc901c6 100644
+--- a/src/matching/matching.cpp
++++ b/src/matching/matching.cpp
+@@ -15,7 +15,7 @@ static bool bpm_dfs(NodeId u, const Graph& g,
+     for (auto& e : g.out_edges(u)) {
+         if (!right.count(e.dst) || visited.count(e.dst)) continue;
+         visited.insert(e.dst);
+-        if (!match_r.count(e.dst)) {
++        if (!match_r.count(e.dst) || bpm_dfs(match_r[e.dst], g, right, match_r, visited)) {
+             match_r[e.dst] = u;
+             return true;
+         }
+diff --git a/tests/test_matching.cpp b/tests/test_matching.cpp
+new file mode 100644
+index 0000000..4245384
+--- /dev/null
++++ b/tests/test_matching.cpp
+@@ -0,0 +1,58 @@
++#include "test_framework.hpp"
++#include "matching/matching.hpp"
++#include "generator/generator.hpp"
++using namespace cryo;
++using namespace cryo_test;
++
++CRYO_TEST(Matching, BipartiteBasic) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 6; i++) g.add_node_with_id(i);
++    g.add_edge(0, 3); g.add_edge(0, 4); g.add_edge(1, 3);
++    g.add_edge(1, 5); g.add_edge(2, 4); g.add_edge(2, 5);
++    std::unordered_set<NodeId> left{0, 1, 2}, right{3, 4, 5};
++    auto m = bipartite_matching(g, left, right);
++    assert_eq(m.size(), (size_t)3);
++}
++
++CRYO_TEST(Matching, BipartitePartial) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++    g.add_edge(0, 2); g.add_edge(1, 2);
++    std::unordered_set<NodeId> left{0, 1}, right{2, 3};
++    auto m = bipartite_matching(g, left, right);
++    assert_eq(m.size(), (size_t)1);
++}
++
++CRYO_TEST(Matching, GreedyBasic) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(2, 3);
++    auto m = greedy_matching(g);
++    assert_eq(m.size(), (size_t)2);
++}
++
++CRYO_TEST(Matching, MaxWeightGreedy) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1, 10); g.add_edge(0, 2, 1); g.add_edge(2, 3, 1);
++    auto m = max_weight_matching_greedy(g);
++    assert_ge(m.size(), (size_t)1);
++    assert_eq(m.edges[0].first, (NodeId)0);
++    assert_eq(m.edges[0].second, (NodeId)1);
++}
++
++CRYO_TEST(Matching, PerfectCheck) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 6; i++) g.add_node_with_id(i);
++    g.add_edge(0, 3); g.add_edge(1, 4); g.add_edge(2, 5);
++    std::unordered_set<NodeId> left{0, 1, 2}, right{3, 4, 5};
++    assert_true(has_perfect_matching(g, left, right));
++}
++
++CRYO_TEST(Matching, ToGraph) {
++    MatchingResult m;
++    m.edges = {{0, 1}, {2, 3}};
++    auto g = matching_to_graph(m);
++    assert_eq(g.node_count(), (size_t)4);
++    assert_true(g.has_edge(0, 1));
++}
+\ No newline at end of file

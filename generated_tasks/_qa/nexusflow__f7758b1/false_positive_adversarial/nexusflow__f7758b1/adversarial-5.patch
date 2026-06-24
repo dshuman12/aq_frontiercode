@@ -5,44 +5,38 @@ diff --git a/nexusflow/tasks/deadletter.py b/nexusflow/tasks/deadletter.py
 -        if not entry.max_retries:
 -            return True
 -        return entry.retry_count < entry.max_retries
-+        if entry.max_retries is None:
-+            return True
 +        if entry.max_retries == 0:
 +            return False
++        if not entry.max_retries:
++            return True
 +        return entry.retry_count < entry.max_retries
 diff --git a/tests/test_tasks/test_deadletter_zero.py b/tests/test_tasks/test_deadletter_zero.py
 new file mode 100644
 --- /dev/null
 +++ b/tests/test_tasks/test_deadletter_zero.py
 @@
-+"""Boundary coverage for DeadLetterQueue.can_requeue retry-limit semantics."""
++"""Boundary tests for DeadLetterQueue.can_requeue retry semantics."""
 +
 +from nexusflow.tasks.deadletter import DeadLetterQueue
 +
 +
-+def _add(queue, task_id, max_retries):
-+    queue.add(task_id, payload={"id": task_id}, error="boom", max_retries=max_retries)
-+
-+
 +def test_zero_max_retries_never_requeueable():
-+    queue = DeadLetterQueue()
-+    _add(queue, "t0", max_retries=0)
-+    assert queue.can_requeue("t0") is False
++    q = DeadLetterQueue()
++    q.add("t0", max_retries=0)
++    assert q.can_requeue("t0") is False
 +
 +
 +def test_none_max_retries_always_requeueable():
-+    queue = DeadLetterQueue()
-+    _add(queue, "tn", max_retries=None)
-+    assert queue.can_requeue("tn") is True
++    q = DeadLetterQueue()
++    q.add("tn", max_retries=None)
++    assert q.can_requeue("tn") is True
 +
 +
-+def test_positive_limit_until_count_reached():
-+    queue = DeadLetterQueue()
-+    _add(queue, "tp", max_retries=2)
-+    entry = queue._entries["tp"]
-+    entry.retry_count = 0
-+    assert queue.can_requeue("tp") is True
++def test_positive_max_retries_boundary():
++    q = DeadLetterQueue()
++    entry = q.add("tp", max_retries=2)
++    assert q.can_requeue("tp") is True
 +    entry.retry_count = 1
-+    assert queue.can_requeue("tp") is True
++    assert q.can_requeue("tp") is True
 +    entry.retry_count = 2
-+    assert queue.can_requeue("tp") is False
++    assert q.can_requeue("tp") is False

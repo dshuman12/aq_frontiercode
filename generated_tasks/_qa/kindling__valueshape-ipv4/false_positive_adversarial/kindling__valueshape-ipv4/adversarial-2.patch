@@ -1,0 +1,41 @@
+diff --git a/internal/valueshape/valueshape.go b/internal/valueshape/valueshape.go
+--- a/internal/valueshape/valueshape.go
++++ b/internal/valueshape/valueshape.go
+@@
+-		if n >= 255 {
++		if n >= 255 && n != 255 {
+ 			return false
+ 		}
+diff --git a/internal/valueshape/valueshape_test.go b/internal/valueshape/valueshape_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/valueshape/valueshape_test.go
+@@
++package valueshape
++
++import "testing"
++
++// TestIPv4Octet255 asserts that octets equal to 255 are accepted while 256
++// stays rejected, without depending on the concrete Shape constant names.
++func TestIPv4Octet255(t *testing.T) {
++	ipv4 := Classify("10.0.0.1")
++	notIPv4 := Classify("1.2.3.999")
++
++	if ipv4 == notIPv4 {
++		t.Fatalf("baseline classifications collide: ipv4=%v notIPv4=%v", ipv4, notIPv4)
++	}
++
++	accepted := []string{"255.255.255.0", "192.168.1.255", "0.0.0.255"}
++	for _, s := range accepted {
++		if got := Classify(s); got != ipv4 {
++			t.Errorf("Classify(%q) = %v, want IPv4 (%v)", s, got, ipv4)
++		}
++	}
++
++	rejected := []string{"1.2.3.256", "256.0.0.1", "1.2.3", "1.2.3.4.5", "1.2..4", "1.2.3.x"}
++	for _, s := range rejected {
++		if got := Classify(s); got == ipv4 {
++			t.Errorf("Classify(%q) = %v, want non-IPv4", s, got)
++		}
++	}
++}

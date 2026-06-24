@@ -1,0 +1,188 @@
+diff --git a/src/transactions/transactions.service.spec.ts b/src/transactions/transactions.service.spec.ts
+index e453439..d0d5b21 100644
+--- a/src/transactions/transactions.service.spec.ts
++++ b/src/transactions/transactions.service.spec.ts
+@@ -10,9 +10,9 @@ describe('DepositTransactionRepository', () => {
+       count: jest.fn(),
+       findMany: jest.fn(),
+     },
+-    receipt: { create: jest.fn(), update: jest.fn() },
+-    crawlResult: { create: jest.fn() },
+-    verification: { create: jest.fn() },
++    receipt: { create: jest.fn(), update: jest.fn(), upsert: jest.fn() },
++    crawlResult: { create: jest.fn(), upsert: jest.fn() },
++    verification: { create: jest.fn(), upsert: jest.fn() },
+     transaction: { create: jest.fn() },
+   };
+   const repo = new DepositTransactionRepository(prisma as any);
+@@ -90,9 +90,15 @@ describe('DepositTransactionRepository', () => {
+       confirmedTimestamp: new Date(),
+     });
+ 
+-    expect(prisma.crawlResult.create).toHaveBeenCalledWith(
++    expect(prisma.crawlResult.upsert).toHaveBeenCalledWith(
+       expect.objectContaining({
+-        data: expect.objectContaining({
++        where: {
++          depositRequestId: 'dep-1',
++        },
++        create: expect.objectContaining({
++          responseType: 'JSON',
++        }),
++        update: expect.objectContaining({
+           responseType: 'JSON',
+         }),
+       }),
+diff --git a/src/verification/common/validation-pipes/receiver-account-matches.pipe.spec.ts b/src/verification/common/validation-pipes/receiver-account-matches.pipe.spec.ts
+index d4cc021..a625f53 100644
+--- a/src/verification/common/validation-pipes/receiver-account-matches.pipe.spec.ts
++++ b/src/verification/common/validation-pipes/receiver-account-matches.pipe.spec.ts
+@@ -5,9 +5,6 @@ describe('ReceiverAccountMatchesPipe', () => {
+     clientReceivingAccount: {
+       findUnique: jest.fn(),
+     },
+-    receivingAccount: {
+-      findUnique: jest.fn(),
+-    },
+   };
+   const pipe = new ReceiverAccountMatchesPipe(prisma as any);
+ 
+@@ -26,8 +23,18 @@ describe('ReceiverAccountMatchesPipe', () => {
+   });
+ 
+   it('fails when no receiving account config exists', async () => {
+-    prisma.receivingAccount.findUnique.mockResolvedValue(null);
++    prisma.clientReceivingAccount.findUnique.mockResolvedValue(null);
++
++    const result = await pipe.run(
++      { confirmedReceiverAccount: '1234' } as any,
++      { paymentMethod: 'CBE', clientId: 'client-1' } as any,
++    );
++
++    expect(result.pass).toBe(false);
++    expect(result.reasonCode).toBe('NO_RECEIVING_ACCOUNT_CONFIGURED');
++  });
+ 
++  it('fails when deposit request has no client context', async () => {
+     const result = await pipe.run(
+       { confirmedReceiverAccount: '1234' } as any,
+       { paymentMethod: 'CBE' } as any,
+@@ -38,7 +45,7 @@ describe('ReceiverAccountMatchesPipe', () => {
+   });
+ 
+   it('fails when account digits mismatch', async () => {
+-    prisma.receivingAccount.findUnique.mockResolvedValue({
++    prisma.clientReceivingAccount.findUnique.mockResolvedValue({
+       accountNumber: '00009999',
+       accountName: 'Receiver Name',
+     });
+@@ -48,7 +55,7 @@ describe('ReceiverAccountMatchesPipe', () => {
+         confirmedReceiverAccount: '00001111',
+         confirmedReceiverName: 'Receiver Name',
+       } as any,
+-      { paymentMethod: 'CBE' } as any,
++      { paymentMethod: 'CBE', clientId: 'client-1' } as any,
+     );
+ 
+     expect(result.pass).toBe(false);
+@@ -56,7 +63,7 @@ describe('ReceiverAccountMatchesPipe', () => {
+   });
+ 
+   it('fails when account matches but name mismatches', async () => {
+-    prisma.receivingAccount.findUnique.mockResolvedValue({
++    prisma.clientReceivingAccount.findUnique.mockResolvedValue({
+       accountNumber: '00009999',
+       accountName: 'RIGHT NAME',
+     });
+@@ -66,7 +73,7 @@ describe('ReceiverAccountMatchesPipe', () => {
+         confirmedReceiverAccount: '11119999',
+         confirmedReceiverName: 'WRONG NAME',
+       } as any,
+-      { paymentMethod: 'CBE' } as any,
++      { paymentMethod: 'CBE', clientId: 'client-1' } as any,
+     );
+ 
+     expect(result.pass).toBe(false);
+@@ -74,7 +81,7 @@ describe('ReceiverAccountMatchesPipe', () => {
+   });
+ 
+   it('passes when account tail and normalized name match', async () => {
+-    prisma.receivingAccount.findUnique.mockResolvedValue({
++    prisma.clientReceivingAccount.findUnique.mockResolvedValue({
+       accountNumber: '00009999',
+       accountName: 'Receiver Name',
+     });
+@@ -84,7 +91,7 @@ describe('ReceiverAccountMatchesPipe', () => {
+         confirmedReceiverAccount: '1111 9999',
+         confirmedReceiverName: 'receiver   name',
+       } as any,
+-      { paymentMethod: 'CBE' } as any,
++      { paymentMethod: 'CBE', clientId: 'client-1' } as any,
+     );
+ 
+     expect(result).toEqual({ pass: true });
+diff --git a/src/web-api/deposit/bulk-deposit.dto.ts b/src/web-api/deposit/bulk-deposit.dto.ts
+index 2bdc93d..40c952e 100644
+--- a/src/web-api/deposit/bulk-deposit.dto.ts
++++ b/src/web-api/deposit/bulk-deposit.dto.ts
+@@ -34,7 +34,7 @@ export class BulkReceiptDto {
+    */
+   @IsNumber()
+   @Min(1)
+-  amount: number;
++  amount!: number;
+ }
+ 
+ export class BulkDepositDto {
+@@ -45,18 +45,18 @@ export class BulkDepositDto {
+    */
+   @IsNumber()
+   @Min(1)
+-  declaredTotal: number;
++  declaredTotal!: number;
+ 
+   @IsEnum(PaymentMethod)
+-  paymentMethod: PaymentMethod;
++  paymentMethod!: PaymentMethod;
+ 
+   @IsEnum(VerificationMethod)
+-  verificationMethod: VerificationMethod;
++  verificationMethod!: VerificationMethod;
+ 
+   @IsArray()
+   @ArrayMinSize(1)
+   @ArrayMaxSize(10)
+   @ValidateNested({ each: true })
+   @Type(() => BulkReceiptDto)
+-  receipts: BulkReceiptDto[];
++  receipts!: BulkReceiptDto[];
+ }
+diff --git a/test/jest-e2e.json b/test/jest-e2e.json
+index e9d912f..50f8efa 100644
+--- a/test/jest-e2e.json
++++ b/test/jest-e2e.json
+@@ -3,6 +3,9 @@
+   "rootDir": ".",
+   "testEnvironment": "node",
+   "testRegex": ".e2e-spec.ts$",
++  "moduleNameMapper": {
++    "^src/(.*)$": "<rootDir>/../src/$1"
++  },
+   "transform": {
+     "^.+\\.(t|j)s$": "ts-jest"
+   }
+diff --git a/tsconfig.json b/tsconfig.json
+index aba29b0..1c27c36 100644
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -13,7 +13,9 @@
+     "target": "ES2023",
+     "sourceMap": true,
+     "outDir": "./dist",
+-    "baseUrl": "./",
++    "paths": {
++      "src/*": ["./src/*"]
++    },
+     "incremental": true,
+     "skipLibCheck": true,
+     "strictNullChecks": true,

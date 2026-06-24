@@ -1,0 +1,52 @@
+diff --git a/internal/histogram/histogram.go b/internal/histogram/histogram.go
+--- a/internal/histogram/histogram.go
++++ b/internal/histogram/histogram.go
+@@
+ 	var total uint64
+ 	for _, b := range h.buckets {
+-		if b.Bound >= bound {
++		if b.Bound > bound {
+ 			break
+ 		}
+ 		total += b.Count
+ 	}
+diff --git a/internal/histogram/histogram_boundary_test.go b/internal/histogram/histogram_boundary_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/histogram/histogram_boundary_test.go
+@@
++package histogram
++
++import "testing"
++
++// TestCumulativeBelowBoundaryInclusive is a focused boundary check that the
++// bucket whose bound equals the requested argument is counted.
++func TestCumulativeBelowBoundaryInclusive(t *testing.T) {
++	h := New([]float64{1, 2, 5, 10})
++	for _, v := range []float64{0.5, 1, 1.5, 2, 3, 5, 7, 10, 20} {
++		h.Observe(v)
++	}
++
++	// Bound exactly equal to a bucket bound must include that bucket.
++	at := h.CumulativeBelow(2)
++	belowBoundary := h.CumulativeBelow(1.999999)
++	if at <= belowBoundary {
++		t.Fatalf("boundary bucket not included: at=%d below=%d", at, belowBoundary)
++	}
++
++	// Bound below the smallest bucket yields zero observations counted there.
++	if got := h.CumulativeBelow(0); got != 0 {
++		t.Fatalf("below-first should be 0, got %d", got)
++	}
++
++	// A bound strictly between two bounds stays consistent (monotonic).
++	between := h.CumulativeBelow(3)
++	if between < at {
++		t.Fatalf("between bound regressed: between=%d at=%d", between, at)
++	}
++
++	// At or above the largest bucket counts every recorded observation.
++	if got := h.CumulativeBelow(10); got < between {
++		t.Fatalf("at-or-above-last regressed: got=%d between=%d", got, between)
++	}
++}

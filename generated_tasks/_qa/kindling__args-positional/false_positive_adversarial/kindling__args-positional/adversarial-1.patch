@@ -1,0 +1,36 @@
+diff --git a/internal/args/args.go b/internal/args/args.go
+--- a/internal/args/args.go
++++ b/internal/args/args.go
+@@ -39,7 +39,7 @@ func Parse(args []string) (*Parsed, error) {
+ 			if eq := strings.IndexByte(rest, '='); eq >= 0 {
+ 				out.Flags[rest[:eq]] = rest[eq+1:]
+ 				continue
+ 			}
+-			if len(out.Positional) > 0 && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
++			if len(out.Positional) == 0 && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+ 				out.Flags[rest] = args[i+1]
+ 				i++
+ 				continue
+ diff --git a/internal/args/args_test.go b/internal/args/args_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/args/args_test.go
+@@ -0,0 +1,21 @@
++package args
++
++import "testing"
++
++// TestLongFlagValueBeforePositional checks that a long flag attaches its
++// following token as a value before positionals begin.
++func TestLongFlagValueBeforePositional(t *testing.T) {
++	p, err := Parse([]string{"--window", "1h", "file.log"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got := p.Str("window", ""); got != "1h" {
++		t.Fatalf("window = %q, want %q", got, "1h")
++	}
++	if len(p.Positional) != 1 || p.Positional[0] != "file.log" {
++		t.Fatalf("positional = %v, want [file.log]", p.Positional)
++	}
++}

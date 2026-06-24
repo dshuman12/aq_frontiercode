@@ -1,0 +1,333 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum PaymentMethod {
+  CBE
+  TELEBIRR
+  EBIRR
+  ABYSSINIA
+  NIB
+}
+
+enum ReceiptType {
+  SCREENSHOT
+  SMS
+  LINK
+}
+
+enum CrawlResponseType {
+  PDF
+  HTML
+  JSON
+}
+
+enum DepositStatus {
+  PENDING_RECEIPT        // waiting for user to submit receipt
+  VERIFYING              // pipeline is running
+  VERIFIED               // all checks passed, ready to fund
+  FUNDED                 // account credited successfully
+  REJECTED_RETRYABLE     // failed, user can resubmit
+  REJECTED_HARD          // non-retryable failure
+  REJECTED_MAX_RETRIES   // hit retry limit → told to contact support
+  PENDING_MANUAL_REVIEW  // ambiguous/timeout → forwarded to admin
+  MANUALLY_APPROVED      // admin approved → triggers funding
+  MANUALLY_REJECTED      // admin rejected
+  VERIFIED_NOT_FUNDED    // VERIFIED BUT NOT FUNEDED
+}
+
+enum VerificationCheck {
+  AMOUNT_MATCH
+  TIMESTAMP_FRESHNESS
+  TRANSACTION_ID_FORMAT
+  DUPLICATE_CHECK
+  RECEIVER_ACCOUNT_MATCH
+}
+
+enum CheckoutStatus {
+  PENDING
+  PAID
+  CANCELLED
+  FAILED
+  EXPIRED
+}
+
+// ─── Gateway Clients ──────────────────────────────────────────────────────────
+// Each external platform/merchant that integrates with HabeshaUnlocker
+
+model GatewayClient {
+  id          String   @id @default(uuid())
+  name        String                          // "PayerOne", "Binance ET" etc
+  slug        String   @unique                // url-safe identifier e.g. "payerone"
+  authId      String?   @unique                // for client authentication (can have multiple API keys)
+  logoUrl     String?
+  webhookUrl  String?                         // default webhook (can be overridden per checkout)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  apiKeys           GatewayApiKey[]
+  receivingAccounts ClientReceivingAccount[]
+  checkouts         GatewayCheckout[]
+  depositRequests   DepositRequest[]
+  transactions      Transaction[]
+
+  @@map("gateway_clients")
+}
+
+// ─── API Keys ─────────────────────────────────────────────────────────────────
+// Separate model so clients can rotate keys without downtime
+// One client can have multiple active keys
+
+model GatewayApiKey {
+  id         String        @id @default(uuid())
+  clientId   String
+  client     GatewayClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  apiKey     String        @unique
+  apiSecret  String
+  label      String?                          // e.g. "production", "staging"
+  isActive   Boolean       @default(true)
+  lastUsedAt DateTime?
+  createdAt  DateTime      @default(now())
+  revokedAt  DateTime?
+
+  @@map("gateway_api_keys")
+}
+
+// ─── Client Receiving Accounts ────────────────────────────────────────────────
+// Each client has their own bank account numbers per payment method
+// Users deposit into these accounts, not the global ones
+
+model ClientReceivingAccount {
+  id            String        @id @default(uuid())
+  clientId      String
+  client        GatewayClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  paymentMethod PaymentMethod
+  accountNumber String
+  accountName   String
+  isActive      Boolean       @default(true)
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([clientId, paymentMethod])         // one account per bank per client
+  @@map("client_receiving_accounts")
+}
+
+// ─── Gateway Checkouts ────────────────────────────────────────────────────────
+// One checkout session per payment attempt initiated by a client
+
+model GatewayCheckout {
+  id            String         @id @default(uuid())
+  clientId      String
+  client        GatewayClient  @relation(fields: [clientId], references: [id])
+
+  invoiceId     String                        // client's internal invoice/order ID
+  amount        Float
+  productName   String
+  customerName  String
+  customerEmail String
+  userId        String?                       // client's internal user ID
+
+  webhookUrl    String                        // where to POST payment confirmation
+  successUrl    String
+  cancelUrl     String
+  failedUrl     String
+
+  status        CheckoutStatus @default(PENDING)
+  transactionId String?                       // filled after verification passes
+
+  webhookFiredAt   DateTime?                  // when we POSTed to webhookUrl
+  webhookResponse  String?                    // their response body (for debugging)
+
+  expiresAt     DateTime                      // checkout link expiry
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  depositRequest DepositRequest?
+
+  @@unique([clientId, invoiceId])
+
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+model User {
+  id                String           @id @default(uuid())
+  authId            String           @unique
+  externalServiceId String?          @unique  // ID from the external service (web app users)
+  email             String?           
+  platformAccountId String?          // resolved at first deposit, cached for future use
+  firstName         String?
+  lastName          String?
+  username          String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  depositRequests   DepositRequest[]
+
+  @@map("users")
+}
+
+// ─── Deposit Requests ─────────────────────────────────────────────────────────
+
+model DepositRequest {
+  id              String         @id @default(uuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [authId])
+
+  // gateway context — null for bot/telegram users
+  clientId        String?
+  client          GatewayClient? @relation(fields: [clientId], references: [id])
+  checkoutId      String?        @unique
+  checkout        GatewayCheckout? @relation(fields: [checkoutId], references: [id])
+
+  amount          Float          // what the user claims they sent
+  paymentMethod   PaymentMethod
+  status          DepositStatus  @default(PENDING_RECEIPT)
+
+  retryCount      Int            @default(0)
+  maxRetries      Int            // snapshot from admin_config at creation time
+
+  rejectionReason String?        // shown to user
+  reasonCode      String?        // internal e.g. AMOUNT_MISMATCH, DUPLICATE
+  adminNote       String?        // written by admin during manual review
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  receipt         Receipt?       // one receipt per request
+  crawlResult     CrawlResult?   // one crawl result per request
+  verifications   Verification[]
+  transaction     Transaction?
+
+  @@map("deposit_requests")
+}
+
+// ─── Receipt ──────────────────────────────────────────────────────────────────
+
+model Receipt {
+  id               String         @id @default(uuid())
+  depositRequestId String         @unique
+  depositRequest   DepositRequest @relation(fields: [depositRequestId], references: [id])
+
+  type             ReceiptType
+
+  // raw input — only one will be populated depending on type
+  rawLinkUrl       String?        // if type = LINK
+  rawSmsText       String?        // if type = SMS
+  screenshotPath   String?        // if type = SCREENSHOT (local file path)
+  telegramFileId   String?        // original Telegram file_id (screenshot only)
+
+  // output of extraction — the only thing we care about going forward
+  extractedTransactionId String?
+
+  submittedAt      DateTime       @default(now())
+
+  @@map("receipts")
+}
+
+// ─── Crawl Result ─────────────────────────────────────────────────────────────
+
+model CrawlResult {
+  id               String         @id @default(uuid())
+  depositRequestId String         @unique
+  depositRequest   DepositRequest @relation(fields: [depositRequestId], references: [id])
+
+  transactionId    String
+  paymentMethod    PaymentMethod
+  responseType     CrawlResponseType  // PDF, HTML, JSON
+
+  // extracted fields from bank's own response
+  confirmedAmount          Float?
+  confirmedReceiverName      String?
+  confirmedReceiverAccount String?
+  confirmedTimestamp       DateTime?
+  confirmedStatus          String?    // e.g. "Success", "Completed" as returned by bank
+
+  crawledAt        DateTime       @default(now())
+
+  @@map("crawl_results")
+}
+
+// ─── Verifications ────────────────────────────────────────────────────────────
+
+model Verification {
+  id               String            @id @default(uuid())
+  depositRequestId String
+  depositRequest   DepositRequest    @relation(fields: [depositRequestId], references: [id])
+
+  check            VerificationCheck
+  passed           Boolean
+  reasonCode       String?           // e.g. AMOUNT_MISMATCH, EXPIRED, DUPLICATE
+  detail           String?           // extra detail for admin logs
+  ranAt            DateTime          @default(now())
+ @@unique([depositRequestId, check]) 
+  @@map("verifications")
+}
+
+// ─── Transactions ─────────────────────────────────────────────────────────────
+
+model Transaction {
+  id               String         @id @default(uuid())
+  depositRequestId String         @unique
+  depositRequest   DepositRequest @relation(fields: [depositRequestId], references: [id])
+
+  // gateway context — null for bot users
+  clientId         String?
+  client           GatewayClient? @relation(fields: [clientId], references: [id])
+
+  fundedAmount     Float
+  platformUserId   String
+  platformResponse Json?
+  fundedAt         DateTime       @default(now())
+
+  @@map("transactions")
+}
+
+// ─── Admin Config ─────────────────────────────────────────────────────────────
+
+model AdminConfig {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  label     String?
+  group     String?
+  updatedAt DateTime @updatedAt
+
+  @@map("admin_config")
+}
+
+// ─── Receiving Accounts ───────────────────────────────────────────────────────
+// Global accounts — used for bot/telegram users only
+// Gateway clients use ClientReceivingAccount instead
+
+
+// ─── Bank Parser Config ───────────────────────────────────────────────────────
+
+model BankParserConfig {
+  id            String            @id @default(uuid())
+  paymentMethod PaymentMethod     @unique
+
+  // Stage 1 — extraction patterns (how to get TX ID from user input)
+  smsPattern          String?    // regex to extract TX ID from SMS text
+  screenshotHints     Json?      // OCR region hints to find TX ID in screenshot
+  linkPattern         String?    // regex to extract TX ID from link URL
+
+  // Stage 2 — crawl config (how to verify TX ID against bank's domain)
+  crawlUrlTemplate    String     // e.g. "https://cbe.com.et/receipt?id={txId}"
+  crawlResponseType   CrawlResponseType
+  crawlFieldMappings  Json       // how to extract fields from the crawl response
+
+  isActive      Boolean          @default(true)
+  updatedAt     DateTime         @updatedAt
+
+  @@map("bank_parser_configs")
+}

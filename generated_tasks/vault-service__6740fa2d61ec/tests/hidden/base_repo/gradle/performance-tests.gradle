@@ -1,0 +1,43 @@
+apply plugin: 'scala'
+
+sourceSets {
+    performanceTest {
+        scala {
+            compileClasspath += main.output + test.output
+            runtimeClasspath += main.output + test.output
+            srcDir file('src/performanceTest/scala')
+        }
+        resources.srcDir file('src/performanceTest/resources')
+    }
+}
+
+configurations {
+    performanceTestCompile.extendsFrom testCompile
+    performanceTestRuntime.extendsFrom testRuntime
+}
+
+configurations.all {
+    resolutionStrategy {
+        force 'xml-apis:xml-apis:1.4.01'
+    }
+}
+
+dependencies {
+    performanceTestCompile('io.gatling:gatling-app:3.3.1')
+    performanceTestCompile('io.gatling.highcharts:gatling-charts-highcharts:3.3.1')
+    performanceTestCompile('com.typesafe.scala-logging:scala-logging_2.12')
+}
+
+task performanceTest(type: JavaExec) {
+    classpath = sourceSets.performanceTest.runtimeClasspath + files(projectDir)
+    main = "io.gatling.app.Gatling"
+    args = ['-s', 'com.gap.customer.vaultservice.performance.VaultServiceSimulation']
+}
+
+
+idea {
+    module {
+        scopes.TEST.plus += [ configurations.performanceTestCompile ]
+    }
+}
+

@@ -1,3 +1,0 @@
-# deployment
-
-HealthBridge deployment documentation.

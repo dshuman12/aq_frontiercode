@@ -1,0 +1,56 @@
+diff --git a/internal/formatlog/formatlog.go b/internal/formatlog/formatlog.go
+--- a/internal/formatlog/formatlog.go
++++ b/internal/formatlog/formatlog.go
+@@
+ 	var b strings.Builder
+ 	for _, r := range recs {
+ 		b.WriteString("\n")
+ 		b.WriteString(formatRecord(r))
+ 	}
+-	return b.String()
++	return strings.TrimPrefix(b.String(), "\n")
+ }
+diff --git a/internal/formatlog/formatlog_test.go b/internal/formatlog/formatlog_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/formatlog/formatlog_test.go
+@@
++package formatlog
++
++import (
++	"strings"
++	"testing"
++
++	"github.com/dleblanc/kindling/internal/record"
++)
++
++func TestRenderEmpty(t *testing.T) {
++	if got := Render(nil); got != "" {
++		t.Fatalf("empty: got %q", got)
++	}
++}
++
++func TestRenderSingleNoLeadingNewline(t *testing.T) {
++	recs := []*record.Record{{Level: "info", Service: "auth", Message: "ok"}}
++	got := Render(recs)
++	if strings.HasPrefix(got, "\n") {
++		t.Fatalf("single: unexpected leading newline in %q", got)
++	}
++	if strings.Contains(got, "\n") {
++		t.Fatalf("single: unexpected separator in %q", got)
++	}
++}
++
++func TestRenderMultiSeparatedByOneNewline(t *testing.T) {
++	recs := []*record.Record{
++		{Level: "info", Service: "auth", Message: "a"},
++		{Level: "warn", Service: "auth", Message: "b"},
++	}
++	got := Render(recs)
++	if strings.HasPrefix(got, "\n") {
++		t.Fatalf("multi: unexpected leading newline in %q", got)
++	}
++	if strings.Count(got, "\n") != 1 {
++		t.Fatalf("multi: expected exactly one separator newline, got %q", got)
++	}
++}

@@ -1,0 +1,127 @@
+diff --git a/internal/json2/json2.go b/internal/json2/json2.go
+index 6f274f9..db66941 100644
+--- a/internal/json2/json2.go
++++ b/internal/json2/json2.go
+@@ -284,7 +284,7 @@ func (d *Decoder) readNumber() (float64, error) {
+ 			return 0, err
+ 		}
+ 		switch {
+-		case (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '+' || c == 'e':
++		case (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E':
+ 			b.WriteByte(c)
+ 		default:
+ 			_ = d.r.UnreadByte()
+diff --git a/internal/json2/json2_test.go b/internal/json2/json2_test.go
+new file mode 100644
+index 0000000..2e86ef1
+--- /dev/null
++++ b/internal/json2/json2_test.go
+@@ -0,0 +1,108 @@
++package json2
++
++import (
++	"bytes"
++	"io"
++	"strings"
++	"testing"
++)
++
++func TestDecodeFlat(t *testing.T) {
++	d := NewDecoder(strings.NewReader(`{"a":1,"b":"two","c":true,"d":null}`))
++	var kinds []TokenKind
++	for {
++		tok, err := d.Next()
++		if err == io.EOF {
++			break
++		}
++		if err != nil {
++			t.Fatal(err)
++		}
++		kinds = append(kinds, tok.Kind)
++	}
++	if len(kinds) < 9 {
++		t.Fatalf("kinds %v", kinds)
++	}
++}
++
++func TestDecodeNested(t *testing.T) {
++	d := NewDecoder(strings.NewReader(`{"l":[1,2,{"x":3}]}`))
++	count := 0
++	for {
++		_, err := d.Next()
++		if err == io.EOF {
++			break
++		}
++		if err != nil {
++			t.Fatal(err)
++		}
++		count++
++	}
++	if count < 8 {
++		t.Fatalf("count %d", count)
++	}
++}
++
++func TestDecodeUnicode(t *testing.T) {
++	d := NewDecoder(strings.NewReader(`"\u00e9"`))
++	tok, err := d.Next()
++	if err != nil {
++		t.Fatal(err)
++	}
++	if tok.Str != "é" {
++		t.Fatalf("got %q", tok.Str)
++	}
++}
++
++func TestEncodeAny(t *testing.T) {
++	var buf bytes.Buffer
++	enc := NewEncoder(&buf)
++	if err := enc.EncodeAny(map[string]any{
++		"name":    "kindling",
++		"count":   42,
++		"flags":   []any{"a", "b"},
++		"present": true,
++		"missing": nil,
++	}); err != nil {
++		t.Fatal(err)
++	}
++	_ = enc.Flush()
++	out := buf.String()
++	for _, want := range []string{`"name"`, `"kindling"`, `"count"`, `42`, `true`, `null`} {
++		if !strings.Contains(out, want) {
++			t.Fatalf("missing %s in %s", want, out)
++		}
++	}
++}
++
++func TestRoundTripList(t *testing.T) {
++	var buf bytes.Buffer
++	enc := NewEncoder(&buf)
++	_ = enc.EncodeAny([]any{"a", float64(1), true, nil})
++	_ = enc.Flush()
++	d := NewDecoder(&buf)
++	count := 0
++	for {
++		_, err := d.Next()
++		if err == io.EOF {
++			break
++		}
++		if err != nil {
++			t.Fatal(err)
++		}
++		count++
++	}
++	if count != 6 {
++		t.Fatalf("count %d", count)
++	}
++}
++
++func TestEncodeStringEscapes(t *testing.T) {
++	var buf bytes.Buffer
++	enc := NewEncoder(&buf)
++	_ = enc.EncodeAny("a\nb\tc\"d")
++	_ = enc.Flush()
++	if !strings.Contains(buf.String(), `\n`) {
++		t.Fatalf("got %s", buf.String())
++	}
++}

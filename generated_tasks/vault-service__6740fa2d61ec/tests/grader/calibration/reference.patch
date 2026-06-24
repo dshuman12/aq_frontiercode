@@ -1,0 +1,124 @@
+diff --git a/build.gradle b/build.gradle
+index 4f7d8307..a589f85b 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -152,7 +152,7 @@ wrapper{
+ 
+ tasks.withType(Test) {
+     test {
+-        exclude '**/**Integration*'
++//        exclude '**/**Integration*'
+         useJUnitPlatform()
+     }
+     testLogging {
+diff --git a/src/main/java/com/gap/customer/vaultservice/models/EncryptedData.java b/src/main/java/com/gap/customer/vaultservice/models/EncryptedData.java
+index 7a9dfbc2..1a29272b 100644
+--- a/src/main/java/com/gap/customer/vaultservice/models/EncryptedData.java
++++ b/src/main/java/com/gap/customer/vaultservice/models/EncryptedData.java
+@@ -40,4 +40,11 @@ public class EncryptedData {
+ 
+     @Column ("LST_UPDT_DTTM")
+     private Date lastUpdatedDate;
++
++    @Column("BFTOKEN")
++    private String bluefinToken;
++
++    @Column("BFID")
++    private String bluefinId;
++
+ }
+diff --git a/src/test/java/com/gap/customer/vaultservice/controller/VaultControllerIntegrationTest.java b/src/test/java/com/gap/customer/vaultservice/controller/VaultControllerIntegrationTest.java
+index 45ab415e..6868e975 100644
+--- a/src/test/java/com/gap/customer/vaultservice/controller/VaultControllerIntegrationTest.java
++++ b/src/test/java/com/gap/customer/vaultservice/controller/VaultControllerIntegrationTest.java
+@@ -3,7 +3,10 @@ package com.gap.customer.vaultservice.controller;
+ import com.fasterxml.jackson.core.JsonProcessingException;
+ import com.fasterxml.jackson.databind.ObjectMapper;
+ import com.gap.customer.vaultservice.VaultServiceApplication;
++import com.gap.customer.vaultservice.models.EncryptedData;
+ import com.gap.customer.vaultservice.models.VaultRequest;
++import com.gap.customer.vaultservice.repository.azureSql.EncryptedDataRepository;
++import com.gap.customer.vaultservice.repository.azureSql.TokenRepository;
+ import com.gap.gid.security.model.TokenizeResponse;
+ import com.gap.gid.security.model.Values;
+ import com.voltage.v1.client.ProtectFormattedDataResponse;
+@@ -38,6 +41,7 @@ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.Collections;
+ import java.util.List;
++import java.util.Optional;
+ 
+ import static com.gap.customer.vaultservice.util.VaultConstants.DATA_TYPE_CREDIT_CARD_EXPIRY_MONTH;
+ import static com.gap.customer.vaultservice.util.VaultConstants.DATA_TYPE_CREDIT_CARD_EXPIRY_YEAR;
+@@ -76,6 +80,12 @@ public class VaultControllerIntegrationTest {
+ 
+     private static ClientAndServer mockServer;
+ 
++    @Autowired
++    private TokenRepository tokenRepository;
++
++    @Autowired
++    private EncryptedDataRepository encryptedDataRepository;
++
+     @LocalServerPort
+     private int port;
+ 
+@@ -90,7 +100,7 @@ public class VaultControllerIntegrationTest {
+     }
+ 
+     @Test
+-    void shouldReturnVaultIdForExistingGiftCardNumber() {
++    void shouldReturnVaultIdForExistingGiftCardNumber() throws InterruptedException {
+         String expectedResponse = "[{\"vaultId\":\"335B2676EB62204E61B7389377C71937\", \"index\": 1}]";
+         var vaultEntriesRequest = new ArrayList<VaultRequest>();
+         vaultEntriesRequest.add(buildVaultRequest(DATA_TYPE_GIFT_CARD_NUMBER, "4111338681411112", 1));
+@@ -102,6 +112,10 @@ public class VaultControllerIntegrationTest {
+ 
+         assertEquals(HttpStatus.OK, actualResponse.getStatusCode());
+         JSONAssert.assertEquals(expectedResponse, actualResponse.getBody(), false);
++        Thread.sleep(2000);
++        Optional<EncryptedData> encryptedData = encryptedDataRepository.findById("335B2676EB62204E61B7389377C71937");
++        assertNotNull(encryptedData.get().getBluefinId());
++        assertNotNull(encryptedData.get().getBluefinToken());
+     }
+ 
+     @Test
+diff --git a/src/test/resources/application.properties b/src/test/resources/application.properties
+index 68690b03..19f5b484 100644
+--- a/src/test/resources/application.properties
++++ b/src/test/resources/application.properties
+@@ -37,9 +37,33 @@ bluefin.partnerKey=partner-key
+ 
+ #polling time is in milliseconds
+ vault.service.pollingTime = 60000
++vault.service.azure_db_timeout=20
+ 
++# RestTemplate configuration
++restTemplate.connectTimeOut=1000
++restTemplate.tokenizeTimeOut=50
++restTemplate.detokenizeTimeOut=50
++restTemplate.bulkTokenizeTimeOut=80
++restTemplate.bulkDetokenizeTimeOut=80
+ 
+-vault.service.azure_db_timeout=20
++#Connection Pool Configuration
++restTemplate.httpClientsMaxConnTotal=80
++restTemplate.httpClientsMaxConnPerRoute=20
++restTemplate.httpClientsValidateAfterInactivity=2000
++restTemplate.httpClientsCheckoutConnTimeout=5000
++
++# Resiliece4j Retry Configuration
++resilience4j.retry.instances.bluefin-client-tokenize.max-attempts=3
++resilience4j.retry.instances.bluefin-client-tokenize.wait-duration=10ms
++resilience4j.retry.instances.bluefin-client-tokenize.enable-exponential-backoff=true
++resilience4j.retry.instances.bluefin-client-tokenize.exponential-backoff-multiplier=2
++resilience4j.retry.instances.bluefin-client-tokenize.retry-exceptions=org.springframework.web.client.ResourceAccessException,java.net.UnknownHostException
++
++resilience4j.retry.instances.bluefin-client-detokenize.max-attempts=3
++resilience4j.retry.instances.bluefin-client-detokenize.wait-duration=10ms
++resilience4j.retry.instances.bluefin-client-detokenize.enable-exponential-backoff=true
++resilience4j.retry.instances.bluefin-client-detokenize.exponential-backoff-multiplier=2
++resilience4j.retry.instances.bluefin-client-detokenize.retry-exceptions=org.springframework.web.client.ResourceAccessException
+ 
+ 
+ resilience4j.retry.instances.db-retry-azure.max-attempts=3

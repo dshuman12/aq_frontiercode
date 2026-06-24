@@ -1,0 +1,112 @@
+[
+  {
+    "Repository": "CryoGraph",
+    "Task ID": "cryograph__floyd-warshall-path-successor",
+    "Bug / Task Description": "floyd_warshall returns correct all-pairs distances, but path reconstruction via APSPResult::path produces broken/short paths between reachable nodes. The distance matrix is right; only the next-hop successor matrix is populated incorrectly when a route is improved through an intermediate vertex.",
+    "Fix Commit": "74187679dad14bda37294962cf5598d7f22fbdb8",
+    "Base Commit": "0969b04a14c7efcb4b2e51cbf33fb54aa8f60cf7",
+    "Source Archive": "repositories/FyDhWvY9O9IA5cGn29RT__cryograph_taskgen.zip",
+    "Archive Repo Root": ".",
+    "Commit Subject": "fix(shortest_path): correct Floyd-Warshall successor pointer through intermediate node",
+    "Visible Test Command Guess": "cmake -S . -B build >/dev/null 2>&1 && cmake --build build -j4 >/dev/null 2>&1 && ./build/cryograph_tests"
+  },
+  {
+    "Repository": "CryoGraph",
+    "Task ID": "cryograph__astar-gscore-accumulation",
+    "Bug / Task Description": "astar returns inflated distances when a non-trivial admissible heuristic is supplied. With a zero heuristic it looks fine, but with a real heuristic the recorded distances (and hence the found cost) are larger than the true shortest-path cost \u2014 the heuristic is being double-counted into accumulated distance.",
+    "Fix Commit": "166c78dc34f31a324aaea356b0dba88296c3d4f0",
+    "Base Commit": "1364158a152488fc86c37685b689b736f750c6a1",
+    "Source Archive": "repositories/FyDhWvY9O9IA5cGn29RT__cryograph_taskgen.zip",
+    "Archive Repo Root": ".",
+    "Commit Subject": "fix(shortest_path): accumulate A* g-score from cost-so-far, not priority f-value",
+    "Visible Test Command Guess": "cmake -S . -B build >/dev/null 2>&1 && cmake --build build -j4 >/dev/null 2>&1 && ./build/cryograph_tests"
+  },
+  {
+    "Repository": "CryoGraph",
+    "Task ID": "cryograph__boruvka-component-cut-edge",
+    "Bug / Task Description": "boruvka builds a spanning tree of the right shape (spans all nodes, n-1 edges) but its total_weight is too high \u2014 it is not a MINIMUM spanning tree. On some inputs it picks heavier edges than kruskal/prim for certain components, because some component fails to select the minimum-weight edge leaving it.",
+    "Fix Commit": "1eb87b9dc55cea2d415e4a9b20e1b0bf8e5007aa",
+    "Base Commit": "67e171bc6b81f63e51d9971f9d448caa59f0de3f",
+    "Source Archive": "repositories/FyDhWvY9O9IA5cGn29RT__cryograph_taskgen.zip",
+    "Archive Repo Root": ".",
+    "Commit Subject": "fix(mst): track cheapest outgoing edge for both endpoint components in Boruvka",
+    "Visible Test Command Guess": "cmake -S . -B build >/dev/null 2>&1 && cmake --build build -j4 >/dev/null 2>&1 && ./build/cryograph_tests"
+  },
+  {
+    "Repository": "CryoGraph",
+    "Task ID": "cryograph__mincut-residual-partition",
+    "Bug / Task Description": "min_cut reports the correct cut_value (equal to the max flow), but the returned source_side/sink_side partition is wrong: nodes that belong on the sink side of the minimum cut are placed on the source side. The cut value and the node partition disagree because the partition traverses saturated edges.",
+    "Fix Commit": "9d081e985f822865ad8079845fd07ac82b385771",
+    "Base Commit": "6633fed27fffa6b107bb1e88faf6e8b1b37f29b9",
+    "Source Archive": "repositories/FyDhWvY9O9IA5cGn29RT__cryograph_taskgen.zip",
+    "Archive Repo Root": ".",
+    "Commit Subject": "fix(flow): derive min-cut partition from residual reachability",
+    "Visible Test Command Guess": "cmake -S . -B build >/dev/null 2>&1 && cmake --build build -j4 >/dev/null 2>&1 && ./build/cryograph_tests"
+  },
+  {
+    "Repository": "CryoGraph",
+    "Task ID": "cryograph__bipartite-augmenting-path",
+    "Bug / Task Description": "bipartite_matching under-counts the maximum matching on graphs that need rematching: a left vertex that can only reach already-matched right vertices is left unmatched even when reassigning a previously matched left vertex would free a slot. On trivially-assignable graphs it still returns the right size.",
+    "Fix Commit": "24fb7fa70e3292d179fff0929b30ea48f19caf79",
+    "Base Commit": "9c9fd87e673532600a6dcfc80f5cf69236621643",
+    "Source Archive": "repositories/FyDhWvY9O9IA5cGn29RT__cryograph_taskgen.zip",
+    "Archive Repo Root": ".",
+    "Commit Subject": "fix(matching): rematch via augmenting path when a right vertex is already taken",
+    "Visible Test Command Guess": "cmake -S . -B build >/dev/null 2>&1 && cmake --build build -j4 >/dev/null 2>&1 && ./build/cryograph_tests"
+  },
+  {
+    "Repository": "CryoGraph",
+    "Task ID": "cryograph__transitivity-triple-count",
+    "Bug / Task Description": "global_clustering_coefficient (and the transitivity wrapper) returns values systematically about half of what they should be: a single triangle reports a clustering coefficient of 0.5 instead of 1.0. Relative orderings look plausible; only the absolute normalization (the per-vertex connected-triple denominator) is wrong.",
+    "Fix Commit": "cff70d2999ac0390c7a006115a6789094de73a80",
+    "Base Commit": "5f3b915f39898ca2a58c694420d48de56def8aaf",
+    "Source Archive": "repositories/FyDhWvY9O9IA5cGn29RT__cryograph_taskgen.zip",
+    "Archive Repo Root": ".",
+    "Commit Subject": "fix(metrics): correct connected-triple count in global clustering coefficient",
+    "Visible Test Command Guess": "cmake -S . -B build >/dev/null 2>&1 && cmake --build build -j4 >/dev/null 2>&1 && ./build/cryograph_tests"
+  },
+  {
+    "Repository": "CryoGraph",
+    "Task ID": "cryograph__kcore-peel-threshold",
+    "Bug / Task Description": "k_core_decomposition assigns coreness values that are too low: nodes in a 2-core report coreness 1, and k_shell / k_core_subgraph / degeneracy derived from it are all shifted by one. The defect is in the condition deciding when a surviving neighbor's residual degree should be decremented as a node is peeled.",
+    "Fix Commit": "71594e29dd00372dce604277489bda0be7d2e1ce",
+    "Base Commit": "b48a5c9332b430348efe7c70341e4298befd1862",
+    "Source Archive": "repositories/FyDhWvY9O9IA5cGn29RT__cryograph_taskgen.zip",
+    "Archive Repo Root": ".",
+    "Commit Subject": "fix(decomposition): use correct degree threshold when peeling k-core neighbors",
+    "Visible Test Command Guess": "cmake -S . -B build >/dev/null 2>&1 && cmake --build build -j4 >/dev/null 2>&1 && ./build/cryograph_tests"
+  },
+  {
+    "Repository": "CryoGraph",
+    "Task ID": "cryograph__closeness-wf-normalization",
+    "Bug / Task Description": "closeness_centrality (normalized) returns values scaled slightly too small on connected graphs: every node in a complete graph scores 0.75 instead of 1.0. Rankings are unaffected, so it is easy to miss; the error is in the Wasserman-Faust factor that rescales each node's raw closeness by the fraction of the graph it can reach.",
+    "Fix Commit": "20c8c8d123e07e444472ac9bcf94161583f810fe",
+    "Base Commit": "4479ad7cedc59d897e41259ead7cc329e7f4d580",
+    "Source Archive": "repositories/FyDhWvY9O9IA5cGn29RT__cryograph_taskgen.zip",
+    "Archive Repo Root": ".",
+    "Commit Subject": "fix(centrality): normalize closeness by reachable fraction over n-1",
+    "Visible Test Command Guess": "cmake -S . -B build >/dev/null 2>&1 && cmake --build build -j4 >/dev/null 2>&1 && ./build/cryograph_tests"
+  },
+  {
+    "Repository": "CryoGraph",
+    "Task ID": "cryograph__katz-propagation-direction",
+    "Bug / Task Description": "katz_centrality produces a plausible-looking score map but the ranking is inverted on directed graphs: in a simple chain the source ends up scoring highest and the sink lowest, the opposite of correct Katz centrality. The defect is in which endpoint of each edge accumulates a neighbor's score during propagation.",
+    "Fix Commit": "8e07000ce52f216615c00ac6b2c21b4ccd8f1684",
+    "Base Commit": "15c1ff4a4b816cc29c635e76148372301de4c618",
+    "Source Archive": "repositories/FyDhWvY9O9IA5cGn29RT__cryograph_taskgen.zip",
+    "Archive Repo Root": ".",
+    "Commit Subject": "fix(scoring): accumulate Katz influence from in-neighbors, not out-neighbors",
+    "Visible Test Command Guess": "cmake -S . -B build >/dev/null 2>&1 && cmake --build build -j4 >/dev/null 2>&1 && ./build/cryograph_tests"
+  },
+  {
+    "Repository": "CryoGraph",
+    "Task ID": "cryograph__nmi-entropy-normalization",
+    "Bug / Task Description": "normalized_mutual_information underreports similarity: two identical clusterings score 0.5 instead of 1.0, and all NMI values are uniformly compressed toward zero. The mutual-information sum is correct; the bug is in the normalization denominator that converts raw mutual information into the [0,1] NMI score.",
+    "Fix Commit": "c4849886fff8f9ecf00bbcd0ad4c86dafbb0cd26",
+    "Base Commit": "ed1c75ed57325c6c45fe6bd42caf77441c48df33",
+    "Source Archive": "repositories/FyDhWvY9O9IA5cGn29RT__cryograph_taskgen.zip",
+    "Archive Repo Root": ".",
+    "Commit Subject": "fix(community): normalize NMI by mean of the two cluster entropies",
+    "Visible Test Command Guess": "cmake -S . -B build >/dev/null 2>&1 && cmake --build build -j4 >/dev/null 2>&1 && ./build/cryograph_tests"
+  }
+]

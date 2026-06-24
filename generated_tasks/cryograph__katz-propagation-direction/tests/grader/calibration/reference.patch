@@ -1,0 +1,99 @@
+diff --git a/src/scoring/scoring.cpp b/src/scoring/scoring.cpp
+index b424455..463410e 100644
+--- a/src/scoring/scoring.cpp
++++ b/src/scoring/scoring.cpp
+@@ -61,7 +61,7 @@ ScoreMap katz_centrality(const Graph& g, double alpha, double beta,
+         for (auto nid : ids) next[nid] = beta;
+         for (auto nid : ids) {
+             for (auto& e : g.out_edges(nid)) {
+-                next[nid] += alpha * scores[e.dst];
++                next[e.dst] += alpha * scores[nid];
+             }
+         }
+         double diff = 0;
+diff --git a/tests/test_scoring.cpp b/tests/test_scoring.cpp
+new file mode 100644
+index 0000000..53aa05f
+--- /dev/null
++++ b/tests/test_scoring.cpp
+@@ -0,0 +1,79 @@
++#include "test_framework.hpp"
++#include "scoring/scoring.hpp"
++#include "generator/generator.hpp"
++using namespace cryo;
++using namespace cryo_test;
++
++CRYO_TEST(HITS, CycleConverges) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(1, 2); g.add_edge(2, 3); g.add_edge(3, 0);
++    auto h = hits(g);
++    for (int i = 0; i < 4; i++) {
++        assert_gt(h.authority[i], 0.0);
++        assert_gt(h.hub[i], 0.0);
++    }
++}
++
++CRYO_TEST(HITS, StarHub) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 5; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(0, 2); g.add_edge(0, 3); g.add_edge(0, 4);
++    auto h = hits(g);
++    assert_gt(h.hub[0], h.hub[1]);
++}
++
++CRYO_TEST(Katz, Basic) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(1, 2); g.add_edge(2, 3);
++    auto k = katz_centrality(g, 0.1);
++    assert_gt(k[3], k[0]);
++}
++
++CRYO_TEST(RandomWalk, Basic) {
++    GraphGenerator gen(42);
++    auto g = gen.cycle(10);
++    auto walk = random_walk(g, 0, 20);
++    assert_eq(walk.size(), (size_t)21);
++    assert_eq(walk[0], (NodeId)0);
++}
++
++CRYO_TEST(RandomWalk, Scores) {
++    GraphGenerator gen(42);
++    auto g = gen.complete(5);
++    auto scores = random_walk_scores(g, 0, 100);
++    double total = 0;
++    for (auto& [_, v] : scores) total += v;
++    assert_near(total, 1.0, 1e-6);
++}
++
++CRYO_TEST(LinkPred, AdamicAdar) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 5; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(0, 2); g.add_edge(1, 3); g.add_edge(2, 3);
++    auto scores = link_prediction_adamic_adar(g, 0);
++    assert_gt(scores[3], 0.0);
++}
++
++CRYO_TEST(LinkPred, Preferential) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(1, 2); g.add_edge(2, 3);
++    auto scores = link_prediction_preferential(g, 0);
++    assert_true(scores.count(2) || scores.count(3));
++}
++
++CRYO_TEST(Reciprocity, Complete) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 3; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1); g.add_edge(1, 0); g.add_edge(1, 2); g.add_edge(2, 1);
++    assert_near(graph_reciprocity(g), 1.0, 1e-6);
++}
++
++CRYO_TEST(Reciprocity, None) {
++    Graph g(GraphType::Directed);
++    g.add_node_with_id(0); g.add_node_with_id(1);
++    g.add_edge(0, 1);
++    assert_near(graph_reciprocity(g), 0.0, 1e-6);
++}
+\ No newline at end of file

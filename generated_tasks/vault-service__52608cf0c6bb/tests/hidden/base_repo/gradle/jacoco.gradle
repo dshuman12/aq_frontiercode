@@ -1,0 +1,61 @@
+apply plugin: 'jacoco'
+
+
+jacoco {
+    toolVersion = "0.8.7"
+    reportsDir = file("${buildDir}/jacoco/reports")
+}
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.enabled true
+        csv.enabled true
+        html.destination file("${reportsDir}/jacoco/html")
+    }
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it,
+                    exclude: [
+                            'com/gap/customer/vaultservice/repository/queries/*',
+                            'com/gap/customer/vaultservice/actuator/*',
+                            'com/gap/customer/vaultservice/client/config/*',
+                            'com/gap/customer/vaultservice/util/*',
+                            'com/gap/customer/vaultservice/services/config/*',
+                            'com/gap/customer/vaultservice/client/restclient/config/*',
+                            'com/gap/customer/vaultservice/client/restclient/impl/*',
+                            'com/gap/customer/vaultservice/dto/*',
+                            'com/gap/customer/vaultservice/models/*',
+                            'com/gap/customer/vaultservice/controller/VaultServiceConvertor*',
+                            'com/gap/customer/vaultservice/controller/VaultServiceController*',
+                            'com/gap/customer/vaultservice/Validators/MatchServiceValidator*',
+                            'com/gap/gid/config/*'
+
+                    ]
+            )
+        }))
+    }
+}
+tasks.withType(Test) {
+    test {
+        finalizedBy jacocoTestReport
+        jacoco {
+            excludes = [
+                    'com.gap.customer.vaultservice.repository.queries.*',
+                    'com.gap.customer.vaultservice.actuator.*',
+                    'com.gap.customer.vaultservice.client.config.*',
+                    'com.gap.customer.vaultservice.util.*',
+                    'com.gap.customer.vaultservice.services.config.*',
+                    'com.gap.customer.vaultservice.client.restclient.config.*',
+                    'com.gap.customer.vaultservice.client.restclient.impl.*',
+                    'com.gap.customer.vaultservice.dto.*',
+                    'com.gap.customer.vaultservice.models.*',
+                    'com.gap.customer.vaultservice.controller.VaultServiceConvertor*',
+                    'com.gap.customer.vaultservice.controller.VaultServiceController*',
+                    'com.gap.customer.vaultservice.Validators.MatchServiceValidator*',
+                    'com.gap.gid.config.*'
+
+            ]
+        }
+    }
+
+}

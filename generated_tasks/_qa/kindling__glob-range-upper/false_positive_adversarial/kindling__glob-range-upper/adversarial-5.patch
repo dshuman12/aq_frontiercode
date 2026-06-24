@@ -1,0 +1,41 @@
+diff --git a/internal/glob/glob_test.go b/internal/glob/glob_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/glob/glob_test.go
+@@ -0,0 +1,38 @@
++package glob
++
++import "testing"
++
++// TestRangeUpperBoundInclusive is a regression guard proving that the
++// upper bound of a character-class range is no longer excluded.
++func TestRangeUpperBoundInclusive(t *testing.T) {
++	cases := []struct {
++		pattern string
++		name    string
++		want    bool
++	}{
++		// upper bound must match (regression)
++		{"[a-z]", "z", true},
++		{"[0-9]", "9", true},
++		// lower bound and mid-range still match
++		{"[a-z]", "a", true},
++		{"[a-z]", "m", true},
++		{"[0-9]", "0", true},
++		{"[0-9]", "5", true},
++		// out of range
++		{"[a-z]", "Z", false},
++		{"[0-9]", "a", false},
++		// negated classes still exclude their span
++		{"[^a-z]", "z", false},
++		{"[^a-z]", "A", true},
++		// multi-range classes keep each span inclusive
++		{"[a-z0-9]", "9", true},
++		{"[a-z0-9]", "z", true},
++	}
++	for _, c := range cases {
++		if got := Matches(c.pattern, c.name); got != c.want {
++			t.Errorf("Matches(%q, %q) = %v, want %v", c.pattern, c.name, got, c.want)
++		}
++	}
++}

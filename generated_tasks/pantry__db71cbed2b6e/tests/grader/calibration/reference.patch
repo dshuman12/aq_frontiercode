@@ -1,0 +1,165 @@
+diff --git a/src/core/abbrev.test.ts b/src/core/abbrev.test.ts
+new file mode 100644
+index 0000000..69ac010
+--- /dev/null
++++ b/src/core/abbrev.test.ts
+@@ -0,0 +1,59 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import {
++  canonicalUnit,
++  categoryOf,
++  isKnown,
++  knownAbbreviations,
++  suggestNormalisation,
++} from "./abbrev.js";
++
++test("canonical mass units", () => {
++  assert.equal(canonicalUnit("kg"), "kg");
++  assert.equal(canonicalUnit("KG"), "kg");
++  assert.equal(canonicalUnit("kilogram"), "kg");
++  assert.equal(canonicalUnit("kilograms"), "kg");
++});
++
++test("canonical volume units", () => {
++  assert.equal(canonicalUnit("ml"), "ml");
++  assert.equal(canonicalUnit("Liter"), "l");
++  assert.equal(canonicalUnit("teaspoon"), "tsp");
++  assert.equal(canonicalUnit("tablespoons"), "tbsp");
++});
++
++test("canonical count units", () => {
++  assert.equal(canonicalUnit("piece"), "ea");
++  assert.equal(canonicalUnit("dozen"), "dozen");
++});
++
++test("unknown returns null", () => {
++  assert.equal(canonicalUnit("furlong"), null);
++  assert.equal(canonicalUnit(""), null);
++});
++
++test("isKnown true / false", () => {
++  assert.equal(isKnown("kg"), true);
++  assert.equal(isKnown("furlong"), false);
++});
++
++test("knownAbbreviations sorted distinct", () => {
++  const out = knownAbbreviations();
++  for (let i = 1; i < out.length; i++) assert.ok(out[i - 1]! < out[i]!);
++});
++
++test("suggestNormalisation rewrites units", () => {
++  assert.equal(suggestNormalisation("500 grams flour"), "500g flour");
++  assert.equal(suggestNormalisation("1 kilogram rice"), "1kg rice");
++});
++
++test("suggestNormalisation leaves unknown units alone", () => {
++  assert.equal(suggestNormalisation("3 furlongs"), "3 furlongs");
++});
++
++test("categoryOf groups", () => {
++  assert.equal(categoryOf("kg"), "mass");
++  assert.equal(categoryOf("ml"), "volume");
++  assert.equal(categoryOf("dozen"), "count");
++  assert.equal(categoryOf("furlong"), null);
++});
+diff --git a/src/core/abbrev.ts b/src/core/abbrev.ts
+new file mode 100644
+index 0000000..e446e31
+--- /dev/null
++++ b/src/core/abbrev.ts
+@@ -0,0 +1,94 @@
++// Map "kg" / "lb" / "tbsp" abbreviations to their canonical form.
++// Used by the importer to handle whatever abbreviation the user typed.
++
++const TABLE: Record<string, string> = {
++  // mass
++  g: "g",
++  gram: "g",
++  grams: "g",
++  gr: "g",
++  kg: "kg",
++  kilogram: "kg",
++  kilograms: "kg",
++  kgs: "kg",
++  oz: "oz",
++  ounce: "oz",
++  ounces: "oz",
++  lb: "lb",
++  lbs: "lb",
++  pound: "lb",
++  pounds: "lb",
++  // volume
++  ml: "ml",
++  milliliter: "ml",
++  milliliters: "ml",
++  millilitre: "ml",
++  millilitres: "ml",
++  l: "l",
++  liter: "l",
++  liters: "l",
++  litre: "l",
++  litres: "l",
++  tsp: "tsp",
++  teaspoon: "tsp",
++  teaspoons: "tsp",
++  tbsp: "tbsp",
++  tablespoon: "tbsp",
++  tablespoons: "tbsp",
++  cup: "cup",
++  cups: "cup",
++  pint: "pint",
++  pints: "pint",
++  qt: "qt",
++  quart: "qt",
++  quarts: "qt",
++  gal: "gal",
++  gallon: "gal",
++  gallons: "gal",
++  // count
++  ea: "ea",
++  each: "ea",
++  unit: "ea",
++  units: "ea",
++  pcs: "ea",
++  piece: "ea",
++  pieces: "ea",
++  ct: "ea",
++  count: "ea",
++  dozen: "dozen",
++  doz: "dozen",
++  pair: "pair",
++};
++
++export function canonicalUnit(input: string): string | null {
++  const key = input.trim().toLowerCase();
++  if (key === "") return null;
++  return TABLE[key] ?? null;
++}
++
++export function knownAbbreviations(): string[] {
++  return Object.keys(TABLE).sort();
++}
++
++export function isKnown(input: string): boolean {
++  return canonicalUnit(input) !== null;
++}
++
++export function suggestNormalisation(text: string): string {
++  return text.replace(
++    /(\d+(?:\.\d+)?)\s*([a-zA-Z]+)/g,
++    (_, num, unit) => {
++      const can = canonicalUnit(unit);
++      if (can) return `${num}${can}`;
++      return _;
++    },
++  );
++}
++
++export function categoryOf(unit: string): "mass" | "volume" | "count" | null {
++  const can = canonicalUnit(unit);
++  if (!can) return null;
++  if (["g", "kg", "oz", "lb"].includes(can)) return "mass";
++  if (["ml", "l", "tsp", "tbsp", "cup", "pint", "qt", "gal"].includes(can)) return "volume";
++  return "count";
++}

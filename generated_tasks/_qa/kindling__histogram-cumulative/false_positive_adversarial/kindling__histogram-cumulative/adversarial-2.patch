@@ -1,0 +1,59 @@
+diff --git a/internal/histogram/histogram.go b/internal/histogram/histogram.go
+--- a/internal/histogram/histogram.go
++++ b/internal/histogram/histogram.go
+@@
+ 	for i, b := range h.bounds {
+-		if b >= bound {
++		if b > bound {
+ 			break
+ 		}
+ 		total += h.counts[i]
+ 	}
+diff --git a/internal/histogram/histogram_test.go b/internal/histogram/histogram_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/histogram/histogram_test.go
+@@
++package histogram
++
++import "testing"
++
++func newFilled(t *testing.T) *Histogram {
++	t.Helper()
++	h := New([]float64{1, 2, 5, 10})
++	h.Observe(0.5)
++	h.Observe(1.5)
++	h.Observe(3)
++	h.Observe(7)
++	return h
++}
++
++func TestCumulativeBelowBoundaryInclusive(t *testing.T) {
++	h := newFilled(t)
++	// bound equal to a bucket bound must include that bucket.
++	if got := h.CumulativeBelow(2); got != h.CumulativeBelow(2.0) {
++		t.Fatalf("unstable: %d", got)
++	}
++	low := h.CumulativeBelow(1.999999)
++	eq := h.CumulativeBelow(2)
++	if eq < low {
++		t.Fatalf("boundary not inclusive: eq=%d low=%d", eq, low)
++	}
++}
++
++func TestCumulativeBelowBetweenBuckets(t *testing.T) {
++	h := newFilled(t)
++	if h.CumulativeBelow(3) != h.CumulativeBelow(4) {
++		t.Fatalf("between-bucket bounds should match nearest lower boundary")
++	}
++}
++
++func TestCumulativeBelowFirstAndLast(t *testing.T) {
++	h := newFilled(t)
++	if h.CumulativeBelow(0) != 0 {
++		t.Fatalf("below smallest bound should be 0")
++	}
++	if h.CumulativeBelow(10) == 0 {
++		t.Fatalf("at/above largest bound should count recorded observations")
++	}
++}

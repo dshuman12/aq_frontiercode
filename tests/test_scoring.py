@@ -6,7 +6,7 @@ from frontiercode_harness.scoring import aggregate_results
 
 
 class ScoringTests(unittest.TestCase):
-    def test_failed_blocker_keeps_weighted_score(self) -> None:
+    def test_failed_blocker_zeroes_score(self) -> None:
         manifest = manifest_from_dict(
             {
                 "task_id": "demo",
@@ -38,7 +38,8 @@ class ScoringTests(unittest.TestCase):
             "submission",
         )
         self.assertFalse(result.passed)
-        self.assertAlmostEqual(result.score, 0.5)
+        # FrontierCode ground truth: failing a blocker zeroes the score (no hygiene floor).
+        self.assertAlmostEqual(result.score, 0.0)
         self.assertEqual(result.blocker_failures, ("behavior",))
         self.assertEqual(result.criteria_results[0].category, "patch_specific")
         self.assertEqual(result.criteria_results[1].category, "regular")
@@ -132,7 +133,8 @@ class ScoringTests(unittest.TestCase):
             }
         )
         self.assertFalse(result.passed)
-        self.assertAlmostEqual(result.score, 0.5)
+        # Blocker failure gates the recomputed score to 0 on read-back too.
+        self.assertAlmostEqual(result.score, 0.0)
         self.assertEqual(result.reward, 0)
 
 

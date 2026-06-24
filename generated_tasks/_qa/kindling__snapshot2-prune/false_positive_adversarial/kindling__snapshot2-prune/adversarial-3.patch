@@ -1,0 +1,76 @@
+diff --git a/internal/snapshot2/snapshot2.go b/internal/snapshot2/snapshot2.go
+--- a/internal/snapshot2/snapshot2.go
++++ b/internal/snapshot2/snapshot2.go
+@@
+-		if age <= retention {
++		if age > retention {
+ 			continue
+ 		}
+diff --git a/internal/snapshot2/snapshot2_prune_test.go b/internal/snapshot2/snapshot2_prune_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/snapshot2/snapshot2_prune_test.go
+@@
++package snapshot2
++
++import (
++	"testing"
++	"time"
++)
++
++func TestPrunePrunesOlderThanWindow(t *testing.T) {
++	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
++	retention := time.Hour
++	snaps := []Snapshot{
++		{Timestamp: now.Add(-2 * time.Hour)},
++		{Timestamp: now.Add(-30 * time.Minute)},
++	}
++	got := Prune(snaps, retention, now)
++	if len(got) != 1 {
++		t.Fatalf("expected 1 survivor, got %d", len(got))
++	}
++	if got[0].Timestamp != now.Add(-30*time.Minute) {
++		t.Fatalf("wrong survivor: %v", got[0].Timestamp)
++	}
++}
++
++func TestPruneBoundaryStays(t *testing.T) {
++	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
++	retention := time.Hour
++	snaps := []Snapshot{
++		{Timestamp: now.Add(-time.Hour)},
++	}
++	if got := Prune(snaps, retention, now); len(got) != 1 {
++		t.Fatalf("boundary snapshot should be kept, got %d", len(got))
++	}
++}
++
++func TestPruneNothingExceedsWindow(t *testing.T) {
++	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
++	retention := time.Hour
++	snaps := []Snapshot{
++		{Timestamp: now.Add(-10 * time.Minute)},
++		{Timestamp: now.Add(-20 * time.Minute)},
++	}
++	if got := Prune(snaps, retention, now); len(got) != len(snaps) {
++		t.Fatalf("expected all kept, got %d", len(got))
++	}
++}
++
++func TestPrunePreservesOrder(t *testing.T) {
++	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
++	retention := time.Hour
++	snaps := []Snapshot{
++		{Timestamp: now.Add(-90 * time.Minute)},
++		{Timestamp: now.Add(-40 * time.Minute)},
++		{Timestamp: now.Add(-2 * time.Hour)},
++		{Timestamp: now.Add(-5 * time.Minute)},
++	}
++	got := Prune(snaps, retention, now)
++	if len(got) != 2 {
++		t.Fatalf("expected 2 survivors, got %d", len(got))
++	}
++	if got[0].Timestamp != now.Add(-40*time.Minute) || got[1].Timestamp != now.Add(-5*time.Minute) {
++		t.Fatalf("order not preserved: %+v", got)
++	}
++}

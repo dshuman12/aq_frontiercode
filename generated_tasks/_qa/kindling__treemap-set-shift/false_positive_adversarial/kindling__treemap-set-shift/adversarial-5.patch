@@ -1,0 +1,57 @@
+diff --git a/internal/treemap/treemap.go b/internal/treemap/treemap.go
+--- a/internal/treemap/treemap.go
++++ b/internal/treemap/treemap.go
+@@
+-	m.keys = append(m.keys, "")
+-	m.values = append(m.values, 0)
+-	m.keys[i] = key
+-	m.values[i] = value
++	m.keys = append(m.keys, "")
++	m.values = append(m.values, 0)
++	copy(m.keys[i+1:], m.keys[i:])
++	copy(m.values[i+1:], m.values[i:])
++	m.keys[i] = key
++	m.values[i] = value
+diff --git a/internal/treemap/treemap_shift_test.go b/internal/treemap/treemap_shift_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/treemap/treemap_shift_test.go
+@@
++package treemap
++
++import "testing"
++
++func TestSetShiftPreservesEntries(t *testing.T) {
++	m := New()
++	m.Set("b", 2)
++	m.Set("d", 4)
++	m.Set("a", 1) // front insert
++	m.Set("c", 3) // middle insert
++	m.Set("e", 5) // end insert
++
++	if m.Len() != 5 {
++		t.Fatalf("len = %d, want 5", m.Len())
++	}
++	for _, kv := range []struct {
++		k string
++		v int
++	}{{"a", 1}, {"b", 2}, {"c", 3}, {"d", 4}, {"e", 5}} {
++		got, ok := m.Get(kv.k)
++		if !ok || got != kv.v {
++			t.Fatalf("Get(%q) = %d, %v; want %d, true", kv.k, got, ok, kv.v)
++		}
++	}
++}
++
++func TestSetOverwriteKeepsLength(t *testing.T) {
++	m := New()
++	m.Set("x", 1)
++	m.Set("y", 2)
++	m.Set("x", 9)
++	if m.Len() != 2 {
++		t.Fatalf("len = %d, want 2", m.Len())
++	}
++	if got, ok := m.Get("x"); !ok || got != 9 {
++		t.Fatalf("Get(x) = %d, %v; want 9, true", got, ok)
++	}
++}

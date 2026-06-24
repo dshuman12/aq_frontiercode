@@ -1,0 +1,86 @@
+// Sorting Algorithms in Drift
+
+// Bubble Sort — O(n^2) simple swap-based sort
+fn bubble_sort(arr) {
+    let n = len(arr)
+    let mut i = 0
+    while i < n {
+        let mut j = 0
+        while j < n - i - 1 {
+            if arr[j] > arr[j + 1] {
+                let tmp = arr[j]
+                arr[j] = arr[j + 1]
+                arr[j + 1] = tmp
+            }
+            j += 1
+        }
+        i += 1
+    }
+    arr
+}
+
+// Quick Sort — O(n log n) average, recursive partition
+fn quick_sort(arr) {
+    if len(arr) <= 1 { return arr }
+    let pivot = arr[len(arr) / 2]
+    let mut less = []
+    let mut equal = []
+    let mut greater = []
+    for x in arr {
+        if x < pivot { push(less, x) }
+        else if x == pivot { push(equal, x) }
+        else { push(greater, x) }
+    }
+    quick_sort(less) + equal + quick_sort(greater)
+}
+
+// Merge Sort — O(n log n) guaranteed, divide and conquer
+fn merge(a, b) {
+    let mut result = []
+    let mut i = 0
+    let mut j = 0
+    while i < len(a) && j < len(b) {
+        if a[i] <= b[j] {
+            push(result, a[i])
+            i += 1
+        } else {
+            push(result, b[j])
+            j += 1
+        }
+    }
+    while i < len(a) { push(result, a[i]); i += 1 }
+    while j < len(b) { push(result, b[j]); j += 1 }
+    result
+}
+
+fn merge_sort(arr) {
+    if len(arr) <= 1 { return arr }
+    let mid = len(arr) / 2
+    let left = merge_sort(slice(arr, 0, mid))
+    let right = merge_sort(slice(arr, mid))
+    merge(left, right)
+}
+
+// Insertion Sort — O(n^2) but efficient for nearly sorted data
+fn insertion_sort(arr) {
+    let mut i = 1
+    while i < len(arr) {
+        let key = arr[i]
+        let mut j = i - 1
+        while j >= 0 && arr[j] > key {
+            arr[j + 1] = arr[j]
+            j -= 1
+        }
+        arr[j + 1] = key
+        i += 1
+    }
+    arr
+}
+
+// Demo
+let data = [38, 27, 43, 3, 9, 82, 10]
+println("Original:", data)
+println("Bubble:  ", bubble_sort([38, 27, 43, 3, 9, 82, 10]))
+println("Quick:   ", quick_sort([38, 27, 43, 3, 9, 82, 10]))
+println("Merge:   ", merge_sort([38, 27, 43, 3, 9, 82, 10]))
+println("Insert:  ", insertion_sort([38, 27, 43, 3, 9, 82, 10]))

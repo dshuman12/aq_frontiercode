@@ -1,0 +1,280 @@
+diff --git a/src/shortest_path/shortest_path.cpp b/src/shortest_path/shortest_path.cpp
+index b3068e3..d8366e8 100644
+--- a/src/shortest_path/shortest_path.cpp
++++ b/src/shortest_path/shortest_path.cpp
+@@ -115,7 +115,7 @@ PathResult astar(const Graph& g, NodeId src, NodeId goal, HeuristicFn h) {
+ 
+         for (auto& e : g.out_edges(u)) {
+             if (closed.count(e.dst)) continue;
+-            double tentative = f + e.weight;
++            double tentative = res.dist[u] + e.weight;
+             if (tentative < res.dist[e.dst]) {
+                 res.dist[e.dst] = tentative;
+                 res.prev[e.dst] = u;
+diff --git a/tests/test_shortest_path.cpp b/tests/test_shortest_path.cpp
+new file mode 100644
+index 0000000..982df1e
+--- /dev/null
++++ b/tests/test_shortest_path.cpp
+@@ -0,0 +1,260 @@
++#include "test_framework.hpp"
++#include "shortest_path/shortest_path.hpp"
++using namespace cryo;
++using namespace cryo_test;
++
++static Graph make_weighted_dag() {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 5; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1, 4.0); g.add_edge(0, 2, 2.0);
++    g.add_edge(1, 3, 5.0); g.add_edge(2, 1, 1.0);
++    g.add_edge(2, 3, 8.0); g.add_edge(3, 4, 3.0);
++    g.add_edge(2, 4, 10.0);
++    return g;
++}
++
++CRYO_TEST(Dijkstra, BasicDistances) {
++    auto g = make_weighted_dag();
++    auto res = dijkstra(g, 0);
++    assert_near(res.dist[0], 0.0);
++    assert_near(res.dist[1], 3.0);
++    assert_near(res.dist[2], 2.0);
++    assert_near(res.dist[3], 8.0);
++    assert_near(res.dist[4], 11.0);
++}
++
++CRYO_TEST(Dijkstra, PathReconstruct) {
++    auto g = make_weighted_dag();
++    auto res = dijkstra(g, 0);
++    auto path = res.reconstruct(4);
++    assert_eq(path.front(), (NodeId)0);
++    assert_eq(path.back(), (NodeId)4);
++    assert_near(path_weight(g, path), 11.0);
++}
++
++CRYO_TEST(Dijkstra, Unreachable) {
++    Graph g(GraphType::Directed);
++    g.add_node_with_id(0); g.add_node_with_id(1);
++    auto res = dijkstra(g, 0);
++    assert_false(res.reachable(1));
++    auto path = res.reconstruct(1);
++    assert_true(path.empty());
++}
++
++CRYO_TEST(Dijkstra, SameSourceDest) {
++    auto g = make_weighted_dag();
++    auto res = dijkstra(g, 0);
++    assert_near(res.dist[0], 0.0);
++    auto path = res.reconstruct(0);
++    assert_eq(path.size(), (size_t)1);
++}
++
++CRYO_TEST(Dijkstra, SingleNode) {
++    Graph g(GraphType::Directed);
++    g.add_node_with_id(0);
++    auto res = dijkstra(g, 0);
++    assert_near(res.dist[0], 0.0);
++}
++
++CRYO_TEST(Dijkstra, LinearChain) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 5; i++) g.add_node_with_id(i);
++    for (int i = 0; i < 4; i++) g.add_edge(i, i+1, 1.0);
++    auto res = dijkstra(g, 0);
++    for (int i = 0; i < 5; i++) assert_near(res.dist[i], (double)i);
++}
++
++CRYO_TEST(Dijkstra, UndirectedGraph) {
++    Graph g(GraphType::Undirected);
++    g.add_node_with_id(0); g.add_node_with_id(1); g.add_node_with_id(2);
++    g.add_edge(0, 1, 5.0); g.add_edge(1, 2, 3.0); g.add_edge(0, 2, 10.0);
++    auto res = dijkstra(g, 0);
++    assert_near(res.dist[2], 8.0);
++}
++
++CRYO_TEST(BellmanFord, BasicDistances) {
++    auto g = make_weighted_dag();
++    auto res = bellman_ford(g, 0);
++    assert_near(res.dist[0], 0.0);
++    assert_near(res.dist[1], 3.0);
++    assert_near(res.dist[4], 11.0);
++}
++
++CRYO_TEST(BellmanFord, NegativeWeights) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1, 1.0); g.add_edge(1, 2, -3.0);
++    g.add_edge(0, 2, 5.0); g.add_edge(2, 3, 2.0);
++    auto res = bellman_ford(g, 0);
++    assert_near(res.dist[2], -2.0);
++    assert_near(res.dist[3], 0.0);
++}
++
++CRYO_TEST(BellmanFord, NegativeCycleThrows) {
++    Graph g(GraphType::Directed);
++    g.add_node_with_id(0); g.add_node_with_id(1); g.add_node_with_id(2);
++    g.add_edge(0, 1, 1.0); g.add_edge(1, 2, -2.0); g.add_edge(2, 0, -1.0);
++    assert_throws([&]() { bellman_ford(g, 0); });
++}
++
++CRYO_TEST(BellmanFord, Unreachable) {
++    Graph g(GraphType::Directed);
++    g.add_node_with_id(0); g.add_node_with_id(1);
++    auto res = bellman_ford(g, 0);
++    assert_false(res.reachable(1));
++}
++
++CRYO_TEST(BellmanFord, PathReconstruct) {
++    auto g = make_weighted_dag();
++    auto res = bellman_ford(g, 0);
++    auto path = res.reconstruct(4);
++    assert_eq(path.front(), (NodeId)0);
++    assert_eq(path.back(), (NodeId)4);
++}
++
++CRYO_TEST(AStar, BasicPath) {
++    auto g = make_weighted_dag();
++    auto res = astar(g, 0, 4, [](NodeId) { return 0.0; });
++    assert_near(res.dist[4], 11.0);
++    auto path = res.reconstruct(4);
++    assert_eq(path.front(), (NodeId)0);
++    assert_eq(path.back(), (NodeId)4);
++}
++
++CRYO_TEST(AStar, WithHeuristic) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1, 1.0); g.add_edge(1, 3, 1.0);
++    g.add_edge(0, 2, 1.0); g.add_edge(2, 3, 5.0);
++    auto res = astar(g, 0, 3, [](NodeId n) {
++        return (n == 1) ? 1.0 : 4.0;
++    });
++    assert_near(res.dist[3], 2.0);
++}
++
++CRYO_TEST(AStar, Unreachable) {
++    Graph g(GraphType::Directed);
++    g.add_node_with_id(0); g.add_node_with_id(1);
++    auto res = astar(g, 0, 1, [](NodeId) { return 0.0; });
++    assert_false(res.reachable(1));
++}
++
++CRYO_TEST(AStar, SameNode) {
++    auto g = make_weighted_dag();
++    auto res = astar(g, 0, 0, [](NodeId) { return 0.0; });
++    assert_near(res.dist[0], 0.0);
++}
++
++CRYO_TEST(FloydWarshall, AllPairsDistances) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1, 3.0); g.add_edge(0, 2, 8.0);
++    g.add_edge(1, 2, 2.0); g.add_edge(2, 3, 1.0);
++    g.add_edge(1, 3, 7.0);
++    auto res = floyd_warshall(g);
++    assert_near(res.dist[0][3], 6.0);
++    assert_near(res.dist[0][2], 5.0);
++    assert_near(res.dist[1][3], 3.0);
++}
++
++CRYO_TEST(FloydWarshall, Unreachable) {
++    Graph g(GraphType::Directed);
++    g.add_node_with_id(0); g.add_node_with_id(1);
++    auto res = floyd_warshall(g);
++    assert_false(res.reachable(0, 1));
++}
++
++CRYO_TEST(FloydWarshall, SelfDistance) {
++    Graph g(GraphType::Directed);
++    g.add_node_with_id(0); g.add_node_with_id(1);
++    g.add_edge(0, 1, 5.0);
++    auto res = floyd_warshall(g);
++    assert_near(res.dist[0][0], 0.0);
++    assert_near(res.dist[1][1], 0.0);
++}
++
++CRYO_TEST(FloydWarshall, PathReconstruct) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1, 1.0); g.add_edge(1, 2, 1.0); g.add_edge(2, 3, 1.0);
++    auto res = floyd_warshall(g);
++    auto path = res.path(0, 3);
++    assert_eq(path.size(), (size_t)4);
++    assert_eq(path[0], (NodeId)0);
++    assert_eq(path[3], (NodeId)3);
++}
++
++CRYO_TEST(PathWeight, BasicWeight) {
++    auto g = make_weighted_dag();
++    assert_near(path_weight(g, {0, 2, 1, 3, 4}), 2.0 + 1.0 + 5.0 + 3.0);
++}
++
++CRYO_TEST(PathWeight, EmptyPath) {
++    auto g = make_weighted_dag();
++    assert_near(path_weight(g, {}), 0.0);
++    assert_near(path_weight(g, {0}), 0.0);
++}
++
++CRYO_TEST(PathWeight, NoEdge) {
++    auto g = make_weighted_dag();
++    assert_near(path_weight(g, {0, 4}), INF_WEIGHT);
++}
++
++// ── Floyd-Warshall vector optimization tests ───────────────────────────────
++
++CRYO_TEST(FloydWarshall, VectorOptCorrectness) {
++    Graph g(GraphType::Directed);
++    for (int i = 0; i < 4; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1, 1.0); g.add_edge(1, 2, 2.0);
++    g.add_edge(2, 3, 3.0); g.add_edge(0, 3, 10.0);
++    auto res = floyd_warshall(g);
++    assert_near(res.dist[0][3], 6.0);
++    assert_near(res.dist[0][2], 3.0);
++    auto p = res.path(0, 3);
++    assert_eq(p.size(), (size_t)4);
++    assert_eq(p[0], (NodeId)0);
++    assert_eq(p[3], (NodeId)3);
++}
++
++CRYO_TEST(ShortPath, DijkstraTarget) {
++    auto g = make_weighted_dag();
++    auto res = dijkstra_target(g, 0, 4);
++    auto p = res.reconstruct(4);
++    assert_false(p.empty());
++    assert_eq(p.front(), (NodeId)0);
++    assert_eq(p.back(), (NodeId)4);
++}
++
++CRYO_TEST(ShortPath, MultiSource) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 6; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1, 1); g.add_edge(1, 2, 1);
++    g.add_edge(3, 4, 1); g.add_edge(4, 5, 1);
++    auto res = multi_source_dijkstra(g, {0, 3});
++    assert_near(res.dist[0], 0.0);
++    assert_near(res.dist[3], 0.0);
++    assert_near(res.dist[2], 2.0);
++}
++
++CRYO_TEST(ShortPath, ShortestPathConvenience) {
++    auto g = make_weighted_dag();
++    auto p = shortest_path(g, 0, 4);
++    assert_false(p.empty());
++    assert_true(is_shortest_path(g, p));
++}
++
++CRYO_TEST(ShortPath, ShortestDistance) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 3; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1, 2.0); g.add_edge(1, 2, 3.0);
++    assert_near(shortest_distance(g, 0, 2), 5.0);
++}
++
++CRYO_TEST(FloydWarshall, VectorOptUndirected) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 3; i++) g.add_node_with_id(i);
++    g.add_edge(0, 1, 2.0); g.add_edge(1, 2, 3.0);
++    auto res = floyd_warshall(g);
++    assert_near(res.dist[0][2], 5.0);
++    assert_near(res.dist[2][0], 5.0);
++}
+\ No newline at end of file

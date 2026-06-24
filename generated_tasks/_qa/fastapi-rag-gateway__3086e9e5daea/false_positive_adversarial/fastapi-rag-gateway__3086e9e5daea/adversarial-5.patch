@@ -1,0 +1,49 @@
+diff --git a/app/core/security.py b/app/core/security.py
+--- a/app/core/security.py
++++ b/app/core/security.py
+@@
+-    return TokenPayload(**payload)
++    data = TokenPayload(**payload)
++    if expected_type is not None and data.type != expected_type:
++        raise AuthenticationError("Invalid token type.")
++    return data
+diff --git a/tests/unit/test_security.py b/tests/unit/test_security.py
+new file mode 100644
+--- /dev/null
++++ b/tests/unit/test_security.py
+@@
++"""Tests for token-type enforcement in decode_token."""
++
++from __future__ import annotations
++
++import pytest
++
++from app.core.exceptions import AuthenticationError
++from app.core.security import (
++    create_access_token,
++    create_refresh_token,
++    decode_token,
++)
++
++
++def test_decode_access_with_expected_access() -> None:
++    token = create_access_token("user-1")
++    payload = decode_token(token, expected_type="access")
++    assert payload.sub == "user-1"
++
++
++def test_decode_refresh_as_access_rejected() -> None:
++    token = create_refresh_token("user-1")
++    with pytest.raises(AuthenticationError):
++        decode_token(token, expected_type="access")
++
++
++def test_decode_access_as_refresh_rejected() -> None:
++    token = create_access_token("user-1")
++    with pytest.raises(AuthenticationError):
++        decode_token(token, expected_type="refresh")
++
++
++def test_decode_without_expected_type_accepts_either() -> None:
++    assert decode_token(create_access_token("u")).sub == "u"
++    assert decode_token(create_refresh_token("u")).sub == "u"

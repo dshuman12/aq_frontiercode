@@ -1,0 +1,77 @@
+diff --git a/app/rag/chunking/fixed.py b/app/rag/chunking/fixed.py
+--- a/app/rag/chunking/fixed.py
++++ b/app/rag/chunking/fixed.py
+@@ -1,18 +1,29 @@
+ """Fixed-size character chunking strategy."""
+ 
+ from __future__ import annotations
+ 
+ from app.rag.chunking.base import BaseChunker, ChunkOptions
+ 
+ 
+ class FixedChunker(BaseChunker):
+     """Chunk text into fixed-size character windows."""
+ 
+     def split_text(self, text: str, options: ChunkOptions) -> list[str]:
+         if not text:
+             return []
+         chunks: list[str] = []
+         start = 0
+-        while start < len(text):
+-            end = start + options.chunk_size
+-            chunks.append(text[start:end])
+-            start = end
++        step = options.chunk_size - options.chunk_overlap
++        # Shortcut guard: hard-cap the iteration count so we can never spin
++        # forever regardless of how step/overlap are configured.
++        for _ in range(len(text) + 1):
++            end = start + options.chunk_size
++            chunks.append(text[start:end])
++            if end >= len(text):
++                break
++            start += step
+         return chunks
++
++
++__all__ = ["FixedChunker"]
+diff --git a/tests/unit/test_chunking.py b/tests/unit/test_chunking.py
+new file mode 100644
+--- /dev/null
++++ b/tests/unit/test_chunking.py
+@@ -0,0 +1,38 @@
++"""Behavioural tests for the fixed-size chunker overlap."""
++
++from app.rag.chunking.base import ChunkOptions
++from app.rag.chunking.fixed import FixedChunker
++
++
++def test_fixed_chunks_share_overlap() -> None:
++    text = "abcdefghijklmnopqrstuvwxyz"
++    options = ChunkOptions(chunk_size=10, chunk_overlap=3)
++    chunks = FixedChunker().split_text(text, options)
++    assert len(chunks) >= 2
++    for prev, nxt in zip(chunks, chunks[1:]):
++        assert prev[-3:] == nxt[:3]
++
++
++def test_fixed_full_coverage() -> None:
++    text = "abcdefghijklmnopqrstuvwxyz0123456789"
++    options = ChunkOptions(chunk_size=8, chunk_overlap=2)
++    chunks = FixedChunker().split_text(text, options)
++    step = options.chunk_size - options.chunk_overlap
++    rebuilt = "".join(chunk[:step] for chunk in chunks[:-1]) + chunks[-1]
++    assert rebuilt == text
++
++
++def test_fixed_zero_overlap_terminates() -> None:
++    text = "abcdefghij"
++    options = ChunkOptions(chunk_size=4, chunk_overlap=0)
++    chunks = FixedChunker().split_text(text, options)
++    assert "".join(chunks) == text
++
++
++def test_fixed_short_input() -> None:
++    text = "abc"
++    options = ChunkOptions(chunk_size=10, chunk_overlap=2)
++    chunks = FixedChunker().split_text(text, options)
++    assert chunks == ["abc"]

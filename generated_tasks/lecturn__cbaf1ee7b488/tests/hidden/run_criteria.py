@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -27,8 +28,27 @@ SKIP_DIRS = {
     "dist",
     "node_modules",
     "venv",
+    # build/test artifacts that agents regenerate and that pollute scope/diffs
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".turbo",
+    ".cache",
+    ".parcel-cache",
+    ".angular",
+    "coverage",
+    "out",
+    "target",
+    ".gradle",
 }
-SKIP_FILES = {".DS_Store"}
+SKIP_FILES = {".DS_Store", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"}
+SKIP_FILE_SUFFIXES = (".log", ".pyc", ".tsbuildinfo", ".class")
+SKIP_PATH_PREFIXES = ("dist/", "frontend/dist/", "server/logs/")
+TEST_PATH_RE = re.compile(
+    r"(^|/)(__tests__|tests?|specs?)(/|$)|"
+    r"(^|/)(test_[^/]+|[^/]+_(test|spec)|[^/]+\.(test|spec))\.[A-Za-z0-9]+$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -37,19 +57,23 @@ class Criterion:
     category: str
     blocker: bool
     weight: float
-    check: Callable[[Path, Path, dict], tuple[bool, str]]
+    method: str
+    check: Callable[[Path, Path, dict], tuple[bool, str]] | None
+    placeholder_details: str = ""
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("repo", nargs="?", default=None)
-    parser.add_argument("--criterion", choices=[item.id for item in criteria()])
+    parser.add_argument("--criterion")
     args = parser.parse_args()
 
     script_dir = Path(__file__).resolve().parent
     spec = json.loads((script_dir / "task_spec.json").read_text(encoding="utf-8"))
     repo = (Path(args.repo) if args.repo else script_dir.parents[1] / "environment" / "repo").resolve()
-    selected = [item for item in criteria() if args.criterion in {None, item.id}]
+    selected = [item for item in criteria(spec) if args.criterion in {None, item.id}]
+    if args.criterion and not selected:
+        parser.error(f"unknown criterion: {args.criterion}")
 
     results = [evaluate_criterion(item, repo, script_dir, spec) for item in selected]
     if args.criterion:
@@ -62,27 +86,38 @@ def main() -> int:
     return 0 if result_doc["pass"] else 1
 
 
-def criteria() -> list[Criterion]:
-    return [
+def criteria(spec: dict | None = None) -> list[Criterion]:
+    items = [
         Criterion(
             "hidden_reference_tests_pass",
             "patch_specific",
             True,
-            0.45,
+            0.35,
+            "classical",
             check_hidden_reference_tests_pass,
+        ),
+        Criterion(
+            "submitted_tests_fail_on_base",
+            "regular",
+            True,
+            0.15,
+            "reverse_classical",
+            check_submitted_tests_fail_on_base,
         ),
         Criterion(
             "visible_regression_tests_pass",
             "regular",
             True,
             0.20,
+            "command",
             check_visible_regression_tests_pass,
         ),
         Criterion(
             "scope_matches_reference_intent",
             "regular",
             True,
-            0.20,
+            0.15,
+            "scope",
             check_scope_matches_reference_intent,
         ),
         Criterion(
@@ -90,17 +125,39 @@ def criteria() -> list[Criterion]:
             "regular",
             True,
             0.05,
+            "command",
             check_no_hidden_asset_leak,
         ),
     ]
+    if spec:
+        for item in spec.get("advisory_rubric_items", []):
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            items.append(
+                Criterion(
+                    str(item["id"]),
+                    str(item.get("category", "regular")),
+                    False,
+                    float(item.get("weight", 0.02)),
+                    "llm_prompt",
+                    None,
+                    "Advisory LLM rubric item recorded by the deterministic verifier; "
+                    "run task QA with LLM review for semantic scoring.",
+                )
+            )
+    return items
 
 
 def evaluate_criterion(item: Criterion, repo: Path, script_dir: Path, spec: dict) -> dict:
-    try:
-        passed, details = item.check(repo, script_dir, spec)
-    except Exception as exc:
-        passed = False
-        details = f"{type(exc).__name__}: {exc}"
+    if item.check is None:
+        passed = True
+        details = item.placeholder_details
+    else:
+        try:
+            passed, details = item.check(repo, script_dir, spec)
+        except Exception as exc:
+            passed = False
+            details = f"{type(exc).__name__}: {exc}"
     return {
         "criterion_id": item.id,
         "passed": passed,
@@ -108,7 +165,7 @@ def evaluate_criterion(item: Criterion, repo: Path, script_dir: Path, spec: dict
         "blocker": item.blocker,
         "weight": item.weight,
         "details": details,
-        "method": "command",
+        "method": item.method,
         "category": item.category,
     }
 
@@ -122,6 +179,9 @@ def build_result_doc(spec: dict, results: list[dict]) -> dict:
         if score_total
         else 0.0
     )
+    # FrontierCode ground truth: a solution that fails any blocker criterion receives score 0.
+    if blocker_failures:
+        score = 0.0
     category_counts: dict[str, dict[str, int]] = {}
     for result in results:
         counts = category_counts.setdefault(result["category"], {"passed": 0, "total": 0})
@@ -183,14 +243,42 @@ def check_hidden_reference_tests_pass(repo: Path, script_dir: Path, spec: dict) 
     with tempfile.TemporaryDirectory(prefix="frontiercode-hidden-tests-") as tmp:
         workdir = Path(tmp) / "repo"
         copy_repo(repo, workdir)
+        link_node_modules(repo, workdir)
         overlay_reference_tests(script_dir, workdir, reference_files)
         return run_visible_command(workdir, spec, "hidden reference tests")
+
+
+def check_submitted_tests_fail_on_base(repo: Path, script_dir: Path, spec: dict) -> tuple[bool, str]:
+    base_repo = script_dir / "base_repo"
+    submitted_tests = [
+        rel for rel in changed_files(base_repo, repo)
+        if is_test_path(rel) and (repo / rel).exists()
+    ]
+    if not submitted_tests:
+        return False, "No submitted visible test changes were found to replay against the base snapshot."
+    with tempfile.TemporaryDirectory(prefix="frontiercode-reverse-classical-") as tmp:
+        workdir = Path(tmp) / "repo"
+        copy_repo(base_repo, workdir)
+        link_node_modules(repo, workdir)
+        for rel in submitted_tests:
+            target = workdir / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(repo / rel, target)
+        visible_passed, details = run_visible_command(
+            workdir,
+            spec,
+            "submitted tests on base snapshot",
+        )
+    if visible_passed:
+        return False, "Submitted tests unexpectedly passed on the broken base snapshot.\n" + details
+    return True, "Submitted tests failed on the broken base snapshot as expected.\n" + details
 
 
 def check_visible_regression_tests_pass(repo: Path, _: Path, spec: dict) -> tuple[bool, str]:
     with tempfile.TemporaryDirectory(prefix="frontiercode-visible-tests-") as tmp:
         workdir = Path(tmp) / "repo"
         copy_repo(repo, workdir)
+        link_node_modules(repo, workdir)
         return run_visible_command(workdir, spec, "visible regression command")
 
 
@@ -235,12 +323,24 @@ def check_no_hidden_asset_leak(repo: Path, _: Path, spec: dict) -> tuple[bool, s
     return True, "No generated hidden asset names or fix commit identifiers were found in the agent-visible repo."
 
 
+def is_test_path(path: str) -> bool:
+    return bool(TEST_PATH_RE.search(path))
+
+
 def run_visible_command(workdir: Path, spec: dict, label: str) -> tuple[bool, str]:
     command = str(spec.get("visible_test_command", "")).strip()
     if not command:
         return False, "No visible test command was generated."
     env = os.environ.copy()
     env.setdefault("CI", "1")
+    # Repo packages are not pip-installed in the grading copy, and the repo is copied to a
+    # temp dir before the command runs, so a build-time editable install would point at the
+    # wrong source. Put the repo root (and src/) on PYTHONPATH so `import <pkg>` resolves the
+    # copied/patched source -- the same effect as `python -m pytest`.
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in [str(workdir), str(workdir / "src"), existing_pp] if p
+    )
     try:
         result = subprocess.run(
             command,
@@ -275,9 +375,54 @@ def copy_repo(source: Path, target: Path) -> None:
     shutil.copytree(
         source,
         target,
-        ignore=shutil.ignore_patterns(*sorted(SKIP_DIRS)),
+        ignore=repo_ignore(source),
         dirs_exist_ok=False,
     )
+
+
+def link_node_modules(deps_repo: Path, workdir: Path) -> None:
+    """node_modules is excluded from the copied test workdir (it is in SKIP_DIRS for diffing),
+    so JS test runners (jest/vitest/...) can't be resolved. Symlink the installed node_modules
+    from the live repo into each package dir of the workdir so `npm test` finds them."""
+    try:
+        for pj in workdir.rglob("package.json"):
+            pkg_dir = pj.parent
+            rel = pkg_dir.relative_to(workdir)
+            if "node_modules" in rel.parts:
+                continue
+            src_nm = deps_repo / rel / "node_modules"
+            link = pkg_dir / "node_modules"
+            if src_nm.is_dir() and not link.exists():
+                try:
+                    link.symlink_to(src_nm.resolve(), target_is_directory=True)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
+def repo_ignore(source: Path):
+    root = source.resolve()
+
+    def ignore(dirpath: str, names: list[str]) -> set[str]:
+        skipped: set[str] = set()
+        for name in names:
+            path = Path(dirpath) / name
+            if path.is_dir() and name in SKIP_DIRS:
+                skipped.add(name)
+                continue
+            if not path.is_file():
+                continue
+            rel = path.resolve().relative_to(root).as_posix()
+            if (
+                name in SKIP_FILES
+                or rel.endswith(SKIP_FILE_SUFFIXES)
+                or any(rel.startswith(prefix) for prefix in SKIP_PATH_PREFIXES)
+            ):
+                skipped.add(name)
+        return skipped
+
+    return ignore
 
 
 def changed_files(base_repo: Path, repo: Path) -> list[str]:
@@ -304,11 +449,21 @@ def iter_files(root: Path):
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [name for name in dirnames if name not in SKIP_DIRS]
         for filename in filenames:
-            if filename in SKIP_FILES:
-                continue
             path = Path(dirpath) / filename
+            rel = path.relative_to(root).as_posix()
+            if should_skip_file(rel):
+                continue
             if path.is_file():
                 yield path
+
+
+def should_skip_file(rel: str) -> bool:
+    name = Path(rel).name
+    return (
+        name in SKIP_FILES
+        or rel.endswith(SKIP_FILE_SUFFIXES)
+        or any(rel.startswith(prefix) for prefix in SKIP_PATH_PREFIXES)
+    )
 
 
 def sha256_file(path: Path) -> str:
@@ -320,13 +475,33 @@ def sha256_file(path: Path) -> str:
 
 
 def render_submission_patch(base_repo: Path, repo: Path) -> str:
+    with tempfile.TemporaryDirectory(prefix="frontiercode-filtered-diff-") as tmp:
+        tmp_path = Path(tmp)
+        base_copy = tmp_path / "base"
+        repo_copy = tmp_path / "repo"
+        copy_filtered_tree(base_repo, base_copy)
+        copy_filtered_tree(repo, repo_copy)
+        return render_tree_diff(base_copy, repo_copy)
+
+
+def copy_filtered_tree(source: Path, target: Path) -> None:
+    target.mkdir(parents=True, exist_ok=True)
+    for path in iter_files(source):
+        rel = path.relative_to(source)
+        dest = target / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, dest)
+
+
+def render_tree_diff(base_repo: Path, repo: Path) -> str:
     try:
         result = subprocess.run(
-            ["git", "diff", "--no-index", "--binary", str(base_repo), str(repo)],
+            ["git", "diff", "--no-index", "--binary", "base", "repo"],
             text=True,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            cwd=base_repo.parent,
             timeout=60,
             check=False,
         )

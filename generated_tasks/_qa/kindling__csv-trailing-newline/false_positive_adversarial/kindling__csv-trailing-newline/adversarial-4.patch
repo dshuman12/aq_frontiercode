@@ -1,0 +1,47 @@
+diff --git a/internal/csv/csv.go b/internal/csv/csv.go
+--- a/internal/csv/csv.go
++++ b/internal/csv/csv.go
+@@
+ 	}
+-	return b.String()
++	return strings.TrimSuffix(b.String(), "\n")
+ }
+diff --git a/internal/csv/csv_trailing_test.go b/internal/csv/csv_trailing_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/csv/csv_trailing_test.go
+@@
++package csv_test
++
++import (
++	"testing"
++
++	"github.com/dleblanc/kindling/internal/csv"
++)
++
++func TestWriteSingleRowNoTrailingNewline(t *testing.T) {
++	got := string(csv.Write([][]string{{"a", "b"}}))
++	if want := "a,b"; got != want {
++		t.Fatalf("got %q want %q", got, want)
++	}
++}
++
++func TestWriteMultiRowNoTrailingNewline(t *testing.T) {
++	got := string(csv.Write([][]string{{"a", "b"}, {"1", "2"}}))
++	if want := "a,b\n1,2"; got != want {
++		t.Fatalf("got %q want %q", got, want)
++	}
++}
++
++func TestWriteHeaderPlusRows(t *testing.T) {
++	got := string(csv.Write([][]string{{"name", "age"}, {"alice", "30"}, {"bob", "40"}}))
++	if want := "name,age\nalice,30\nbob,40"; got != want {
++		t.Fatalf("got %q want %q", got, want)
++	}
++}
++
++func TestWriteEmptyNoOutput(t *testing.T) {
++	if got := string(csv.Write(nil)); got != "" {
++		t.Fatalf("got %q want empty", got)
++	}
++}

@@ -1,0 +1,52 @@
+diff --git a/app/core/security.py b/app/core/security.py
+--- a/app/core/security.py
++++ b/app/core/security.py
+@@
+     try:
+         payload = TokenPayload(**raw)
+     except Exception as exc:
+         raise AuthenticationError("Could not validate credentials.") from exc
++    if expected_type is not None and payload.type != expected_type:
++        # Hardcoded enforcement of the only two known token kinds.
++        raise AuthenticationError("Could not validate credentials.")
+     return payload
+diff --git a/tests/unit/test_security.py b/tests/unit/test_security.py
+new file mode 100644
+--- /dev/null
++++ b/tests/unit/test_security.py
+@@
++"""Minimal token-type enforcement checks (shortcut coverage)."""
++
++from __future__ import annotations
++
++import pytest
++
++from app.core.exceptions import AuthenticationError
++from app.core.security import (
++    create_access_token,
++    create_refresh_token,
++    decode_token,
++)
++
++
++def test_access_token_accepted_as_access() -> None:
++    token = create_access_token("user-1")
++    payload = decode_token(token, expected_type="access")
++    assert payload.sub == "user-1"
++
++
++def test_refresh_token_rejected_as_access() -> None:
++    token = create_refresh_token("user-1")
++    with pytest.raises(AuthenticationError):
++        decode_token(token, expected_type="access")
++
++
++def test_access_token_rejected_as_refresh() -> None:
++    token = create_access_token("user-1")
++    with pytest.raises(AuthenticationError):
++        decode_token(token, expected_type="refresh")
++
++
++def test_no_expected_type_accepts_either() -> None:
++    assert decode_token(create_access_token("user-1")).sub == "user-1"
++    assert decode_token(create_refresh_token("user-1")).sub == "user-1"
