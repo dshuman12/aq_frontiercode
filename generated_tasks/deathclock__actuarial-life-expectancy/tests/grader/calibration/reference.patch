@@ -1,0 +1,69 @@
+diff --git a/app/model/baseline.py b/app/model/baseline.py
+index 37ec29a..0210b5d 100644
+--- a/app/model/baseline.py
++++ b/app/model/baseline.py
+@@ -88,7 +88,7 @@ def life_expectancy_from_qx(qx_curve: list[float], start_age: int) -> float:
+     for qx in qx_curve:
+         qx = min(qx, 1.0)
+         dx = lx * qx
+-        lx_mid = lx
++        lx_mid = lx - dx * 0.5
+         tx += lx_mid
+         lx -= dx
+         if lx < 0.5:
+diff --git a/tests/test_baseline.py b/tests/test_baseline.py
+new file mode 100644
+index 0000000..ab643db
+--- /dev/null
++++ b/tests/test_baseline.py
+@@ -0,0 +1,50 @@
++"""Acceptance tests for the actuarial life-expectancy computation.
++
++`life_expectancy_from_qx` reconstructs remaining life expectancy from a q(x)
++mortality curve. The standard actuarial method credits each year's survivors with
++a half-year of life for those who die during the year (the L(x) mid-period
++correction), so the result tracks the published SSA e(x) table and a fully-fatal
++single year contributes half a year of remaining life rather than a whole year.
++"""
++
++from app.model.baseline import (
++    get_baseline_life_expectancy,
++    get_baseline_qx,
++    life_expectancy_from_qx,
++)
++
++
++def _life_expectancy(age: int, sex: str) -> float:
++    return life_expectancy_from_qx(get_baseline_qx(age, sex), age)
++
++
++def test_fully_fatal_single_year_is_half_a_year():
++    # If everyone dies within the year, the survivors-weighted method credits
++    # half a year of remaining life, not a full year.
++    assert life_expectancy_from_qx([1.0], 30) == 0.5
++
++
++def test_matches_known_actuarial_values():
++    assert abs(_life_expectancy(40, "male") - 37.6726) < 1e-3
++    assert abs(_life_expectancy(65, "female") - 20.1168) < 1e-3
++    assert abs(_life_expectancy(0, "male") - 74.7420) < 1e-3
++
++
++def test_tracks_published_ssa_life_table():
++    # The reconstruction from q(x) must stay within a small margin of the
++    # published e(x) table; the mid-period correction is what keeps it tight.
++    for age, sex in [(20, "male"), (40, "male"), (60, "female"), (75, "female")]:
++        reconstructed = _life_expectancy(age, sex)
++        published = get_baseline_life_expectancy(age, sex)
++        assert abs(reconstructed - published) < 0.15, (age, sex, reconstructed, published)
++
++
++def test_life_expectancy_decreases_with_age():
++    ages = [0, 20, 40, 60, 80]
++    values = [_life_expectancy(age, "male") for age in ages]
++    assert all(earlier > later for earlier, later in zip(values, values[1:]))
++
++
++def test_caps_probabilities_above_one():
++    # q(x) values above 1.0 must be clamped so the curve stays well-defined.
++    assert life_expectancy_from_qx([2.0], 50) == 0.5
