@@ -14,8 +14,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import collections
 import csv
+import glob
 import importlib.util
+import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -45,6 +49,10 @@ def main() -> None:
     ap.add_argument("--qa", action="store_true", help="run generation QA (adversarial+rubric, slower)")
     ap.add_argument("--skip-build", action="store_true", help="reuse existing buildable.csv")
     ap.add_argument("--topic-threshold", type=float, default=0.5)
+    ap.add_argument("--calibrate", type=int, default=0, metavar="N",
+                    help="Stage 5 difficulty gate: calibrate N trials @ high effort and keep ONLY "
+                         "in-band tasks (0<pass<1); drop too-easy (N/N) and broken/too-hard (0/N). "
+                         "Docker-heavy. The reliable difficulty filter -- static heuristics are not.")
     args = ap.parse_args()
     py = sys.executable
 
@@ -90,23 +98,66 @@ def main() -> None:
     validated, dropped = [], []
     for r in generated:
         res = icc.check_task(ROOT / "generated_tasks" / r["task_id"])
-        cov = res.get("topic_cov", 1.0) if res.get("status") == "ok" else None
-        if cov is not None and cov < args.topic_threshold:
-            dropped.append((r["task_id"], cov, res.get("topics_missing", [])))
+        cov = res.get("topic_cov", 1.0) if res.get("status") == "ok" else 1.0
+        req_missing = res.get("req_missing", []) if res.get("status") == "ok" else []
+        # mis-gen if topics absent OR the test needs fix-introduced symbols the instruction omits
+        if cov < args.topic_threshold:
+            dropped.append((r["task_id"], f"topic_cov={cov}", res.get("topics_missing", [])[:4]))
+        elif req_missing:
+            dropped.append((r["task_id"], "missing-symbols", req_missing[:4]))
         else:
             validated.append((r["task_id"], r["lang"], r["score"], cov))
-    for tid, cov, miss in dropped:
-        print(f"   MIS-GEN drop {tid}: topic_cov={cov} missing={miss[:4]}")
-    print(f"   validated: {len(validated)}/{len(generated)}")
+    for tid, why, miss in dropped:
+        print(f"   MIS-GEN drop {tid}: {why} {miss}")
+    print(f"   consistent: {len(validated)}/{len(generated)}")
+
+    # Stage 5 (optional, the RELIABLE difficulty filter): calibrate and keep only in-band.
+    # Static signals (patch size, test-strength) do NOT predict difficulty -- only execution does.
+    if args.calibrate and validated:
+        n = args.calibrate
+        print(f"== Stage 5: difficulty gate (calibrate {n} trials @ high; drop too-easy + broken) ==")
+        ids = [t[0] for t in validated]
+        jobs = ROOT / "runs" / "difficulty-gate"
+        env = dict(os.environ, TRIALS=str(n), EFFORTS="high", N_CONCURRENT="2",
+                   JOBS_DIR=str(jobs), OUTPUT=str(jobs / "report"))
+        subprocess.run(["bash", "scripts/clean_reeval.sh", *ids], cwd=ROOT, env=env)
+        agg = collections.defaultdict(lambda: [0, 0])  # task -> [passes, trials]
+        for f in glob.glob(str(jobs / "**/verifier/frontiercode_result.json"), recursive=True):
+            try:
+                d = json.load(open(f))
+            except (OSError, ValueError):
+                continue
+            a = agg[d.get("task_id", "")]; a[1] += 1; a[0] += 1 if d.get("pass") else 0
+        in_band, too_easy, broken = [], [], []
+        for t in validated:
+            p, tot = agg.get(t[0], [0, 0])
+            pr = p / tot if tot else 0.0
+            if tot == 0 or pr == 0:
+                broken.append((t[0], f"{p}/{tot}"))
+            elif pr >= 1:
+                too_easy.append((t[0], f"{p}/{tot}"))
+            else:
+                in_band.append(t)
+        for tid, pr in too_easy:
+            print(f"   DROP too-easy   {tid}: {pr}")
+        for tid, pr in broken:
+            print(f"   DROP broken/hard {tid}: {pr}  (gradeability/infra/mis-gen or Diamond-tier; inspect)")
+        print(f"   IN-BAND: {len(in_band)}/{len(validated)}")
+        validated = in_band
 
     out = CAND / "validated_tasks.csv"
     with open(out, "w", newline="") as f:
         w = csv.writer(f); w.writerow(["task_id", "lang", "score", "topic_cov"])
         w.writerows(validated)
-    print(f"\n== VALIDATED {len(validated)} tasks -> {out.relative_to(ROOT)} ==")
+    label = "VALIDATED (in-band confirmed)" if args.calibrate else "CONSISTENT (difficulty UNVERIFIED)"
+    print(f"\n== {label}: {len(validated)} tasks -> {out.relative_to(ROOT)} ==")
     if validated:
         ids = " ".join(t[0] for t in validated)
-        print(f"\nCalibrate (5 trials/effort):\n  TRIALS=5 ./scripts/clean_reeval.sh {ids}")
+        if args.calibrate:
+            print(f"\nFull calibration (5 trials/effort) before promotion:\n  TRIALS=5 ./scripts/clean_reeval.sh {ids}")
+        else:
+            print("\nThese passed structure/consistency but difficulty is NOT verified -- many will be too-easy.")
+            print(f"Re-run with the difficulty gate to keep only in-band:\n  {sys.argv[0]} ... --calibrate 3")
 
 if __name__ == "__main__":
     main()
