@@ -360,7 +360,13 @@ def criteria(spec: dict | None = None) -> list[Criterion]:
 
 
 def evaluate_criterion(item: Criterion, repo: Path, script_dir: Path, spec: dict) -> dict:
+    evaluated = True
     if item.check is None:
+        # llm_prompt / advisory items are graded by the harness LLM judge, not by
+        # this deterministic in-container verifier. Record them as not-evaluated so
+        # they are excluded from the weighted score instead of counting as a free
+        # pass; the harness fills in real scores with `score --enable-llm`.
+        evaluated = False
         passed = True
         details = item.placeholder_details
     else:
@@ -372,21 +378,30 @@ def evaluate_criterion(item: Criterion, repo: Path, script_dir: Path, spec: dict
     return {
         "criterion_id": item.id,
         "passed": passed,
-        "score": 1.0 if passed else 0.0,
+        "score": 1.0 if (evaluated and passed) else 0.0,
         "blocker": item.blocker,
         "weight": item.weight,
         "details": details,
         "method": item.method,
         "category": item.category,
+        "evaluated": evaluated,
     }
 
 
 def build_result_doc(spec: dict, results: list[dict]) -> dict:
-    blocker_failures = [item["criterion_id"] for item in results if item["blocker"] and not item["passed"]]
+    # A blocker that was never evaluated fails closed.
+    blocker_failures = [
+        item["criterion_id"]
+        for item in results
+        if item["blocker"] and (not item["passed"] or not item.get("evaluated", True))
+    ]
     passed = not blocker_failures
-    score_total = sum(item["weight"] for item in results)
+    # Not-evaluated criteria (e.g. llm_prompt items graded out-of-band) are excluded
+    # from the weighted average instead of counting as a free pass.
+    scored = [item for item in results if item.get("evaluated", True)]
+    score_total = sum(item["weight"] for item in scored)
     score = (
-        sum(item["score"] * item["weight"] for item in results) / score_total
+        sum(item["score"] * item["weight"] for item in scored) / score_total
         if score_total
         else 0.0
     )
@@ -658,7 +673,7 @@ def file_hashes(root: Path) -> dict[str, str]:
 
 def iter_files(root: Path):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [name for name in dirnames if name not in SKIP_DIRS]
+        dirnames[:] = [name for name in dirnames if name not in SKIP_DIRS and not name.endswith((".egg-info", ".dist-info"))]
         for filename in filenames:
             path = Path(dirpath) / filename
             rel = path.relative_to(root).as_posix()
@@ -1840,6 +1855,9 @@ Required output:
 - Mention relevant public test directories when useful, and say what behavior or edge cases those tests should cover.
 - Describe success criteria in terms of observable behavior, not just one exact patch shape.
 - Prefer clear reviewer-facing guidance over brittle implementation hints.
+- CRITICAL ANTI-LEAK: the agent must DIAGNOSE and IMPLEMENT the fix themselves. Do NOT reveal the root cause, where the defect lives, or how to fix it. Specifically NEVER state that a loop is ordered/nested wrong, an iteration or bound count is off (e.g. "needs |V|-1 passes", "iterate k outermost"), a condition/inequality is inverted, an index is off-by-one, a variable/field is misused, or that a specific line/function is "the problem". Describe only the required END-STATE behavior and the public contract (names, signatures, return shapes, which inputs/edge-cases must work).
+- CRITICAL ANTI-LEAK: do NOT include an answer key. Do not give exact expected outputs for specific concrete inputs that effectively encode the hidden tests (e.g. "for the chain s->m1->m2->t it must return 4"). Describe behavior qualitatively ("returns correct shortest-path distances even for multi-hop routes").
+- CRITICAL ANTI-LEAK: do NOT name the specific input shapes or scenarios the hidden tests use to trigger the defect (e.g. "scrambled insertion order", "reverse-ordered edges", "self-loops on the root"), in the task description OR the test guidelines. Keep test guidance about general behavior categories the agent should already think to cover; naming the exact trigger hands over the diagnosis.
 - When the change must integrate with existing interfaces, types, or function signatures shown in the repository context, describe the new or modified contract so it stays consistent with those definitions (interface method sets, return types, argument lists, exported names). Never describe a contract that contradicts the existing code.
 - Do not mention the spreadsheet, task generation, fix commit, base commit, hidden tests, grader files, reference patches, answer keys, or private evaluation assets.
 - Do not include commit SHAs.
@@ -1866,15 +1884,20 @@ Public repository context:
         user_prompt += f"""
 
 Hidden acceptance spec (PRIVATE -- the solution is graded against these tests, which the agent never sees):
-Derive the task's required contract from them: the exact functions/methods to add or change, their
-signatures and return types, the modules/files involved, and the edge cases asserted. Your
-# Task description MUST name and describe those behaviors so an agent following ONLY your instruction
-would satisfy these tests. This is the single most important requirement -- if these tests exercise
-APIs your instruction never mentions, the task is unsolvable.
+Use them ONLY to discover WHICH functions/methods and modules are in scope and their public contract
+(names, signatures, return types/shapes) and the CATEGORIES of behavior/edge-case that must work. Your
+# Task description MUST name those functions and describe the required end-state behavior so an agent
+following ONLY your instruction would know what to make correct. This is the single most important
+requirement -- if these tests exercise APIs your instruction never mentions, the task is unsolvable.
 AUTHORITATIVE: if the bug/task description or commit subject above conflicts with or omits what these
-tests exercise, THESE TESTS WIN -- describe the behavior/modules/APIs they actually check, even if that
+tests exercise, THESE TESTS WIN -- name the behavior/modules/APIs they actually check, even if that
 differs from the commit subject (commits are often multi-part and the subject names only one piece).
-Do NOT copy test code, restate assertions verbatim, name test files, or otherwise reveal these tests exist.
+STRICT ANTI-LEAK -- these tests reveal the FIX; you must not pass it through. From them, take only the
+WHAT (functions in scope + desired behavior), never the HOW or WHY: do NOT describe the current defect,
+its root cause, the implementation change, the algorithm/loop/iteration/condition correction, or the
+specific input->output pairs the tests assert. The agent must reproduce the failure and design the fix
+unaided. Do NOT copy test code, restate assertions verbatim, name test files, list concrete expected
+values, or otherwise reveal these tests exist.
 
 {test_spec}
 """
@@ -1997,7 +2020,7 @@ def selected_context_files(repo: Path) -> list[Path]:
 
 def iter_repo_files(root: Path):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [name for name in dirnames if name not in SKIP_DIRS]
+        dirnames[:] = [name for name in dirnames if name not in SKIP_DIRS and not name.endswith((".egg-info", ".dist-info"))]
         for filename in sorted(filenames):
             if filename in SKIP_FILES:
                 continue
@@ -2190,6 +2213,8 @@ def render_dockerfile(repo: Path, visible_command: str) -> str:
         "RUN apt-get update && apt-get install -y --no-install-recommends \\",
         "    ca-certificates curl git make patch build-essential python3-pip \\",
     ]
+    if "cmake" in visible_command or "ctest" in visible_command:
+        install_lines.append("    cmake \\")
     if image.startswith("python:"):
         install_lines.append("    python3-venv \\")
     if command_needs_node(visible_command) and not image.startswith("node:"):
@@ -2219,11 +2244,20 @@ def render_dockerfile(repo: Path, visible_command: str) -> str:
         "    fi; \\",
         "    node_install() { ( cd \"$1\" || exit 0; \\",
         "      corepack enable >/dev/null 2>&1 || true; \\",
-        "      if [ -f bun.lockb ] || grep -q 'bun run' package.json 2>/dev/null; then \\",
+        # Prefer npm when a package-lock.json is present: it reliably installs",
+        # devDependencies and links node_modules/.bin (so `npm test` -> jest/vitest",
+        # resolves). pnpm via corepack on a repo carrying both lockfiles can leave the",
+        # test runner unlinked -> `jest: not found` (exit 127).",
+        "      if [ -f package-lock.json ]; then (npm install || npm install --legacy-peer-deps); \\",
+        "      elif [ -f bun.lockb ] || grep -q 'bun run' package.json 2>/dev/null; then \\",
         "        (command -v bun >/dev/null 2>&1 || npm install -g bun >/dev/null 2>&1) && bun install; \\",
         "      elif [ -f pnpm-lock.yaml ]; then (pnpm install --no-frozen-lockfile || npm install --legacy-peer-deps); \\",
         "      elif [ -f yarn.lock ]; then (yarn install || npm install --legacy-peer-deps); \\",
         "      else npm install --legacy-peer-deps; fi; \\",
+        # Backstop: if the test script invokes a runner that isn't linked, install it.",
+        "      for tr in jest vitest mocha jasmine ava; do \\",
+        "        if grep -qE '\"test\"[^\"]*\"[^\"]*'\"$tr\" package.json 2>/dev/null && [ ! -x \"node_modules/.bin/$tr\" ]; then npm install --legacy-peer-deps \"$tr\" 2>/dev/null || true; fi; \\",
+        "      done; \\",
         "      if grep -q '\\\"build\\\"' package.json 2>/dev/null; then (npm run build 2>/dev/null || bun run build 2>/dev/null || true); fi ); }; \\",
         "    if [ -f package.json ] && command -v node >/dev/null 2>&1; then node_install .; fi; \\",
         "    for pkg in frontend/package.json server/package.json; do \\",
@@ -2438,12 +2472,33 @@ calibrations:
 """
 
 
+CPP_TEST_COMMAND = (
+    "cmake -S . -B build >/dev/null 2>&1 && cmake --build build -j4 && "
+    "ctest --test-dir build --output-on-failure"
+)
+
+
+def _has_python_signal(repo: Path) -> bool:
+    return any((repo / f).exists() for f in (
+        "pyproject.toml", "setup.py", "setup.cfg", "pytest.ini", "requirements.txt"))
+
+
+def _is_cpp_repo(repo: Path, reference_test_files: list[str]) -> bool:
+    if any(str(f).endswith((".cpp", ".cc", ".cxx", ".cu")) for f in reference_test_files):
+        return True
+    return (repo / "CMakeLists.txt").exists() and any(repo.rglob("*.cpp"))
+
+
 def choose_visible_command(
     command_guess: str,
     repo: Path,
     row: dict[str, str],
     reference_test_files: list[str],
 ) -> str:
+    # The CSV's command guess is often wrong for non-Python repos (e.g. C++ tasks guessed as
+    # "pytest"). When the repo is clearly C++ and has no Python, trust detection over the guess.
+    if _is_cpp_repo(repo, reference_test_files) and not _has_python_signal(repo):
+        return CPP_TEST_COMMAND
     command = strip_parenthetical(command_guess).strip()
     # Strip a sentence-ending period only — not glob patterns like ./...
     if command.endswith(".") and not command.endswith(".."):
@@ -2508,6 +2563,8 @@ def parse_make_targets(text: str) -> list[str]:
 def fallback_test_command(repo: Path) -> str:
     if (repo / "go.mod").exists():
         return "go test ./..."
+    if (repo / "CMakeLists.txt").exists() and not _has_python_signal(repo) and any(repo.rglob("*.cpp")):
+        return CPP_TEST_COMMAND
     if (repo / "package.json").exists():
         return "npm test"
     if (repo / "pyproject.toml").exists() or (repo / "pytest.ini").exists():

@@ -30,14 +30,16 @@ def judge_diff(
     *,
     task_id: str,
     submission_id: str,
+    model: str | None = None,
 ) -> CriterionResult:
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_key = _cache_key(task_id, submission_id, criterion.id, diff_text)
+    judge_model = model or os.environ.get("MODEL", DEFAULT_MODEL)
+    cache_key = _cache_key(task_id, submission_id, f"{judge_model}\0{criterion.id}", diff_text)
     cache_path = cache_dir / f"{cache_key}.json"
     if cache_path.exists():
         data = json.loads(cache_path.read_text(encoding="utf-8"))
     else:
-        data = _call_inference_judge(criterion, diff_text)
+        data = _call_inference_judge(criterion, diff_text, model=judge_model)
         cache_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
     score = float(data.get("score", 0.0))
     passed = bool(data.get("passed", score >= criterion.threshold))
@@ -50,13 +52,14 @@ def judge_diff(
         details=str(data.get("rationale", "")),
         method=criterion.method,
         category=criterion.category,
+        evaluated=True,
     )
 
 
-def _call_inference_judge(criterion: Criterion, diff_text: str) -> dict:
+def _call_inference_judge(criterion: Criterion, diff_text: str, *, model: str | None = None) -> dict:
     api_key = os.environ.get("QA_API_KEY")
     base_url = normalize_base_url(os.environ.get("QA_BASE_URL", DEFAULT_BASE_URL))
-    model = os.environ.get("MODEL", DEFAULT_MODEL)
+    model = model or os.environ.get("MODEL", DEFAULT_MODEL)
     if not api_key:
         raise LLMJudgeError("QA_API_KEY is required for llm_prompt criteria")
     prompt = criterion.prompt or criterion.description

@@ -34,6 +34,10 @@ class Criterion:
     denied_paths: tuple[str, ...] = ()
     max_files: int | None = None
     max_changed_lines: int | None = None
+    # Optional natural-language locality constraint for a scope criterion, e.g.
+    # "the change stays inside the floyd_warshall function". Graded by the LLM
+    # judge on top of the deterministic file/size checks.
+    semantic: str | None = None
     category: str = DEFAULT_CRITERION_CATEGORY
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -75,6 +79,10 @@ class CriterionResult:
     details: str = ""
     method: str = ""
     category: str = DEFAULT_CRITERION_CATEGORY
+    # When False, the criterion was not actually graded (e.g. an llm_prompt item
+    # the deterministic in-container verifier cannot score). Not-evaluated items
+    # are excluded from the weighted score instead of counting as a free pass.
+    evaluated: bool = True
 
 
 @dataclass(frozen=True)
@@ -106,6 +114,7 @@ class FrontierCodeResult:
                     "details": item.details,
                     "method": item.method,
                     "category": item.category,
+                    "evaluated": item.evaluated,
                 }
                 for item in self.criteria_results
             ],
@@ -126,14 +135,16 @@ class FrontierCodeResult:
                     details=str(item.get("details", "")),
                     method=str(item.get("method", "")),
                     category=str(item.get("category", DEFAULT_CRITERION_CATEGORY)),
+                    evaluated=bool(item.get("evaluated", True)),
                 )
             )
         raw_score = float(data.get("score", 0.0))
         criteria_t = tuple(criteria)
         # FrontierCode ground truth: a solution that fails any blocker criterion receives score 0.
-        blocker_failed = any(item.blocker and not item.passed for item in criteria_t) or bool(
-            data.get("blocker_failures")
-        )
+        # A blocker that was never evaluated fails closed.
+        blocker_failed = any(
+            item.blocker and (not item.passed or not item.evaluated) for item in criteria_t
+        ) or bool(data.get("blocker_failures"))
         score = 0.0 if blocker_failed else _weighted_score_from_criteria(criteria_t, raw_score)
         return cls(
             task_id=str(data.get("task_id", "")),
@@ -171,11 +182,12 @@ def _weighted_score_from_criteria(
     criteria: tuple[CriterionResult, ...],
     fallback: float,
 ) -> float:
-    weight_total = sum(max(item.weight, 0.0) for item in criteria)
+    scored = [item for item in criteria if item.evaluated]
+    weight_total = sum(max(item.weight, 0.0) for item in scored)
     if weight_total <= 0:
         return fallback
     return (
-        sum(_clamp_score(item.score) * max(item.weight, 0.0) for item in criteria)
+        sum(_clamp_score(item.score) * max(item.weight, 0.0) for item in scored)
         / weight_total
     )
 
