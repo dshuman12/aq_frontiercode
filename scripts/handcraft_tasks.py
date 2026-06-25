@@ -31,6 +31,7 @@ ARCHIVES = {
     "Drift": REPO_ROOT / "repositories/X8XXIPwxL5jBaLXhkNQ3__Drift.zip",
     "swarmsync": REPO_ROOT / "repositories/project_silver_repos/PxRGGPZ8XqTm8dLr9xeZ__SwarmSync_curated.zip",
     "cryograph": REPO_ROOT / "repositories/project_silver_repos/FyDhWvY9O9IA5cGn29RT__CryoGraph.zip",
+    "graphkit": REPO_ROOT / "repositories/project_silver_repos/YobEA4vMqpMCNfkj9FZk__graphkit.zip",
 }
 # hash prefixes reused for the regenerated _taskgen archives
 ARCHIVE_HASH = {
@@ -40,6 +41,7 @@ ARCHIVE_HASH = {
     "Drift": "X8XXIPwxL5jBaLXhkNQ3",
     "swarmsync": "PxRGGPZ8XqTm8dLr9xeZ",
     "cryograph": "FyDhWvY9O9IA5cGn29RT",
+    "graphkit": "YobEA4vMqpMCNfkj9FZk",
 }
 
 

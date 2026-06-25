@@ -1,0 +1,275 @@
+diff --git a/base/src/query/query.cpp b/repo/src/query/query.cpp
+index 34fc3c6..259db1b 100644
+--- a/base/src/query/query.cpp
++++ b/repo/src/query/query.cpp
+@@ -2,6 +2,7 @@
+ #include <algorithm>
+ #include <queue>
+ #include <stack>
++#include <unordered_map>
+ #include <unordered_set>
+ 
+ namespace cryo {
+@@ -132,8 +133,33 @@ std::vector<NodeId> find_path(const Graph& g, NodeId src, NodeId dst) {
+ }
+ 
+ size_t count_paths(const Graph& g, NodeId src, NodeId dst, size_t max_depth) {
+-    auto paths = all_paths(g, src, dst, max_depth);
+-    return paths.size();
++    if (!g.has_node(src) || !g.has_node(dst)) return 0;
++    if (src == dst) return 1;
++
++    size_t count = 0;
++    std::unordered_set<NodeId> on_path;
++    on_path.insert(src);
++
++    std::function<void(NodeId, size_t)> dfs = [&](NodeId cur, size_t depth) {
++        if (depth >= max_depth) return;
++
++        for (auto& e : g.out_edges(cur)) {
++            NodeId next = e.dst;
++            if (on_path.count(next)) continue;
++
++            if (next == dst) {
++                count++;
++                continue;
++            }
++
++            on_path.insert(next);
++            dfs(next, depth + 1);
++            on_path.erase(next);
++        }
++    };
++
++    dfs(src, 0);
++    return count;
+ }
+ 
+ std::vector<NodeId> common_neighbors(const Graph& g, NodeId a, NodeId b) {
+@@ -215,14 +241,29 @@ double jaccard_similarity(const Graph& g, NodeId a, NodeId b) {
+ 
+ size_t graph_diameter_approx(const Graph& g, size_t samples) {
+     auto ids = g.node_ids();
+-    if (ids.size() <= 1) return 0;
++    if (ids.size() <= 1 || samples == 0) return 0;
++
+     size_t max_dist = 0;
+     size_t step = std::max((size_t)1, ids.size() / samples);
+     for (size_t i = 0; i < ids.size(); i += step) {
+-        auto nhood = k_hop_neighbors(g, ids[i], ids.size());
+-        max_dist = std::max(max_dist, nhood.size());
++        std::queue<NodeId> q;
++        std::unordered_map<NodeId, size_t> dist;
++        q.push(ids[i]);
++        dist[ids[i]] = 0;
++
++        while (!q.empty()) {
++            NodeId cur = q.front();
++            q.pop();
++            max_dist = std::max(max_dist, dist[cur]);
++
++            for (auto& e : g.out_edges(cur)) {
++                if (dist.count(e.dst)) continue;
++                dist[e.dst] = dist[cur] + 1;
++                q.push(e.dst);
++            }
++        }
+     }
+     return max_dist;
+ }
+ 
+-} // namespace cryo
+\ No newline at end of file
++} // namespace cryo
+diff --git a/base/src/shortest_path/shortest_path.cpp b/repo/src/shortest_path/shortest_path.cpp
+index a8f6bd3..71d73dc 100644
+--- a/base/src/shortest_path/shortest_path.cpp
++++ b/repo/src/shortest_path/shortest_path.cpp
+@@ -155,36 +155,71 @@ bool APSPResult::reachable(NodeId src, NodeId dst) const {
+ APSPResult floyd_warshall(const Graph& g) {
+     APSPResult res;
+     auto ids = g.node_ids();
++    const size_t n = ids.size();
+ 
+-    for (auto u : ids) {
+-        for (auto v : ids) {
+-            res.dist[u][v] = (u == v) ? 0.0 : INF_WEIGHT;
+-            res.next[u][v] = INVALID_NODE;
+-        }
++    std::unordered_map<NodeId, size_t> index;
++    index.reserve(n);
++    for (size_t i = 0; i < n; i++) {
++        index[ids[i]] = i;
++    }
++
++    auto offset = [n](size_t row, size_t col) {
++        return row * n + col;
++    };
++
++    std::vector<double> dist(n * n, INF_WEIGHT);
++    std::vector<NodeId> next(n * n, INVALID_NODE);
++
++    for (size_t i = 0; i < n; i++) {
++        dist[offset(i, i)] = 0.0;
+     }
+ 
+-    for (auto u : ids) {
++    for (size_t i = 0; i < n; i++) {
++        NodeId u = ids[i];
+         for (auto& e : g.out_edges(u)) {
+-            if (e.weight < res.dist[u][e.dst]) {
+-                res.dist[u][e.dst] = e.weight;
+-                res.next[u][e.dst] = e.dst;
++            auto dst_it = index.find(e.dst);
++            if (dst_it == index.end()) continue;
++
++            size_t j = dst_it->second;
++            size_t edge_pos = offset(i, j);
++            if (e.weight < dist[edge_pos]) {
++                dist[edge_pos] = e.weight;
++                next[edge_pos] = e.dst;
+             }
+         }
+     }
+ 
+-    for (auto k : ids) {
+-        for (auto i : ids) {
+-            if (res.dist[i][k] == INF_WEIGHT) continue;
+-            for (auto j : ids) {
+-                if (res.dist[k][j] == INF_WEIGHT) continue;
+-                double through_k = res.dist[i][k] + res.dist[k][j];
+-                if (through_k < res.dist[i][j]) {
+-                    res.dist[i][j] = through_k;
+-                    res.next[i][j] = res.next[i][k];
++    for (size_t k = 0; k < n; k++) {
++        for (size_t i = 0; i < n; i++) {
++            size_t ik = offset(i, k);
++            if (dist[ik] == INF_WEIGHT) continue;
++
++            for (size_t j = 0; j < n; j++) {
++                size_t kj = offset(k, j);
++                if (dist[kj] == INF_WEIGHT) continue;
++
++                size_t ij = offset(i, j);
++                double through_k = dist[ik] + dist[kj];
++                if (through_k < dist[ij]) {
++                    dist[ij] = through_k;
++                    next[ij] = next[ik];
+                 }
+             }
+         }
+     }
++
++    for (size_t i = 0; i < n; i++) {
++        auto& row_dist = res.dist[ids[i]];
++        auto& row_next = res.next[ids[i]];
++        row_dist.reserve(n);
++        row_next.reserve(n);
++
++        for (size_t j = 0; j < n; j++) {
++            row_dist[ids[j]] = dist[offset(i, j)];
++            row_next[ids[j]] = next[offset(i, j)];
++        }
++    }
++
+     return res;
+ }
+ 
+@@ -203,4 +238,4 @@ size_t path_length(const std::vector<NodeId>& path) {
+     return path.size() > 0 ? path.size() - 1 : 0;
+ }
+ 
+-} // namespace cryo
+\ No newline at end of file
++} // namespace cryo
+diff --git a/base/tests/test_query.cpp b/repo/tests/test_query.cpp
+index dd3f3fa..0852d9b 100644
+--- a/base/tests/test_query.cpp
++++ b/repo/tests/test_query.cpp
+@@ -85,6 +85,18 @@ CRYO_TEST(Query, CountPaths) {
+     assert_eq(count_paths(g, 0, 3), (size_t)2);
+ }
+ 
++CRYO_TEST(Query, CountPathsSameNode) {
++    Graph g(GraphType::Directed);
++    g.add_node_with_id(0);
++    assert_eq(count_paths(g, 0, 0), (size_t)1);
++}
++
++CRYO_TEST(Query, CountPathsDisconnected) {
++    Graph g(GraphType::Directed);
++    g.add_node_with_id(0); g.add_node_with_id(1);
++    assert_eq(count_paths(g, 0, 1), (size_t)0);
++}
++
+ CRYO_TEST(Query, CommonNeighbors) {
+     Graph g(GraphType::Undirected);
+     for (int i = 0; i < 4; i++) g.add_node_with_id(i);
+@@ -138,4 +150,22 @@ CRYO_TEST(Query, KHopZero) {
+     g.add_edge(0, 1);
+     auto n = k_hop_neighbors(g, 0, 0);
+     assert_eq(n.size(), (size_t)0);
+-}
+\ No newline at end of file
++}
++
++CRYO_TEST(Query, GraphDiameterApproxPathGraph) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 5; i++) g.add_node_with_id(i);
++    for (int i = 0; i < 4; i++) g.add_edge(i, i + 1);
++    assert_eq(graph_diameter_approx(g, 10), (size_t)4);
++}
++
++CRYO_TEST(Query, GraphDiameterApproxCompleteGraph) {
++    Graph g(GraphType::Undirected);
++    for (int i = 0; i < 5; i++) g.add_node_with_id(i);
++    for (int i = 0; i < 5; i++) {
++        for (int j = i + 1; j < 5; j++) {
++            g.add_edge(i, j);
++        }
++    }
++    assert_eq(graph_diameter_approx(g, 10), (size_t)1);
++}
+diff --git a/base/tests/test_shortest_path.cpp b/repo/tests/test_shortest_path.cpp
+index 461ce91..1f90313 100644
+--- a/base/tests/test_shortest_path.cpp
++++ b/repo/tests/test_shortest_path.cpp
+@@ -184,6 +184,31 @@ CRYO_TEST(FloydWarshall, PathReconstruct) {
+     assert_eq(path[3], (NodeId)3);
+ }
+ 
++CRYO_TEST(FloydWarshall, MatchesDijkstraOnWeightedDirectedGraph) {
++    auto g = make_weighted_dag();
++    auto apsp = floyd_warshall(g);
++
++    for (auto src : g.node_ids()) {
++        auto sssp = dijkstra(g, src);
++        for (auto dst : g.node_ids()) {
++            assert_eq(apsp.reachable(src, dst), sssp.reachable(dst));
++
++            if (!sssp.reachable(dst)) {
++                assert_eq(apsp.dist[src][dst], INF_WEIGHT);
++                assert_true(apsp.path(src, dst).empty());
++                continue;
++            }
++
++            assert_near(apsp.dist[src][dst], sssp.dist[dst]);
++            auto path = apsp.path(src, dst);
++            assert_false(path.empty());
++            assert_eq(path.front(), src);
++            assert_eq(path.back(), dst);
++            assert_near(path_weight(g, path), sssp.dist[dst]);
++        }
++    }
++}
++
+ CRYO_TEST(PathWeight, BasicWeight) {
+     auto g = make_weighted_dag();
+     assert_near(path_weight(g, {0, 2, 1, 3, 4}), 2.0 + 1.0 + 5.0 + 3.0);
+@@ -198,4 +223,4 @@ CRYO_TEST(PathWeight, EmptyPath) {
+ CRYO_TEST(PathWeight, NoEdge) {
+     auto g = make_weighted_dag();
+     assert_near(path_weight(g, {0, 4}), INF_WEIGHT);
+-}
+\ No newline at end of file
++}

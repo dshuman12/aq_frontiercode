@@ -59,7 +59,88 @@ def extract_test_symbols(test_files: list[Path]) -> tuple[set[str], set[str]]:
                 modules.add(mod)
     return modules, symbols
 
-TEST_EXTS = (".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".java")
+TEST_EXTS = (".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".java", ".cpp", ".cc", ".cxx", ".h", ".hpp")
+
+CALL_STOP = {
+    # test frameworks
+    "assert", "asserteq", "assertequal", "asserttrue", "assertfalse", "assertraises",
+    "assertalmostequal", "assertnear", "assertgt", "assertin", "expect", "describe", "test",
+    "beforeeach", "aftereach", "require", "raises", "approx", "fixture", "parametrize",
+    # builtins / stdlib (Python, JS, C++) — calling these is never a "missing API"
+    "print", "range", "len", "list", "dict", "tuple", "set", "frozenset", "sorted", "reversed",
+    "enumerate", "super", "isinstance", "issubclass", "type", "repr", "format", "main", "zip",
+    "map", "filter", "int", "str", "float", "bool", "bytes", "bytearray", "abs", "min", "max",
+    "sum", "round", "any", "all", "open", "iter", "next", "getattr", "setattr", "hasattr", "vars",
+    "array", "object", "string", "number", "boolean", "math", "json", "promise", "parseint",
+    "parsefloat", "vector", "make_pair", "move", "to_string", "printf", "malloc", "free", "size",
+    # language keywords that can look like calls (`while (`, `if (`, `switch (`)
+    "while", "for", "if", "else", "elif", "switch", "case", "catch", "try", "return", "throw",
+    "new", "delete", "sizeof", "typeof", "await", "yield", "with", "do", "break", "continue",
+    "default", "using", "namespace", "struct", "enum", "static", "const", "void", "template",
+    # common exceptions / stdlib classes (calling them is not a "missing API")
+    "runtimeerror", "valueerror", "typeerror", "keyerror", "indexerror", "attributeerror",
+    "exception", "baseexception", "stopiteration", "notimplementederror", "filenotfounderror",
+    "oserror", "ioerror", "importerror", "assertionerror", "zerodivisionerror", "lookuperror",
+    "object", "property", "staticmethod", "classmethod", "callable", "simplenamespace",
+    "namedtuple", "defaultdict", "counter", "ordereddict", "deque", "datetime", "date",
+    "timedelta", "decimal", "fraction", "path", "lock", "thread", "queue", "enum", "dataclass",
+    "field", "error", "rangeerror", "regexp", "weakmap", "symbol", "proxy", "reflect",
+    # JS/TS keywords + Node/global builtins (often called bare or via destructured require)
+    "async", "function", "export", "import", "instanceof", "settimeout", "setinterval",
+    "cleartimeout", "clearinterval", "setimmediate", "queuemicrotask", "fetch", "require",
+    "isnan", "isfinite", "encodeuricomponent", "decodeuricomponent", "structuredclone",
+    "join", "resolve", "reject", "dirname", "basename", "extname", "normalize", "relative",
+    "mkdirsync", "readfilesync", "writefilesync", "existssync", "mkdtempsync", "rmsync",
+    "unlinksync", "statsync", "readdirsync", "issymboliclink", "isdirectory", "isfile",
+    "readfile", "writefile", "mkdir", "readdir", "stringify", "keys", "values", "entries",
+    "assign", "freeze", "tobe", "toequal", "tohavebeencalled", "tothrow", "tocontain",
+    "symlinksync", "tmpdir", "homedir", "cwd", "platform", "hostname", "rmdirsync",
+    "copyfilesync", "chmodsync", "realpathsync", "lstatsync", "appendfilesync",
+}
+
+def called_symbols(text: str) -> set[str]:
+    """Identifiers invoked as plain function calls in the test (potential APIs the agent must
+    provide). Excludes method calls (`.foo(`) and test-function definitions (`def test_...`)."""
+    out = set()
+    # `(^|[^.\w])` => not preceded by `.` (method) or another word char
+    for m in re.finditer(r"(?:^|[^.\w])([A-Za-z_][A-Za-z0-9_]{3,})\s*\(", text):
+        s = m.group(1)
+        if s.lower() in CALL_STOP or s.isupper() or s.lower().startswith("test"):
+            continue
+        out.add(s)
+    return out
+
+_DEF_PATTERNS = [
+    r"(?:^|\s)(?:async\s+)?def\s+([A-Za-z_]\w+)", r"(?:^|\s)class\s+([A-Za-z_]\w+)",
+    r"function\s+([A-Za-z_]\w+)", r"(?:const|let|var)\s+([A-Za-z_]\w+)\s*=",
+    r"func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w+)",
+    r"[A-Za-z_][\w:<>,&*\s]*\s+([A-Za-z_]\w+)\s*\([^;{)]*\)\s*[{;]",  # C/C++ func def/decl
+    r"#define\s+([A-Za-z_]\w+)",
+]
+
+def defined_symbols_from_text(text: str) -> set[str]:
+    defs = set()
+    for p in _DEF_PATTERNS:
+        for m in re.finditer(p, text):
+            defs.add(m.group(1))
+    return defs
+
+def defined_symbols(repo: Path) -> set[str]:
+    """Symbols already DEFINED in the base repo (so a test calling them is not a missing API).
+    Permissive superset across languages -- over-including only reduces false positives."""
+    defs = set()
+    exts = (".py", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".ts", ".tsx", ".js", ".jsx", ".go", ".java")
+    try:
+        for f in repo.rglob("*"):
+            if not f.is_file() or f.suffix not in exts or "node_modules" in f.parts:
+                continue
+            try:
+                defs |= defined_symbols_from_text(f.read_text(errors="ignore"))
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return defs
 
 def reference_test_files(task_dir: Path) -> list[Path]:
     root = task_dir / "tests" / "hidden" / "reference_tests"
@@ -98,10 +179,28 @@ def check_task(task_dir: Path) -> dict:
         if t.lower() in text or (toks and all(w in text for w in toks)):
             sym_covered.add(t)
     sym_cov = len(sym_covered) / len(targets) if targets else 1.0
+    # PRECISE signal: symbols the test CALLS that the fix INTRODUCES (not in base repo) and the
+    # instruction never names -> the agent can't know to implement them -> compile/import mis-gen
+    # (meridian/timewindow/cryograph class). Existing repo functions are excluded via base defs.
+    called, test_text = set(), ""
+    for f in test_files:
+        try:
+            t = f.read_text(errors="ignore")
+        except OSError:
+            continue
+        test_text += "\n" + t
+        called |= called_symbols(t)
+    # exclude symbols defined in base repo, in the test files themselves (helpers), OR imported
+    # from external libraries (`from x import Y` -> Y is a dependency, not an API the agent adds)
+    known = (defined_symbols(task_dir / "environment" / "repo")
+             | defined_symbols_from_text(test_text) | symbols)
+    required_new = {s for s in called if s not in known}
+    req_missing = sorted(s for s in required_new if s.lower() not in text)
     return {
         "task": task_dir.name, "status": "ok",
         "topic_cov": round(topic_cov, 2), "sym_cov": round(sym_cov, 2),
         "topics_missing": sorted(topics - topics_covered)[:8],
+        "req_missing": req_missing[:8], "n_req_missing": len(req_missing),
         "test_files": [f.name for f in test_files],
     }
 
@@ -123,13 +222,17 @@ def main() -> None:
                     dirs.append(cand); break
     results = [check_task(d) for d in sorted(set(dirs))]
     ok = [r for r in results if r.get("status") == "ok"]
-    # flag if the hidden tests' topics are largely absent from the instruction
-    flagged = [r for r in ok if r["topic_cov"] < args.threshold]
-    print(f"Checked {len(results)} task(s). FLAGGED (topic coverage < {args.threshold}): {len(flagged)}\n")
-    print(f"  {'task':40} {'topicCov':>8} {'symCov':>6}  topics the hidden tests need but the instruction omits")
-    for r in sorted(ok, key=lambda x: x["topic_cov"]):
-        mark = "  <-- MIS-GEN" if r["topic_cov"] < args.threshold else ""
-        print(f"  {r['task'][:40]:40} {r['topic_cov']:>8} {r['sym_cov']:>6}  {', '.join(r['topics_missing'][:6])}{mark}")
+    # MIS-GEN if topics are largely absent OR the test needs fix-introduced symbols the
+    # instruction never names (the precise, low-false-positive signal).
+    def is_misgen(r):
+        return r["topic_cov"] < args.threshold or r["n_req_missing"] > 0
+    flagged = [r for r in ok if is_misgen(r)]
+    print(f"Checked {len(results)} task(s). MIS-GEN flagged: {len(flagged)}\n")
+    print(f"  {'task':38} {'topicCov':>8} {'reqMiss':>7}  fix-introduced symbols the test needs but the instruction omits")
+    for r in sorted(ok, key=lambda x: (x["n_req_missing"] == 0, x["topic_cov"])):
+        mark = "  <-- MIS-GEN" if is_misgen(r) else ""
+        detail = ", ".join(r["req_missing"][:5]) or (", ".join(r["topics_missing"][:4]) if r["topic_cov"] < args.threshold else "")
+        print(f"  {r['task'][:38]:38} {r['topic_cov']:>8} {r['n_req_missing']:>7}  {detail}{mark}")
     other = [r for r in results if r.get("status") != "ok"]
     if other:
         print("\nnon-scored:", [(r['task'], r['status']) for r in other])

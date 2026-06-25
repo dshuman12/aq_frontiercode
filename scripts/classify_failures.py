@@ -30,6 +30,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # checked in priority order; first match wins
 PATTERNS = [
+    ("NO-TESTS-COLLECTED", [r"exit(?:ed)? 5\b", r"collected 0 items", r"no tests ran",
+                            r"No tests were found"]),
     ("INFRA", [r"exit(?:ed)? 127", r"command not found", r"JAVA_HOME", r"bun: not found",
                r"No module named '[^']+'", r"Cannot find module", r"gradlew", r"go: cannot find"]),
     ("GRADEABILITY", [r"passed on the broken base snapshot"]),

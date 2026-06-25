@@ -31,6 +31,7 @@ MODEL="${MODEL:-openai/gpt-5.5}"   # the frontier solver to calibrate against
 AGENT="${AGENT:-codex}"
 TRIALS="${TRIALS:-5}"              # ground truth: 5 trials per effort
 EFFORTS="${EFFORTS:-low medium high}"
+N_CONCURRENT="${N_CONCURRENT:-2}"  # cap concurrent trials -> avoid Docker 'compose up' saturation
 STAMP="$(date +%Y-%m-%d__%H-%M-%S)"
 JOBS_DIR="${JOBS_DIR:-runs/clean-$STAMP}"     # fresh dir -> no rerun pooling
 OUTPUT="${OUTPUT:-$JOBS_DIR/frontiercode-report}"
@@ -52,6 +53,7 @@ cmd=(python3 -m frontiercode_harness eval
   --model "$MODEL"
   "${effort_args[@]}"
   --trials "$TRIALS"
+  --n-concurrent "$N_CONCURRENT"
   --jobs-dir "$JOBS_DIR"
   --output "$OUTPUT")
 if ((${#task_args[@]})); then
