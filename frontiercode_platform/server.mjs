@@ -240,10 +240,12 @@ function clampScore(value) {
 
 function weightedCriterionScore(result) {
   const criteria = Array.isArray(result.criteria_results) ? result.criteria_results : [];
-  // FrontierCode ground truth: a solution that fails any blocker criterion receives score 0.
+  const isEvaluated = (criterion) => criterion.evaluated !== false;
+  // FrontierCode ground truth: a solution that fails any blocker criterion receives
+  // score 0. A blocker that was never evaluated fails closed.
   const blockerFailed =
     (Array.isArray(result.blocker_failures) && result.blocker_failures.length > 0) ||
-    criteria.some((criterion) => criterion.blocker && !criterion.passed);
+    criteria.some((criterion) => criterion.blocker && (!criterion.passed || !isEvaluated(criterion)));
   if (blockerFailed) return 0;
   const fallback = typeof result.score === "number" ? result.score : null;
   if (!criteria.length) return fallback;
@@ -251,6 +253,9 @@ function weightedCriterionScore(result) {
   let scoreTotal = 0;
   let weightedScore = 0;
   for (const criterion of criteria) {
+    // Not-evaluated criteria (e.g. llm_prompt items graded out-of-band) are excluded
+    // from the weighted average rather than counting as a free pass.
+    if (!isEvaluated(criterion)) continue;
     const weight = Math.max(0, numberOr(criterion.weight, 1));
     const score = clampScore(numberOr(criterion.score, criterion.passed ? 1 : 0));
     scoreTotal += weight;

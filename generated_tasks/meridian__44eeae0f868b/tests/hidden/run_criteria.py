@@ -149,7 +149,13 @@ def criteria(spec: dict | None = None) -> list[Criterion]:
 
 
 def evaluate_criterion(item: Criterion, repo: Path, script_dir: Path, spec: dict) -> dict:
+    evaluated = True
     if item.check is None:
+        # llm_prompt / advisory items are graded by the harness LLM judge, not by
+        # this deterministic in-container verifier. Record them as not-evaluated so
+        # they are excluded from the weighted score instead of counting as a free
+        # pass; the harness fills in real scores with `score --enable-llm`.
+        evaluated = False
         passed = True
         details = item.placeholder_details
     else:
@@ -161,21 +167,30 @@ def evaluate_criterion(item: Criterion, repo: Path, script_dir: Path, spec: dict
     return {
         "criterion_id": item.id,
         "passed": passed,
-        "score": 1.0 if passed else 0.0,
+        "score": 1.0 if (evaluated and passed) else 0.0,
         "blocker": item.blocker,
         "weight": item.weight,
         "details": details,
         "method": item.method,
         "category": item.category,
+        "evaluated": evaluated,
     }
 
 
 def build_result_doc(spec: dict, results: list[dict]) -> dict:
-    blocker_failures = [item["criterion_id"] for item in results if item["blocker"] and not item["passed"]]
+    # A blocker that was never evaluated fails closed.
+    blocker_failures = [
+        item["criterion_id"]
+        for item in results
+        if item["blocker"] and (not item["passed"] or not item.get("evaluated", True))
+    ]
     passed = not blocker_failures
-    score_total = sum(item["weight"] for item in results)
+    # Not-evaluated criteria (e.g. llm_prompt items graded out-of-band) are excluded
+    # from the weighted average instead of counting as a free pass.
+    scored = [item for item in results if item.get("evaluated", True)]
+    score_total = sum(item["weight"] for item in scored)
     score = (
-        sum(item["score"] * item["weight"] for item in results) / score_total
+        sum(item["score"] * item["weight"] for item in scored) / score_total
         if score_total
         else 0.0
     )
@@ -447,7 +462,7 @@ def file_hashes(root: Path) -> dict[str, str]:
 
 def iter_files(root: Path):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [name for name in dirnames if name not in SKIP_DIRS]
+        dirnames[:] = [name for name in dirnames if name not in SKIP_DIRS and not name.endswith((".egg-info", ".dist-info"))]
         for filename in filenames:
             path = Path(dirpath) / filename
             rel = path.relative_to(root).as_posix()

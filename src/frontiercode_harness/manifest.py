@@ -129,6 +129,7 @@ def _criterion_from_dict(raw: dict[str, Any], source_label: str) -> Criterion:
         denied_paths=tuple(str(item) for item in scope.get("denied_paths", raw.get("denied_paths", [])) or []),
         max_files=_optional_int(scope.get("max_files", raw.get("max_files"))),
         max_changed_lines=_optional_int(scope.get("max_changed_lines", raw.get("max_changed_lines"))),
+        semantic=_optional_str(scope.get("semantic", raw.get("semantic"))),
         category=category,
         metadata={
             key: value
@@ -148,6 +149,7 @@ def _criterion_from_dict(raw: dict[str, Any], source_label: str) -> Criterion:
                 "denied_paths",
                 "max_files",
                 "max_changed_lines",
+                "semantic",
                 "category",
             }
         },

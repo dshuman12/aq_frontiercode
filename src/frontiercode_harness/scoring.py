@@ -18,10 +18,12 @@ def aggregate_results(
             passed = False
             score = 0.0
             details = "Missing criterion result"
+            evaluated = True
         else:
             score = _clamp_score(float(raw.get("score", 1.0 if raw.get("passed") else 0.0)))
             passed = bool(raw.get("passed", score >= criterion.threshold))
             details = str(raw.get("details", ""))
+            evaluated = bool(raw.get("evaluated", True))
         criterion_results.append(
             CriterionResult(
                 criterion_id=criterion.id,
@@ -32,6 +34,7 @@ def aggregate_results(
                 details=details,
                 method=criterion.method,
                 category=criterion.category,
+                evaluated=evaluated,
             )
         )
     return aggregate_criterion_results(manifest.task_id, submission_id, tuple(criterion_results))
@@ -43,15 +46,21 @@ def aggregate_criterion_results(
     criterion_results: tuple[CriterionResult, ...],
     metadata: dict[str, Any] | None = None,
 ) -> FrontierCodeResult:
+    # A blocker that was never evaluated fails closed.
     blocker_failures = tuple(
-        item.criterion_id for item in criterion_results if item.blocker and not item.passed
+        item.criterion_id
+        for item in criterion_results
+        if item.blocker and (not item.passed or not item.evaluated)
     )
     passed = not blocker_failures
-    weight_total = sum(max(item.weight, 0.0) for item in criterion_results)
+    # Not-evaluated criteria are excluded from the weighted average rather than
+    # counting as a free pass.
+    scored = [item for item in criterion_results if item.evaluated]
+    weight_total = sum(max(item.weight, 0.0) for item in scored)
     if weight_total <= 0:
         score = 0.0
     else:
-        score = sum(_clamp_score(item.score) * max(item.weight, 0.0) for item in criterion_results)
+        score = sum(_clamp_score(item.score) * max(item.weight, 0.0) for item in scored)
         score = score / weight_total
     # FrontierCode ground truth: a solution that fails any blocker criterion receives score 0.
     if blocker_failures:
@@ -73,6 +82,7 @@ def criterion_result_from_bool(
     passed: bool,
     details: str = "",
     score: float | None = None,
+    evaluated: bool = True,
 ) -> CriterionResult:
     return CriterionResult(
         criterion_id=criterion.id,
@@ -83,6 +93,7 @@ def criterion_result_from_bool(
         details=details,
         method=criterion.method,
         category=criterion.category,
+        evaluated=evaluated,
     )
 
 

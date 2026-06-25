@@ -1,0 +1,11 @@
+{
+  "Archive Repo Root": ".",
+  "Base Commit": "1652602e3a76a5f2c837f45c2b4dec69fb89c077",
+  "Bug / Task Description": "The Clowdy serverless platform currently stores a function's source as a single inline `code` column on the `functions` table, so editing a function destroys its previous source and there is no way to inspect or roll back to an earlier revision. Introduce code versioning for functions. Persist every revision of a function's code in a dedicated version store keyed by (function_id, version), and track which revision is currently active on the function. Creating a function must record its initial code as version 1. Updating a function's code must append a new, higher-numbered version and make it active, while leaving previously stored versions unchanged; updating only metadata (name, description) must not create a new version. Expose endpoints to list a function's versions newest-first and to make a chosen existing version active again, which must change the code that subsequent reads of the function resolve. Code reads everywhere a function is executed or returned (create, get, list, update, invoke, gateway) must resolve the active version's code rather than a column on the function row. Requests for an unknown function or an unknown version must return 404, and version access must stay scoped to the function's owner.",
+  "Commit Subject": "added function_versions model + added api for frontend retrieval",
+  "Fix Commit": "10acca68f7596a43a8025243c2f7d577155ef9a7",
+  "Repository": "islamborghini/clowdy",
+  "Source Archive": "repositories/clowdy__function-versioning_taskgen.zip",
+  "Task ID": "clowdy__function-versioning",
+  "Visible Test Command Guess": "python -m pytest tests -q"
+}

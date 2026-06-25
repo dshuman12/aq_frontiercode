@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 import sys
 import threading
 import uuid
@@ -111,13 +112,79 @@ def build_parser() -> argparse.ArgumentParser:
         help="Retry count for failed Harbor launches. Agent/verifier failures still count as trials.",
     )
     eval_parser.add_argument("--output", type=Path, help="Optional report output directory.")
+    _add_llm_grading_arguments(eval_parser)
 
     score = subparsers.add_parser("score", help="Score an existing Harbor job directory.")
     score.add_argument("--jobs-dir", required=True, type=Path, help="Harbor job directory.")
+    score.add_argument(
+        "--path",
+        type=Path,
+        help="Task or dataset path for resolving rubric manifests (required for --enable-llm).",
+    )
     score.add_argument("--output", type=Path, help="Optional report output directory.")
     score.add_argument("--json", action="store_true", help="Print JSON instead of Markdown.")
+    _add_llm_grading_arguments(score)
 
     return parser
+
+
+def _add_llm_grading_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--enable-llm",
+        dest="enable_llm",
+        action="store_true",
+        default=None,
+        help=(
+            "Grade llm_prompt rubric items on each rollout with the LLM judge, "
+            "from the captured submission.patch. Default: on when QA_API_KEY is set."
+        ),
+    )
+    parser.add_argument(
+        "--no-enable-llm",
+        dest="enable_llm",
+        action="store_false",
+        help="Disable LLM rubric grading even when QA_API_KEY is set.",
+    )
+    parser.add_argument(
+        "--judge-model",
+        help="Model for the LLM rubric judge. Default: MODEL env or the built-in default.",
+    )
+
+
+def _resolve_enable_llm(value: bool | None) -> bool:
+    if value is not None:
+        return value
+    return bool(os.environ.get("QA_API_KEY"))
+
+
+def _apply_llm_grading(
+    results: list,
+    task_root: Path | None,
+    args: argparse.Namespace,
+) -> list:
+    if not _resolve_enable_llm(getattr(args, "enable_llm", None)):
+        return results
+    if task_root is None:
+        sys.stderr.write(
+            "LLM rubric grading requested but no task --path was provided; "
+            "llm_prompt items stay ungraded.\n"
+        )
+        return results
+    from .grading import grade_results_with_llm
+
+    graded, stats = grade_results_with_llm(
+        results,
+        task_root=task_root,
+        judge_model=getattr(args, "judge_model", None),
+    )
+    sys.stderr.write(
+        "LLM rubric grading: "
+        f"graded {stats['graded']}/{stats['trials']} trials "
+        f"(no_patch={stats['skipped_no_patch']}, "
+        f"no_manifest={stats['skipped_no_manifest']}, "
+        f"judge_errors={stats['judge_errors']})\n"
+    )
+    return graded
 
 
 def _nonempty_reasoning_effort(value: str) -> str:
@@ -200,8 +267,10 @@ def _run_eval(args: argparse.Namespace) -> int:
         _write_eval_manifest(output, run_manifest)
         sys.stderr.write("no FrontierCode results found in Harbor jobs directory\n")
         return 1
+    results = _apply_llm_grading(results, args.path, args)
     run_manifest["status"] = "completed"
     run_manifest["result_count"] = len(results)
+    run_manifest["llm_graded"] = _resolve_enable_llm(getattr(args, "enable_llm", None))
     output = args.output or args.jobs_dir / "frontiercode-report"
     write_results(output, results, run_manifest=run_manifest)
     passed = sum(1 for result in results if result.passed)
@@ -220,6 +289,7 @@ def _run_eval(args: argparse.Namespace) -> int:
 
 def _run_score(args: argparse.Namespace) -> int:
     results = load_frontiercode_results(args.jobs_dir)
+    results = _apply_llm_grading(results, getattr(args, "path", None), args)
     if args.output:
         write_results(args.output, results)
     if args.json:

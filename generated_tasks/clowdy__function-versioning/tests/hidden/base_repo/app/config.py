@@ -1,0 +1,44 @@
+"""
+Application configuration.
+
+Settings are loaded from a .env.local file (if it exists) and environment
+variables. Environment variables take precedence over the file.
+
+For local development, create backend/.env.local with your API keys.
+"""
+
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env.local from the backend directory (one level up from app/)
+_backend_dir = Path(__file__).resolve().parent.parent
+load_dotenv(_backend_dir / ".env.local")
+
+# SQLite database URL using the async aiosqlite driver.
+# Format: "sqlite+aiosqlite:///./filename.db"
+#   - "sqlite" = database type
+#   - "+aiosqlite" = async Python driver (lets us use await with DB queries)
+#   - "///./clowdy.db" = relative file path (three slashes = relative, four = absolute)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./clowdy.db")
+
+# The frontend URL, used to configure CORS (Cross-Origin Resource Sharing).
+# CORS is a browser security feature that blocks requests from one origin
+# (e.g. localhost:5173) to another (e.g. localhost:8000) unless explicitly allowed.
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+# Groq API key for the AI agent.
+# Get a free key at https://console.groq.com/keys
+# Set it in your environment: export GROQ_API_KEY="gsk_..."
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+
+# Clerk authentication settings.
+# Get these from your Clerk dashboard at https://dashboard.clerk.com
+# CLERK_JWKS_URL is your instance's JWKS endpoint for verifying JWTs.
+# Format: https://<your-instance>.clerk.accounts.dev/.well-known/jwks.json
+CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL", "")
+
+# Neon API key for managed PostgreSQL databases.
+# Get a free key at https://console.neon.tech/account/api-keys
+NEON_API_KEY = os.getenv("NEON_API_KEY", "")

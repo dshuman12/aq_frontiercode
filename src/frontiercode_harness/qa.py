@@ -90,10 +90,8 @@ def _validate_manifest(manifest: Manifest) -> list[str]:
             errors.append(f"Criterion {criterion.id}: {criterion.method} requires `command`")
         if criterion.method == "llm_prompt" and not (criterion.prompt or criterion.description):
             errors.append(f"Criterion {criterion.id}: llm_prompt requires `prompt` or description")
-        if criterion.method == "adaptive_classical":
-            errors.append(
-                f"Criterion {criterion.id}: adaptive_classical is registered but not implemented in v1"
-            )
+        if criterion.method == "adaptive_classical" and not criterion.command:
+            errors.append(f"Criterion {criterion.id}: adaptive_classical requires `command`")
     return errors
 
 
@@ -255,7 +253,7 @@ def _evaluate_patch_candidate(
             )
         criterion_results: list[CriterionResult] = []
         for criterion in manifest.criteria:
-            if criterion.method in {"classical", "command"}:
+            if criterion.method in {"classical", "command", "adaptive_classical"}:
                 criterion_results.append(_run_command_criterion(workdir, criterion))
             elif criterion.method == "reverse_classical":
                 criterion_results.append(
@@ -266,7 +264,17 @@ def _evaluate_patch_candidate(
                     )
                 )
             elif criterion.method == "scope":
-                criterion_results.append(evaluate_scope_from_patch(criterion, patch_text))
+                scope_result = evaluate_scope_from_patch(criterion, patch_text)
+                if scope_result.passed and criterion.semantic and enable_llm:
+                    scope_result = _evaluate_semantic_scope(
+                        criterion,
+                        patch_text,
+                        task_path=task_path,
+                        task_id=manifest.task_id,
+                        submission_id=submission_id,
+                        deterministic=scope_result,
+                    )
+                criterion_results.append(scope_result)
             elif criterion.method == "llm_prompt":
                 if enable_llm:
                     from .llm import judge_diff
@@ -355,6 +363,55 @@ def _timeout_output(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value
+
+
+def _evaluate_semantic_scope(
+    criterion: Criterion,
+    patch_text: str,
+    *,
+    task_path: Path,
+    task_id: str,
+    submission_id: str,
+    deterministic: CriterionResult,
+) -> CriterionResult:
+    """Layer the LLM locality check on top of a passing deterministic scope result."""
+    from .llm import LLMJudgeError, judge_diff
+
+    semantic_criterion = replace(
+        criterion,
+        prompt=(
+            "Score whether the change respects this locality constraint and makes no "
+            f"unrelated edits: {criterion.semantic}"
+        ),
+    )
+    try:
+        verdict = judge_diff(
+            semantic_criterion,
+            patch_text,
+            cache_dir=task_path / ".frontiercode-cache" / "llm",
+            task_id=task_id,
+            submission_id=submission_id,
+        )
+    except LLMJudgeError as exc:
+        return criterion_result_from_bool(
+            criterion,
+            False,
+            details=f"semantic scope check failed to run: {exc}",
+            evaluated=False,
+        )
+    passed = deterministic.passed and verdict.passed
+    details = f"{deterministic.details}; semantic: {verdict.details}".strip("; ")
+    return CriterionResult(
+        criterion_id=criterion.id,
+        passed=passed,
+        score=verdict.score if passed else 0.0,
+        blocker=criterion.blocker,
+        weight=criterion.weight,
+        details=details,
+        method=criterion.method,
+        category=criterion.category,
+        evaluated=True,
+    )
 
 
 def _run_command_criterion(workdir: Path, criterion: Criterion) -> CriterionResult:

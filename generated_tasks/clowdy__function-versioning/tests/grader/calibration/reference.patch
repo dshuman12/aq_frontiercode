@@ -1,0 +1,618 @@
+diff --git a/alembic/versions/009_add_function_versions.py b/alembic/versions/009_add_function_versions.py
+new file mode 100644
+index 0000000..1bbe417
+--- /dev/null
++++ b/alembic/versions/009_add_function_versions.py
+@@ -0,0 +1,69 @@
++"""Add function_versions table and migrate code from functions.
++
++Creates the function_versions table with composite PK (function_id, version).
++Migrates existing function code into version 1 rows, adds active_version
++column to functions, then drops the code column.
++
++Revision ID: 009
++Revises: 008
++Create Date: 2026-02-21
++"""
++
++from typing import Sequence, Union
++
++from alembic import op
++import sqlalchemy as sa
++
++revision: str = "009"
++down_revision: Union[str, None] = "008"
++branch_labels: Union[str, Sequence[str], None] = None
++depends_on: Union[str, Sequence[str], None] = None
++
++
++def upgrade() -> None:
++    # 1. Create the function_versions table
++    op.create_table(
++        "function_versions",
++        sa.Column("function_id", sa.String(), sa.ForeignKey("functions.id"), primary_key=True),
++        sa.Column("version", sa.Integer(), primary_key=True),
++        sa.Column("code", sa.Text(), nullable=False),
++        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
++        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
++    )
++
++    # 2. Add active_version column to functions (default 1)
++    op.add_column(
++        "functions",
++        sa.Column("active_version", sa.Integer(), nullable=False, server_default="1"),
++    )
++
++    # 3. Migrate existing code into function_versions as version 1
++    op.execute(
++        "INSERT INTO function_versions (function_id, version, code, created_at, updated_at) "
++        "SELECT id, 1, code, created_at, updated_at FROM functions"
++    )
++
++    # 4. Drop the code column from functions
++    op.drop_column("functions", "code")
++
++
++def downgrade() -> None:
++    # 1. Re-add code column to functions
++    op.add_column(
++        "functions",
++        sa.Column("code", sa.Text(), nullable=False, server_default=""),
++    )
++
++    # 2. Restore code from the active version
++    op.execute(
++        "UPDATE functions SET code = ("
++        "  SELECT fv.code FROM function_versions fv "
++        "  WHERE fv.function_id = functions.id AND fv.version = functions.active_version"
++        ")"
++    )
++
++    # 3. Drop active_version column
++    op.drop_column("functions", "active_version")
++
++    # 4. Drop function_versions table
++    op.drop_table("function_versions")
+diff --git a/app/models.py b/app/models.py
+index 9fce807..508dd33 100644
+--- a/app/models.py
++++ b/app/models.py
+@@ -93,7 +93,7 @@ class Function(Base):
+     )
+     name: Mapped[str] = mapped_column(index=True)
+     description: Mapped[str] = mapped_column(default="")
+-    code: Mapped[str] = mapped_column(Text)
++    active_version: Mapped[int] = mapped_column(default=1)
+     runtime: Mapped[str] = mapped_column(default="python")
+     status: Mapped[str] = mapped_column(default="active")
+     network_enabled: Mapped[bool] = mapped_column(default=False)
+@@ -107,6 +107,9 @@ class Function(Base):
+     routes: Mapped[list["Route"]] = relationship(
+         back_populates="function", cascade="all, delete-orphan"
+     )
++    versions: Mapped[list["FunctionVersion"]] = relationship(
++        back_populates="function", cascade="all, delete-orphan"
++    )
+ 
+ 
+ class Invocation(Base):
+@@ -175,6 +178,28 @@ class EnvVar(Base):
+     project: Mapped["Project"] = relationship(back_populates="env_vars")
+ 
+ 
++class FunctionVersion(Base):
++    """
++    A versioned snapshot of a function's code.
++
++    Each time a function's code is updated, a new version row is created.
++    The composite primary key (function_id, version) uniquely identifies
++    each version of a function's code.
++    """
++
++    __tablename__ = "function_versions"
++
++    function_id: Mapped[str] = mapped_column(
++        ForeignKey("functions.id"), primary_key=True
++    )
++    version: Mapped[int] = mapped_column(primary_key=True)
++    code: Mapped[str] = mapped_column(Text)
++    created_at: Mapped[datetime] = mapped_column(default=utcnow)
++    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
++
++    function: Mapped["Function"] = relationship(back_populates="versions")
++
++
+ class Route(Base):
+     """
+     An HTTP route that maps a method + path pattern to a function.
+diff --git a/app/routers/chat.py b/app/routers/chat.py
+index 1af071b..470d5b9 100644
+--- a/app/routers/chat.py
++++ b/app/routers/chat.py
+@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ from app.auth import get_current_user
+ from app.database import get_db
+-from app.models import Function, Invocation
++from app.models import Function, FunctionVersion, Invocation
+ from app.services.ai_agent import chat_with_tools
+ from app.services.invoke_service import InvokeService
+ 
+@@ -123,11 +123,19 @@ async def _tool_create_function(db: AsyncSession, user_id: str, args: dict) -> d
+     fn = Function(
+         name=args["name"],
+         description=args.get("description", ""),
+-        code=args["code"],
+         runtime="python",
+         user_id=user_id,
++        active_version=1,
+     )
+     db.add(fn)
++    await db.flush()
++
++    version = FunctionVersion(
++        function_id=fn.id,
++        version=1,
++        code=args["code"],
++    )
++    db.add(version)
+     await db.commit()
+     await db.refresh(fn)
+     return {
+@@ -176,8 +184,12 @@ async def _tool_invoke_function(
+     if fn.status != "active":
+         return {"error": f"Function is not active (status: {fn.status})"}
+ 
++    version = await db.get(FunctionVersion, (fn.id, fn.active_version))
++    if not version:
++        return {"error": "Active version not found"}
++
+     input_data = args.get("input", {})
+-    result = await invoke_service.invoke(code=fn.code, input_data=input_data)
++    result = await invoke_service.invoke(code=version.code, input_data=input_data)
+ 
+     # Save invocation log
+     invocation = Invocation(
+@@ -240,7 +252,14 @@ async def _tool_update_function(db: AsyncSession, user_id: str, args: dict) -> d
+     if "description" in args and args["description"]:
+         fn.description = args["description"]
+     if "code" in args and args["code"]:
+-        fn.code = args["code"]
++        new_version_num = fn.active_version + 1
++        new_version = FunctionVersion(
++            function_id=fn.id,
++            version=new_version_num,
++            code=args["code"],
++        )
++        db.add(new_version)
++        fn.active_version = new_version_num
+ 
+     await db.commit()
+     await db.refresh(fn)
+diff --git a/app/routers/functions.py b/app/routers/functions.py
+index 649e50c..0f7070d 100644
+--- a/app/routers/functions.py
++++ b/app/routers/functions.py
+@@ -17,8 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ from app.auth import get_current_user
+ from app.database import get_db
+-from app.models import Function
+-from app.schemas import FunctionCreate, FunctionResponse, FunctionUpdate
++from app.models import Function, FunctionVersion
++from app.schemas import (
++    FunctionCreate,
++    FunctionResponse,
++    FunctionUpdate,
++    FunctionVersionResponse,
++)
+ 
+ # Create a router with a URL prefix. All routes in this file will start
+ # with "/api/functions". The "tags" group these endpoints together in the
+@@ -26,6 +31,28 @@ from app.schemas import FunctionCreate, FunctionResponse, FunctionUpdate
+ router = APIRouter(prefix="/api/functions", tags=["functions"])
+ 
+ 
++async def _resolve_code(fn: Function, db: AsyncSession) -> str:
++    """Fetch the code for a function's active version."""
++    version = await db.get(FunctionVersion, (fn.id, fn.active_version))
++    return version.code if version else ""
++
++
++def _fn_response(fn: Function, code: str) -> dict:
++    """Build a FunctionResponse-compatible dict with versioned code."""
++    return {
++        "id": fn.id,
++        "name": fn.name,
++        "description": fn.description,
++        "code": code,
++        "active_version": fn.active_version,
++        "runtime": fn.runtime,
++        "status": fn.status,
++        "network_enabled": fn.network_enabled,
++        "created_at": fn.created_at,
++        "updated_at": fn.updated_at,
++    }
++
++
+ @router.post("", response_model=FunctionResponse)
+ async def create_function(
+     data: FunctionCreate,
+@@ -42,15 +69,23 @@ async def create_function(
+     fn = Function(
+         name=data.name,
+         description=data.description,
+-        code=data.code,
+         runtime=data.runtime,
+         user_id=user_id,
+         project_id=data.project_id,
++        active_version=1,
+     )
+-    db.add(fn)  # Stage the new row for insertion
+-    await db.commit()  # Write it to the database
+-    await db.refresh(fn)  # Reload from DB to get generated fields (id, timestamps)
+-    return fn
++    db.add(fn)
++    await db.flush()  # Generate fn.id before creating the version
++
++    version = FunctionVersion(
++        function_id=fn.id,
++        version=1,
++        code=data.code,
++    )
++    db.add(version)
++    await db.commit()
++    await db.refresh(fn)
++    return _fn_response(fn, data.code)
+ 
+ 
+ @router.get("", response_model=list[FunctionResponse])
+@@ -64,7 +99,10 @@ async def list_functions(
+         .where(Function.user_id == user_id)
+         .order_by(Function.created_at.desc())
+     )
+-    return result.scalars().all()
++    functions = result.scalars().all()
++    return [
++        _fn_response(fn, await _resolve_code(fn, db)) for fn in functions
++    ]
+ 
+ 
+ @router.get("/{function_id}", response_model=FunctionResponse)
+@@ -77,7 +115,8 @@ async def get_function(
+     fn = await db.get(Function, function_id)
+     if not fn or fn.user_id != user_id:
+         raise HTTPException(status_code=404, detail="Function not found")
+-    return fn
++    code = await _resolve_code(fn, db)
++    return _fn_response(fn, code)
+ 
+ 
+ @router.put("/{function_id}", response_model=FunctionResponse)
+@@ -98,13 +137,69 @@ async def update_function(
+     if not fn or fn.user_id != user_id:
+         raise HTTPException(status_code=404, detail="Function not found")
+ 
+-    # Loop through each provided field and update the model attribute
+-    for field, value in data.model_dump(exclude_unset=True).items():
++    updates = data.model_dump(exclude_unset=True)
++    new_code = updates.pop("code", None)
++
++    # Update non-code fields on the function
++    for field, value in updates.items():
+         setattr(fn, field, value)
+ 
++    # If code changed, create a new version
++    if new_code is not None:
++        new_version_num = fn.active_version + 1
++        version = FunctionVersion(
++            function_id=fn.id,
++            version=new_version_num,
++            code=new_code,
++        )
++        db.add(version)
++        fn.active_version = new_version_num
++
++    await db.commit()
++    await db.refresh(fn)
++    code = await _resolve_code(fn, db)
++    return _fn_response(fn, code)
++
++
++@router.get("/{function_id}/versions", response_model=list[FunctionVersionResponse])
++async def list_versions(
++    function_id: str,
++    user_id: str = Depends(get_current_user),
++    db: AsyncSession = Depends(get_db),
++):
++    """List all versions for a function, newest first."""
++    fn = await db.get(Function, function_id)
++    if not fn or fn.user_id != user_id:
++        raise HTTPException(status_code=404, detail="Function not found")
++
++    result = await db.execute(
++        select(FunctionVersion)
++        .where(FunctionVersion.function_id == function_id)
++        .order_by(FunctionVersion.version.desc())
++    )
++    return result.scalars().all()
++
++
++@router.put("/{function_id}/versions/{version}", response_model=FunctionResponse)
++async def set_active_version(
++    function_id: str,
++    version: int,
++    user_id: str = Depends(get_current_user),
++    db: AsyncSession = Depends(get_db),
++):
++    """Set a specific version as the active version."""
++    fn = await db.get(Function, function_id)
++    if not fn or fn.user_id != user_id:
++        raise HTTPException(status_code=404, detail="Function not found")
++
++    fv = await db.get(FunctionVersion, (function_id, version))
++    if not fv:
++        raise HTTPException(status_code=404, detail="Version not found")
++
++    fn.active_version = version
+     await db.commit()
+     await db.refresh(fn)
+-    return fn
++    return _fn_response(fn, fv.code)
+ 
+ 
+ @router.delete("/{function_id}")
+diff --git a/app/routers/gateway.py b/app/routers/gateway.py
+index ea132dc..8d9337f 100644
+--- a/app/routers/gateway.py
++++ b/app/routers/gateway.py
+@@ -26,7 +26,7 @@ from sqlalchemy import select
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ from app.database import get_db
+-from app.models import Function, Invocation, Project, Route
++from app.models import Function, FunctionVersion, Invocation, Project, Route
+ from app.services.context import resolve_context
+ 
+ router = APIRouter(prefix="/api/gateway", tags=["gateway"])
+@@ -170,13 +170,21 @@ async def _handle_gateway(
+         "body": body,
+     }
+ 
+-    # Step 6: Resolve execution context (env vars, custom image, DATABASE_URL)
++    # Step 6: Resolve active version's code
++    version = await db.get(FunctionVersion, (fn.id, fn.active_version))
++    if not version:
++        return JSONResponse(
++            status_code=500,
++            content={"error": "Active version not found"},
++        )
++
++    # Step 7: Resolve execution context (env vars, custom image, DATABASE_URL)
+     ctx = await resolve_context(project.id, db)
+ 
+-    # Step 7: Run the function via InvokeService
++    # Step 8: Run the function via InvokeService
+     invoke_service = request.app.state.invoke_service
+     result = await invoke_service.invoke(
+-        code=fn.code,
++        code=version.code,
+         input_data=event,
+         env_vars=ctx.env_vars,
+         function_name=fn.name,
+diff --git a/app/routers/invoke.py b/app/routers/invoke.py
+index c257d39..0d76294 100644
+--- a/app/routers/invoke.py
++++ b/app/routers/invoke.py
+@@ -21,7 +21,7 @@ from sqlalchemy import select
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ from app.database import get_db
+-from app.models import Function, Invocation
++from app.models import Function, FunctionVersion, Invocation
+ from app.schemas import InvokeRequest, InvocationResponse
+ from app.services.context import resolve_context
+ 
+@@ -68,13 +68,18 @@ async def invoke_function(
+             detail=f"Function is not active (status: {fn.status})",
+         )
+ 
+-    # Step 3: Resolve execution context (env vars, custom image, DATABASE_URL)
++    # Step 3: Resolve the active version's code
++    version = await db.get(FunctionVersion, (fn.id, fn.active_version))
++    if not version:
++        raise HTTPException(status_code=500, detail="Active version not found")
++
++    # Step 4: Resolve execution context (env vars, custom image, DATABASE_URL)
+     ctx = await resolve_context(fn.project_id, db)
+ 
+-    # Step 4: Run via InvokeService (handles warm/cold container path)
++    # Step 5: Run via InvokeService (handles warm/cold container path)
+     invoke_service = request.app.state.invoke_service
+     result = await invoke_service.invoke(
+-        code=fn.code,
++        code=version.code,
+         input_data=body.input,
+         env_vars=ctx.env_vars,
+         function_name=fn.name,
+diff --git a/app/schemas.py b/app/schemas.py
+index b90c1ad..cb55fac 100644
+--- a/app/schemas.py
++++ b/app/schemas.py
+@@ -100,7 +100,8 @@ class FunctionResponse(BaseModel):
+     id: str
+     name: str
+     description: str
+-    code: str
++    code: str = ""
++    active_version: int = 1
+     runtime: str
+     status: str
+     network_enabled: bool = False
+@@ -110,6 +111,21 @@ class FunctionResponse(BaseModel):
+     model_config = {"from_attributes": True}
+ 
+ 
++# --- Function version schemas ---
++
++
++class FunctionVersionResponse(BaseModel):
++    """Schema for function version data returned by the API."""
++
++    function_id: str
++    version: int
++    code: str
++    created_at: datetime
++    updated_at: datetime
++
++    model_config = {"from_attributes": True}
++
++
+ # --- Environment variable schemas ---
+ 
+ 
+diff --git a/tests/test_function_versions.py b/tests/test_function_versions.py
+new file mode 100644
+index 0000000..b99063b
+--- /dev/null
++++ b/tests/test_function_versions.py
+@@ -0,0 +1,139 @@
++"""Acceptance tests for function code versioning.
++
++These exercise the version-tracking behavior of the functions API by calling the
++router coroutines directly against an isolated in-memory SQLite database, so no
++Clerk auth, Alembic migrations, or HTTP transport are needed. Each test runs on a
++fresh database (StaticPool keeps the in-memory connection alive for the run).
++"""
++
++import asyncio
++import os
++
++# Keep the app's module-level engine off the real clowdy.db file when app.database
++# is imported transitively by the routers.
++os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite://")
++
++import pytest
++from fastapi import HTTPException
++from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
++from sqlalchemy.pool import StaticPool
++
++from app.models import Base
++from app.routers import functions as fn_router
++from app.schemas import FunctionCreate, FunctionUpdate
++
++USER = "user_test"
++OTHER_USER = "user_other"
++
++
++def _run(scenario):
++    """Run an async scenario(db) on a fresh in-memory database."""
++
++    async def _main():
++        engine = create_async_engine(
++            "sqlite+aiosqlite://",
++            poolclass=StaticPool,
++            connect_args={"check_same_thread": False},
++        )
++        async with engine.begin() as conn:
++            await conn.run_sync(Base.metadata.create_all)
++        try:
++            async with async_sessionmaker(
++                engine, class_=AsyncSession, expire_on_commit=False
++            )() as session:
++                return await scenario(session)
++        finally:
++            await engine.dispose()
++
++    return asyncio.run(_main())
++
++
++async def _create(db, name="greeter", code="print('v1')"):
++    return await fn_router.create_function(
++        FunctionCreate(name=name, code=code), user_id=USER, db=db
++    )
++
++
++def test_create_records_version_one():
++    async def scenario(db):
++        created = await _create(db, code="print('v1')")
++        assert created["active_version"] == 1
++        assert created["code"] == "print('v1')"
++        versions = await fn_router.list_versions(created["id"], user_id=USER, db=db)
++        assert [v.version for v in versions] == [1]
++        assert versions[0].code == "print('v1')"
++
++    _run(scenario)
++
++
++def test_update_code_creates_new_version_and_preserves_old():
++    async def scenario(db):
++        created = await _create(db, code="print('v1')")
++        fid = created["id"]
++        updated = await fn_router.update_function(
++            fid, FunctionUpdate(code="print('v2')"), user_id=USER, db=db
++        )
++        # A code change bumps the active version and surfaces the new code.
++        assert updated["active_version"] == 2
++        assert updated["code"] == "print('v2')"
++        # Both versions are retained, newest first, with their original code intact.
++        versions = await fn_router.list_versions(fid, user_id=USER, db=db)
++        assert [v.version for v in versions] == [2, 1]
++        code_by_version = {v.version: v.code for v in versions}
++        assert code_by_version[1] == "print('v1')"
++        assert code_by_version[2] == "print('v2')"
++
++    _run(scenario)
++
++
++def test_metadata_only_update_does_not_create_version():
++    async def scenario(db):
++        created = await _create(db, code="print('v1')")
++        fid = created["id"]
++        updated = await fn_router.update_function(
++            fid, FunctionUpdate(description="now documented"), user_id=USER, db=db
++        )
++        assert updated["description"] == "now documented"
++        assert updated["active_version"] == 1
++        versions = await fn_router.list_versions(fid, user_id=USER, db=db)
++        assert [v.version for v in versions] == [1]
++
++    _run(scenario)
++
++
++def test_set_active_version_rolls_back_resolved_code():
++    async def scenario(db):
++        created = await _create(db, code="print('v1')")
++        fid = created["id"]
++        await fn_router.update_function(
++            fid, FunctionUpdate(code="print('v2')"), user_id=USER, db=db
++        )
++        rolled = await fn_router.set_active_version(fid, 1, user_id=USER, db=db)
++        assert rolled["active_version"] == 1
++        assert rolled["code"] == "print('v1')"
++        # A subsequent read resolves the rolled-back version's code.
++        fetched = await fn_router.get_function(fid, user_id=USER, db=db)
++        assert fetched["active_version"] == 1
++        assert fetched["code"] == "print('v1')"
++
++    _run(scenario)
++
++
++def test_set_active_version_unknown_version_raises_404():
++    async def scenario(db):
++        created = await _create(db)
++        with pytest.raises(HTTPException) as exc:
++            await fn_router.set_active_version(created["id"], 99, user_id=USER, db=db)
++        assert exc.value.status_code == 404
++
++    _run(scenario)
++
++
++def test_versions_are_scoped_to_owner():
++    async def scenario(db):
++        created = await _create(db)
++        with pytest.raises(HTTPException) as exc:
++            await fn_router.list_versions(created["id"], user_id=OTHER_USER, db=db)
++        assert exc.value.status_code == 404
++
++    _run(scenario)

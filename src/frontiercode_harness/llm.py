@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -30,14 +31,16 @@ def judge_diff(
     *,
     task_id: str,
     submission_id: str,
+    model: str | None = None,
 ) -> CriterionResult:
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_key = _cache_key(task_id, submission_id, criterion.id, diff_text)
+    judge_model = model or os.environ.get("MODEL", DEFAULT_MODEL)
+    cache_key = _cache_key(task_id, submission_id, f"{judge_model}\0{criterion.id}", diff_text)
     cache_path = cache_dir / f"{cache_key}.json"
     if cache_path.exists():
         data = json.loads(cache_path.read_text(encoding="utf-8"))
     else:
-        data = _call_inference_judge(criterion, diff_text)
+        data = _call_inference_judge(criterion, diff_text, model=judge_model)
         cache_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
     score = float(data.get("score", 0.0))
     passed = bool(data.get("passed", score >= criterion.threshold))
@@ -50,23 +53,31 @@ def judge_diff(
         details=str(data.get("rationale", "")),
         method=criterion.method,
         category=criterion.category,
+        evaluated=True,
     )
 
 
-def _call_inference_judge(criterion: Criterion, diff_text: str) -> dict:
+def _call_inference_judge(criterion: Criterion, diff_text: str, *, model: str | None = None) -> dict:
     api_key = os.environ.get("QA_API_KEY")
     base_url = normalize_base_url(os.environ.get("QA_BASE_URL", DEFAULT_BASE_URL))
-    model = os.environ.get("MODEL", DEFAULT_MODEL)
+    model = model or os.environ.get("MODEL", DEFAULT_MODEL)
     if not api_key:
         raise LLMJudgeError("QA_API_KEY is required for llm_prompt criteria")
     prompt = criterion.prompt or criterion.description
     payload = build_inference_payload(
         model=model,
         system_prompt=(
-            "You are a strict FrontierCode rubric judge. Return only JSON "
-            "with keys: passed (boolean), score (0 to 1), rationale (string)."
+            "You are a strict FrontierCode rubric judge. You grade a code diff "
+            "against one rubric item. Respond with ONLY a single JSON object and no "
+            "other text, markdown, or code fences. The object must have exactly these "
+            'keys: "passed" (boolean), "score" (number 0 to 1), "rationale" (string). '
+            'Example: {"passed": true, "score": 0.8, "rationale": "..."}'
         ),
-        user_prompt=f"Rubric:\n{prompt}\n\nDiff:\n{diff_text}",
+        user_prompt=(
+            f"Rubric item:\n{prompt}\n\nDiff under review:\n{diff_text}\n\n"
+            'Return ONLY the JSON object, e.g. {"passed": true, "score": 0.8, '
+            '"rationale": "concise reason"}.'
+        ),
         feature="rubric-judge",
     )
     request = urllib.request.Request(
@@ -86,13 +97,27 @@ def _call_inference_judge(criterion: Criterion, diff_text: str) -> dict:
         content = extract_inference_content(response_data)
     except ValueError as exc:
         raise LLMJudgeError(str(exc)) from exc
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise LLMJudgeError(f"LLM judge returned non-JSON content: {content[:200]}") from exc
-    if not isinstance(parsed, dict):
-        raise LLMJudgeError("LLM judge JSON response must be an object")
-    return parsed
+    return _extract_judge_json(content)
+
+
+def _extract_judge_json(content: str) -> dict:
+    """Parse the judge response, tolerating prose/markdown around the JSON object."""
+    candidates: list[str] = [content]
+    fenced = re.search(r"```(?:json)?\s*(.*?)```", content, flags=re.DOTALL | re.IGNORECASE)
+    if fenced:
+        candidates.append(fenced.group(1))
+    # Greedy {...} captures the outermost object even with trailing prose.
+    brace = re.search(r"\{.*\}", content, flags=re.DOTALL)
+    if brace:
+        candidates.append(brace.group(0))
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    raise LLMJudgeError(f"LLM judge returned non-JSON content: {content[:200]}")
 
 
 def _cache_key(task_id: str, submission_id: str, criterion_id: str, diff_text: str) -> str:
