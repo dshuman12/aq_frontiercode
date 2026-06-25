@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -66,10 +67,17 @@ def _call_inference_judge(criterion: Criterion, diff_text: str, *, model: str | 
     payload = build_inference_payload(
         model=model,
         system_prompt=(
-            "You are a strict FrontierCode rubric judge. Return only JSON "
-            "with keys: passed (boolean), score (0 to 1), rationale (string)."
+            "You are a strict FrontierCode rubric judge. You grade a code diff "
+            "against one rubric item. Respond with ONLY a single JSON object and no "
+            "other text, markdown, or code fences. The object must have exactly these "
+            'keys: "passed" (boolean), "score" (number 0 to 1), "rationale" (string). '
+            'Example: {"passed": true, "score": 0.8, "rationale": "..."}'
         ),
-        user_prompt=f"Rubric:\n{prompt}\n\nDiff:\n{diff_text}",
+        user_prompt=(
+            f"Rubric item:\n{prompt}\n\nDiff under review:\n{diff_text}\n\n"
+            'Return ONLY the JSON object, e.g. {"passed": true, "score": 0.8, '
+            '"rationale": "concise reason"}.'
+        ),
         feature="rubric-judge",
     )
     request = urllib.request.Request(
@@ -89,13 +97,27 @@ def _call_inference_judge(criterion: Criterion, diff_text: str, *, model: str | 
         content = extract_inference_content(response_data)
     except ValueError as exc:
         raise LLMJudgeError(str(exc)) from exc
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise LLMJudgeError(f"LLM judge returned non-JSON content: {content[:200]}") from exc
-    if not isinstance(parsed, dict):
-        raise LLMJudgeError("LLM judge JSON response must be an object")
-    return parsed
+    return _extract_judge_json(content)
+
+
+def _extract_judge_json(content: str) -> dict:
+    """Parse the judge response, tolerating prose/markdown around the JSON object."""
+    candidates: list[str] = [content]
+    fenced = re.search(r"```(?:json)?\s*(.*?)```", content, flags=re.DOTALL | re.IGNORECASE)
+    if fenced:
+        candidates.append(fenced.group(1))
+    # Greedy {...} captures the outermost object even with trailing prose.
+    brace = re.search(r"\{.*\}", content, flags=re.DOTALL)
+    if brace:
+        candidates.append(brace.group(0))
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    raise LLMJudgeError(f"LLM judge returned non-JSON content: {content[:200]}")
 
 
 def _cache_key(task_id: str, submission_id: str, criterion_id: str, diff_text: str) -> str:

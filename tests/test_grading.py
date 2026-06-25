@@ -72,6 +72,34 @@ class EvaluatedExclusionTests(unittest.TestCase):
         self.assertAlmostEqual(reloaded.score, 1.0)
 
 
+class JudgeJsonParsingTests(unittest.TestCase):
+    def test_plain_json(self) -> None:
+        from frontiercode_harness.llm import _extract_judge_json
+
+        self.assertEqual(
+            _extract_judge_json('{"passed": true, "score": 0.5, "rationale": "x"}'),
+            {"passed": True, "score": 0.5, "rationale": "x"},
+        )
+
+    def test_prose_wrapped_json(self) -> None:
+        from frontiercode_harness.llm import _extract_judge_json
+
+        content = 'Here is my verdict.\n{"passed": false, "score": 0.2, "rationale": "weak"}\nDone.'
+        self.assertEqual(_extract_judge_json(content)["score"], 0.2)
+
+    def test_fenced_json(self) -> None:
+        from frontiercode_harness.llm import _extract_judge_json
+
+        content = '```json\n{"passed": true, "score": 1, "rationale": "ok"}\n```'
+        self.assertTrue(_extract_judge_json(content)["passed"])
+
+    def test_no_json_raises(self) -> None:
+        from frontiercode_harness.llm import LLMJudgeError, _extract_judge_json
+
+        with self.assertRaises(LLMJudgeError):
+            _extract_judge_json("I cannot grade this.")
+
+
 class GradeResultsWithLlmTests(unittest.TestCase):
     def _build_task(self, root: Path) -> Path:
         task = root / "demo"
