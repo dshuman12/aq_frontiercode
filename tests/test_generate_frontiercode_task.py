@@ -26,6 +26,38 @@ class GenerateFrontierCodeTaskTests(unittest.TestCase):
         self.assertNotIn("--qa-status-sheet-url", help_text)
         self.assertNotIn("GOOGLE_SHEETS_ACCESS_TOKEN", help_text)
 
+    def test_instruction_footer_marks_task_as_pull_request(self) -> None:
+        instruction = """# Task description
+
+Fix the parser behavior while preserving existing output contracts.
+
+# Test guidelines
+
+Run the visible tests for the parser.
+
+# Lint guidelines
+
+Run the repository formatter if available.
+
+# Style guidelines
+
+Keep the patch focused on the parser behavior.
+"""
+
+        updated = generate_frontiercode_task.append_pr_scope_instruction(instruction)
+
+        self.assertIn(generate_frontiercode_task.PR_SCOPE_INSTRUCTION, updated)
+        self.assertEqual(updated.count(generate_frontiercode_task.PR_SCOPE_INSTRUCTION), 1)
+        self.assertIn("pull request", updated)
+        self.assertIn("original repository", updated)
+        self.assertIn("generated or build artifacts", updated)
+        self.assertEqual(
+            generate_frontiercode_task.append_pr_scope_instruction(updated).count(
+                generate_frontiercode_task.PR_SCOPE_INSTRUCTION
+            ),
+            1,
+        )
+
     def test_run_criteria_template_includes_advisory_rubric_items(self) -> None:
         module = types.ModuleType("generated_run_criteria_for_test")
         sys.modules[module.__name__] = module
