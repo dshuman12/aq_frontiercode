@@ -1,8 +1,9 @@
 import { createServer } from "node:http";
-import { promises as fs } from "node:fs";
+import { createReadStream, promises as fs } from "node:fs";
 import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -20,6 +21,11 @@ const TASK_TEST_FILES = [
   "tests/test.sh",
   "tests/hidden/run_criteria.py"
 ];
+const MAX_ARTIFACT_INLINE_BYTES = Number(process.env.FRONTIERCODE_MAX_ARTIFACT_INLINE_BYTES || 1_000_000);
+const MAX_PATCH_SCAN_BYTES = Number(process.env.FRONTIERCODE_MAX_PATCH_SCAN_BYTES || 512_000);
+const MAX_PATCH_FILE_NAMES = Number(process.env.FRONTIERCODE_MAX_PATCH_FILE_NAMES || 200);
+const MAX_TRAJECTORY_OVERVIEW_BYTES = Number(process.env.FRONTIERCODE_MAX_TRAJECTORY_OVERVIEW_BYTES || 1_000_000);
+const MAX_TASK_TEST_FILE_BYTES = Number(process.env.FRONTIERCODE_MAX_TASK_TEST_FILE_BYTES || 2_000_000);
 
 const TEXT_TYPES = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -64,6 +70,15 @@ async function exists(filePath) {
   }
 }
 
+async function statFile(filePath) {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.isFile() ? stat : null;
+  } catch {
+    return null;
+  }
+}
+
 async function readJson(filePath) {
   return JSON.parse(await fs.readFile(filePath, "utf8"));
 }
@@ -71,6 +86,21 @@ async function readJson(filePath) {
 async function readTextIfExists(filePath) {
   if (!(await exists(filePath))) return "";
   return fs.readFile(filePath, "utf8");
+}
+
+async function readTextWithinLimit(filePath, maxBytes = MAX_ARTIFACT_INLINE_BYTES) {
+  const stat = await statFile(filePath);
+  if (!stat) return { text: "", missing: true, tooLarge: false, sizeBytes: 0, maxBytes };
+  if (stat.size > maxBytes) {
+    return { text: "", missing: false, tooLarge: true, sizeBytes: stat.size, maxBytes };
+  }
+  return {
+    text: await fs.readFile(filePath, "utf8"),
+    missing: false,
+    tooLarge: false,
+    sizeBytes: stat.size,
+    maxBytes
+  };
 }
 
 async function walkFiles(dir, matcher, output = []) {
@@ -89,21 +119,68 @@ async function walkFiles(dir, matcher, output = []) {
 }
 
 function patchStats(patchText) {
-  const stats = { files: 0, additions: 0, deletions: 0 };
+  const stats = { files: 0, additions: 0, deletions: 0, fileNames: [], fileNamesTruncated: false, sizeBytes: patchText.length, scannedBytes: patchText.length, tooLarge: false };
   const files = new Set();
   for (const line of patchText.split(/\r?\n/)) {
-    if (line.startsWith("diff --git ")) {
-      const parts = line.split(" ");
-      if (parts[2]) files.add(parts[2].replace(/^a\//, ""));
-    } else if (line.startsWith("--- a/")) {
-      files.add(line.slice(6).trim());
-    } else if (line.startsWith("+++ b/")) {
-      files.add(line.slice(6).trim());
-    }
-    if (line.startsWith("+") && !line.startsWith("+++")) stats.additions += 1;
-    if (line.startsWith("-") && !line.startsWith("---")) stats.deletions += 1;
+    updatePatchStatsFromLine(stats, files, line);
   }
   stats.files = files.size;
+  stats.fileNames = [...files].sort();
+  return stats;
+}
+
+function normalizePatchFileName(value) {
+  const name = String(value || "").trim().replace(/^"|"$/g, "");
+  if (!name || name === "/dev/null") return "";
+  return name.replace(/^[ab]\//, "");
+}
+
+function addPatchFile(stats, files, value) {
+  const name = normalizePatchFileName(value);
+  if (!name || files.has(name)) return;
+  if (files.size >= MAX_PATCH_FILE_NAMES) {
+    stats.fileNamesTruncated = true;
+    return;
+  }
+  files.add(name);
+}
+
+function updatePatchStatsFromLine(stats, files, line) {
+  if (line.startsWith("diff --git ")) {
+    const match = line.match(/^diff --git\s+(?:a\/)?(.+?)\s+(?:b\/)?(.+)$/);
+    if (match) addPatchFile(stats, files, match[2] || match[1]);
+  } else if (line.startsWith("+++ ")) {
+    addPatchFile(stats, files, line.slice(4));
+  }
+  if (line.startsWith("+") && !line.startsWith("+++")) stats.additions += 1;
+  if (line.startsWith("-") && !line.startsWith("---")) stats.deletions += 1;
+}
+
+async function patchStatsFromFile(filePath) {
+  const stat = await statFile(filePath);
+  const stats = { files: 0, additions: 0, deletions: 0, fileNames: [], fileNamesTruncated: false, sizeBytes: stat?.size || 0, scannedBytes: 0, tooLarge: false };
+  if (!stat) return stats;
+
+  stats.tooLarge = stat.size > MAX_PATCH_SCAN_BYTES;
+  const scanBytes = Math.min(stat.size, MAX_PATCH_SCAN_BYTES);
+  if (scanBytes <= 0) return stats;
+
+  const files = new Set();
+  const stream = createReadStream(filePath, {
+    encoding: "utf8",
+    start: 0,
+    end: scanBytes - 1
+  });
+  stream.on("data", (chunk) => {
+    stats.scannedBytes += Buffer.byteLength(chunk, "utf8");
+  });
+
+  const lines = createInterface({ input: stream, crlfDelay: Infinity });
+  for await (const line of lines) {
+    updatePatchStatsFromLine(stats, files, line);
+  }
+  stats.files = files.size;
+  stats.fileNames = [...files].sort();
   return stats;
 }
 
@@ -450,7 +527,18 @@ function resolveTaskId({ meta, resultTaskId, runTaskName, aliases }) {
 }
 
 async function summarizeTrajectory(trajectoryPath) {
-  if (!(await exists(trajectoryPath))) return null;
+  const stat = await statFile(trajectoryPath);
+  if (!stat) return null;
+  if (stat.size > MAX_TRAJECTORY_OVERVIEW_BYTES) {
+    return {
+      steps: null,
+      sourceCounts: {},
+      finalMetrics: null,
+      agent: null,
+      sizeBytes: stat.size,
+      tooLarge: true
+    };
+  }
   try {
     const trajectory = await readJson(trajectoryPath);
     const steps = Array.isArray(trajectory.steps) ? trajectory.steps : [];
@@ -462,11 +550,20 @@ async function summarizeTrajectory(trajectoryPath) {
       steps: steps.length,
       sourceCounts,
       finalMetrics: trajectory.final_metrics || null,
-      agent: trajectory.agent || null
+      agent: trajectory.agent || null,
+      sizeBytes: stat.size,
+      tooLarge: false
     };
   } catch {
     return null;
   }
+}
+
+async function firstExistingPath(paths) {
+  for (const filePath of paths) {
+    if (await statFile(filePath)) return filePath;
+  }
+  return null;
 }
 
 async function buildTrial(resultPath, aliases) {
@@ -481,7 +578,8 @@ async function buildTrial(resultPath, aliases) {
   const artifactPatchPath = path.join(trialDir, "artifacts", "submission.patch");
   const stdoutPath = path.join(trialDir, "verifier", "test-stdout.txt");
   const trajectoryPath = path.join(trialDir, "agent", "trajectory.json");
-  const patchText = (await exists(patchPath)) ? await fs.readFile(patchPath, "utf8") : await readTextIfExists(artifactPatchPath);
+  const actualPatchPath = await firstExistingPath([patchPath, artifactPatchPath]);
+  const patchStatsData = actualPatchPath ? await patchStatsFromFile(actualPatchPath) : patchStats("");
   const criteria = Array.isArray(result.criteria_results) ? result.criteria_results : [];
   const passedCriteria = criteria.filter((criterion) => criterion.passed).length;
   const failedCriteria = criteria.length - passedCriteria;
@@ -518,10 +616,12 @@ async function buildTrial(resultPath, aliases) {
       total: trajectory?.finalMetrics?.extra?.total_tokens ?? null
     },
     costUsd: agentResult.cost_usd ?? trajectory?.finalMetrics?.total_cost_usd ?? null,
-    patchStats: patchStats(patchText),
+    patchStats: patchStatsData,
     artifacts: {
       instruction: Boolean(taskId),
-      patch: patchText.length > 0,
+      patch: Boolean(actualPatchPath),
+      patchTooLarge: Boolean(patchStatsData.tooLarge),
+      patchSizeBytes: patchStatsData.sizeBytes || 0,
       stdout: await exists(stdoutPath),
       trajectory: await exists(trajectoryPath),
       result: await exists(runResultPath)
@@ -719,9 +819,11 @@ async function readTaskTestsArtifact(overview, id) {
   const sections = [];
   for (const relPath of TASK_TEST_FILES) {
     const filePath = path.join(taskRoot, ...relPath.split("/"));
-    const text = await readTextIfExists(filePath);
-    if (text.trim()) {
-      sections.push(`# ${relPath}\n\n${text.trimEnd()}`);
+    const file = await readTextWithinLimit(filePath, MAX_TASK_TEST_FILE_BYTES);
+    if (file.tooLarge) {
+      sections.push(`# ${relPath}\n\n[File is too large to load: ${file.sizeBytes} bytes.]`);
+    } else if (file.text.trim()) {
+      sections.push(`# ${relPath}\n\n${file.text.trimEnd()}`);
     }
   }
   return sections.join("\n\n");
@@ -754,8 +856,8 @@ async function artifactPath(overview, id, type) {
 
 async function readPatchForTrial(overview, trial) {
   const filePath = await artifactPath(overview, trial.id, "patch");
-  if (!filePath || !(await exists(filePath))) return "";
-  return fs.readFile(filePath, "utf8");
+  if (!filePath) return { text: "", missing: true, tooLarge: false, sizeBytes: 0, maxBytes: MAX_ARTIFACT_INLINE_BYTES };
+  return readTextWithinLimit(filePath, MAX_ARTIFACT_INLINE_BYTES);
 }
 
 function sendJson(res, value, status = 200) {
@@ -815,15 +917,29 @@ const server = createServer(async (req, res) => {
         return;
       }
       const filePath = await artifactPath(overview, id, type);
-      if (!filePath || !(await exists(filePath))) {
+      if (!filePath) {
         sendText(res, "", 404);
+        return;
+      }
+      const file = await readTextWithinLimit(filePath, MAX_ARTIFACT_INLINE_BYTES);
+      if (file.missing) {
+        sendText(res, "", 404);
+        return;
+      }
+      if (file.tooLarge) {
+        sendJson(res, {
+          error: "Artifact is too large to load in the browser.",
+          type,
+          sizeBytes: file.sizeBytes,
+          maxBytes: file.maxBytes
+        }, 413);
         return;
       }
       const ext = path.extname(filePath);
       const contentType = type === "trajectory" || ext === ".json"
         ? "application/json; charset=utf-8"
         : "text/plain; charset=utf-8";
-      sendText(res, await fs.readFile(filePath), 200, contentType);
+      sendText(res, file.text, 200, contentType);
       return;
     }
 
@@ -849,16 +965,31 @@ const server = createServer(async (req, res) => {
 
       const basePatch = await readPatchForTrial(overview, base);
       const headPatch = await readPatchForTrial(overview, head);
-      const diff = await generatePatchDiff(basePatch, headPatch);
+      if (basePatch.tooLarge || headPatch.tooLarge) {
+        sendJson(res, {
+          error: "One of these patches is too large to compare in the browser.",
+          tooLarge: {
+            base: basePatch.tooLarge,
+            head: headPatch.tooLarge
+          },
+          sizeBytes: {
+            base: basePatch.sizeBytes,
+            head: headPatch.sizeBytes
+          },
+          maxBytes: MAX_ARTIFACT_INLINE_BYTES
+        }, 413);
+        return;
+      }
+      const diff = await generatePatchDiff(basePatch.text, headPatch.text);
       sendJson(res, {
         diff,
-        identical: basePatch === headPatch,
+        identical: basePatch.text === headPatch.text,
         missingPatch: {
-          base: basePatch.length === 0,
-          head: headPatch.length === 0
+          base: basePatch.missing || basePatch.text.length === 0,
+          head: headPatch.missing || headPatch.text.length === 0
         },
-        basePatchStats: patchStats(basePatch),
-        headPatchStats: patchStats(headPatch),
+        basePatchStats: patchStats(basePatch.text),
+        headPatchStats: patchStats(headPatch.text),
         diffStats: patchDiffStats(diff)
       });
       return;
