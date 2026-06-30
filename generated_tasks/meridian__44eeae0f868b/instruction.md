@@ -1,21 +1,21 @@
 # Task description
 
-Two cycle-related defects in `meridian/algorithms/traverse.py` need fixing so that cycle enumeration on directed and undirected graphs terminates and returns correct, de-duplicated results.
+Two cycle-enumeration routines in the traversal layer misbehave on certain directed and undirected graphs.
 
-`simple_cycles(G)` must enumerate each elementary directed cycle of a `DiGraph` exactly once without entering an infinite loop. Self-loops (an edge `u -> u`) must be reported as the single-node cycle `[u]`. A cycle visiting nodes once must not be re-emitted under rotations of its starting point, and the traversal must not revisit blocked nodes endlessly. Each returned cycle is a list of nodes in traversal order with no repeated terminal node.
+`simple_cycles(G)` in `meridian/algorithms/traverse.py` can enter an infinite loop on directed graphs that contain self-loops or multiple interlocking cycles. Rework it so it terminates for every finite graph and yields each elementary (simple) directed cycle exactly once. Each cycle should be returned as a list of nodes without repeating the closing node, self-loops should appear as single-node cycles, and two cycles that are rotations of the same node set must not both be emitted.
 
-`cycle_basis(G)` must return a list of independent cycles for an undirected `Graph`, each cycle being a list of nodes, with no duplicate cycles in the output (two cycles that contain the same node set must not both appear). It should work per connected component and produce exactly `m - n + c` cycles for a graph with `m` edges, `n` nodes, and `c` connected components.
+`cycle_basis(G)` in the same module returns duplicate cycles for some undirected graphs. Make it return a minimum cycle basis where each basis cycle appears once, the number of cycles equals `m - n + c` (edges minus nodes plus connected components), and no two returned cycles are identical as node sets.
 
-Keep the existing public signatures and behavior of other traversal helpers (e.g. `topological_sort`, `has_cycle`) unchanged, since `DiGraph.is_dag` and other modules depend on them.
+Keep the existing function names, call signatures, and return shapes (lists of node lists) so dependent code in `meridian/algorithms/centrality.py`, `meridian/analysis/paths.py`, `meridian/graph.py`, and `meridian/multigraph.py` continues to work. Do not change unrelated traversal helpers or public exports.
 
 # Test guidelines
 
-Run `pytest` to validate. Add or extend cases under `tests/` (notably traversal-focused tests) covering: graphs with self-loops, directed graphs with multiple overlapping cycles, undirected graphs with several independent cycles, disconnected graphs, and acyclic inputs that must yield no cycles. Confirm cycle counts and that no rotated or set-duplicate cycles are emitted, and verify termination on inputs that previously hung.
+Run `pytest` and confirm the suite passes. Add or extend coverage under `tests/` (notably `tests/test_traverse.py`) exercising self-loops, nested and interlocking directed cycles, disconnected undirected graphs, and graphs whose cycle basis size must equal `m - n + c`. Verify termination and that no duplicate or rotated cycles are emitted.
 
 # Lint guidelines
 
-Keep imports tidy and remove any now-unused names. Match the existing type-hint and docstring conventions used across `meridian/algorithms/`.
+Keep imports tidy and remove any dead code introduced while fixing the loop. Match the existing typing and `from __future__ import annotations` conventions already used across the module.
 
 # Style guidelines
 
-You are already on the correct starting snapshot. Create your branch from this state. Do not rebase or start from master, main, or any other branch. Avoid changing unrelated modules or reformatting untouched code.
+You are already on the correct starting snapshot. Create your branch from this state. Do not rebase or start from master, main, or any other branch.
