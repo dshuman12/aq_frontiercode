@@ -13,6 +13,7 @@ const state = {
 };
 
 const artifactCache = new Map();
+const ARTIFACT_ERROR_PREFIX = "__FRONTIERCODE_ARTIFACT_ERROR__:";
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -93,6 +94,15 @@ function formatDuration(seconds) {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return mins ? `${mins}m ${secs}s` : `${secs}s`;
+}
+
+function formatBytes(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "n/a";
+  const bytes = Number(value);
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 function formatDate(value) {
@@ -357,8 +367,8 @@ function renderMetrics() {
   const metrics = trial ? [
     ["Criteria", `${trial.criteriaPassed}/${trial.criteriaTotal}`],
     ["Blockers", trial.blockerFailures],
-    ["Patch Files", trial.patchStats?.files ?? "n/a"],
-    ["Diff", `+${trial.patchStats?.additions ?? 0} / -${trial.patchStats?.deletions ?? 0}`],
+    ["Edited Files", trial.patchStats?.files ?? "n/a"],
+    ["Patch Size", formatBytes(trial.patchStats?.sizeBytes)],
     ["Steps", trial.trajectory?.steps ?? "n/a"],
     ["Cost", formatMoney(trial.costUsd)],
     ["Duration", formatDuration(trial.durationSeconds)],
@@ -417,12 +427,35 @@ async function fetchArtifact(id, type) {
   if (artifactCache.has(key)) return artifactCache.get(key);
   const response = await fetch(`/api/artifact?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}`);
   if (!response.ok) {
-    artifactCache.set(key, "");
-    return "";
+    const text = await response.text();
+    let message = text.trim() || "Artifact unavailable.";
+    try {
+      const data = JSON.parse(text || "{}");
+      message = data.error || message;
+      if (data.sizeBytes && data.maxBytes) {
+        message = `${message} Size ${formatBytes(data.sizeBytes)} exceeds ${formatBytes(data.maxBytes)}.`;
+      }
+    } catch {
+      // Keep the plain-text response.
+    }
+    const value = `${ARTIFACT_ERROR_PREFIX}${message}`;
+    artifactCache.set(key, value);
+    return value;
   }
   const text = await response.text();
   artifactCache.set(key, text);
   return text;
+}
+
+function artifactError(text) {
+  return String(text || "").startsWith(ARTIFACT_ERROR_PREFIX)
+    ? String(text).slice(ARTIFACT_ERROR_PREFIX.length)
+    : "";
+}
+
+function renderArtifactError(text) {
+  const message = artifactError(text);
+  return message ? `<div class="empty-state">${escapeHtml(message)}</div>` : "";
 }
 
 async function fetchComparison(baseId, headId) {
@@ -505,6 +538,8 @@ function markdownLite(text) {
 }
 
 function renderDiff(text) {
+  const error = renderArtifactError(text);
+  if (error) return error;
   if (!text.trim()) return `<div class="empty-state">No submitted patch found.</div>`;
   return `<pre class="code-lines">${text.split(/\r?\n/).map((line) => {
     let cls = "";
@@ -517,6 +552,8 @@ function renderDiff(text) {
 }
 
 function renderJson(text) {
+  const error = renderArtifactError(text);
+  if (error) return error;
   if (!text.trim()) return `<div class="empty-state">No JSON artifact found.</div>`;
   try {
     return `<pre class="stdout">${escapeHtml(JSON.stringify(JSON.parse(text), null, 2))}</pre>`;
@@ -573,6 +610,39 @@ function renderCriteriaCards(criteria, emptyMessage) {
 
 function renderRunCriteria(trial) {
   return renderCriteriaCards(trial.criteria || [], "No criteria recorded for this run.");
+}
+
+function patchSummaryLabel(stats) {
+  if (!stats) return "No patch metadata";
+  const count = `${stats.files ?? 0}${stats.fileNamesTruncated ? "+" : ""}`;
+  const size = stats.sizeBytes ? ` / ${formatBytes(stats.sizeBytes)}` : "";
+  const scan = stats.tooLarge ? " / preview skipped" : ` / +${stats.additions ?? 0} / -${stats.deletions ?? 0}`;
+  return `${count} files${size}${scan}`;
+}
+
+function renderEditedFiles(trial) {
+  const stats = trial.patchStats || {};
+  const files = Array.isArray(stats.fileNames) ? stats.fileNames : [];
+  const notes = [
+    stats.tooLarge ? "Patch is too large to preview. Showing filenames found from the safe metadata scan." : "",
+    stats.fileNamesTruncated ? "Edited-file metadata is capped for this run." : ""
+  ].filter(Boolean);
+  const note = notes.length
+    ? `<p class="artifact-note">${escapeHtml(notes.join(" "))}</p>`
+    : "";
+  if (!trial.artifacts?.patch) {
+    return `<div class="empty-state">No submitted patch found.</div>`;
+  }
+  return `
+    <div class="edited-files-pane">
+      ${note}
+      ${files.length ? files.map((file) => `
+        <div class="edited-file">
+          <span>${escapeHtml(file)}</span>
+        </div>
+      `).join("") : `<div class="empty-state">No edited filenames found in the patch metadata.</div>`}
+    </div>
+  `;
 }
 
 function instructionCriteria(task, selectedTrial) {
@@ -638,19 +708,11 @@ async function renderRunsPanel() {
   const trials = getTaskTrials(task);
   if (!trials.length) return `<div class="empty-state">No runs recorded for this task yet.</div>`;
 
-  const expandedTrials = trials.filter((trial) => state.expandedRunIds.has(trial.id));
-  const patchEntries = await Promise.all(expandedTrials.map(async (trial) => [
-    trial.id,
-    await fetchArtifact(trial.id, "patch")
-  ]));
-  const patches = new Map(patchEntries);
-
   return `
     <div class="runs-panel">
       ${trials.map((trial) => {
         const expanded = state.expandedRunIds.has(trial.id);
         const selected = trial.id === state.selectedTrialId;
-        const patch = patches.get(trial.id) || "";
         return `
           <section class="run-card ${expanded ? "expanded" : ""} ${selected ? "active" : ""}">
             <button type="button" class="run-card-toggle ${selected ? "active" : ""}" data-run-id="${trial.id}" aria-expanded="${expanded}">
@@ -661,10 +723,10 @@ async function renderRunsPanel() {
               <div class="run-card-body">
                 <div class="run-artifact patch-side">
                   <div class="run-artifact-header">
-                    <p class="meta-label">Submitted Patch</p>
-                    <span class="micro">${escapeHtml(trial.patchStats?.files ?? 0)} files / +${escapeHtml(trial.patchStats?.additions ?? 0)} / -${escapeHtml(trial.patchStats?.deletions ?? 0)}</span>
+                    <p class="meta-label">Edited Files</p>
+                    <span class="micro">${escapeHtml(patchSummaryLabel(trial.patchStats))}</span>
                   </div>
-                  <div class="run-patch-scroll">${renderDiff(patch)}</div>
+                  <div class="run-patch-scroll">${renderEditedFiles(trial)}</div>
                 </div>
                 <div class="run-artifact tests-side">
                   <div class="run-artifact-header">
@@ -714,10 +776,87 @@ function renderCompareRunSummary(trial, label) {
         <span>${escapeHtml(trial.model || trial.agent || "run")}</span>
         <span>${escapeHtml(formatDate(trial.startedAt))}</span>
         <span>${escapeHtml(`${trial.criteriaPassed}/${trial.criteriaTotal} criteria`)}</span>
-        <span>${escapeHtml(`${patchStats.files ?? 0} files / +${patchStats.additions ?? 0} / -${patchStats.deletions ?? 0}`)}</span>
+        <span>${escapeHtml(patchSummaryLabel(patchStats))}</span>
       </div>
       <div class="compare-failure-list">
         ${renderCompareFailures(trial)}
+      </div>
+    </section>
+  `;
+}
+
+function testSummaryRows(task, trials) {
+  const ordered = [];
+  const byId = new Map();
+
+  const addCriterion = (criterion) => {
+    const id = criterion?.criterion_id;
+    if (!id || byId.has(id)) return;
+    const row = {
+      id,
+      details: criterion.details || "",
+      passed: 0,
+      total: 0
+    };
+    ordered.push(row);
+    byId.set(id, row);
+  };
+
+  (task.criteria || []).forEach(addCriterion);
+  trials.forEach((trial) => (trial.criteria || []).forEach(addCriterion));
+
+  trials.forEach((trial) => {
+    const trialCriteria = new Map((trial.criteria || []).map((criterion) => [criterion.criterion_id, criterion]));
+    ordered.forEach((row) => {
+      const result = trialCriteria.get(row.id);
+      if (!result) return;
+      row.total += 1;
+      if (result.passed) row.passed += 1;
+    });
+  });
+
+  return ordered;
+}
+
+function renderCompareTestSummary(task, trials) {
+  const rows = testSummaryRows(task, trials);
+  if (!rows.length) {
+    return `
+      <section class="compare-test-summary">
+        <div class="run-artifact-header">
+          <p class="meta-label">Test Summary</p>
+          <span class="micro">0 tests</span>
+        </div>
+        <div class="compare-empty">No criteria recorded for this task.</div>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="compare-test-summary">
+      <div class="run-artifact-header">
+        <p class="meta-label">Test Summary</p>
+        <span class="micro">${escapeHtml(trials.length)} trials</span>
+      </div>
+      <div class="compare-test-table" role="table" aria-label="Test pass summary by trial">
+        <div class="compare-test-row header" role="row">
+          <span role="columnheader">Test</span>
+          <span role="columnheader">Passed</span>
+          <span role="columnheader">Rate</span>
+        </div>
+        ${rows.map((row) => {
+          const rate = row.total ? row.passed / row.total : null;
+          return `
+            <div class="compare-test-row" role="row">
+              <span role="cell">
+                <strong>${escapeHtml(row.id)}</strong>
+                ${row.details ? `<small>${escapeHtml(row.details)}</small>` : ""}
+              </span>
+              <span role="cell">${escapeHtml(`${row.passed}/${row.total}`)}</span>
+              <span role="cell">${escapeHtml(formatPercent(rate))}</span>
+            </div>
+          `;
+        }).join("")}
       </div>
     </section>
   `;
@@ -761,6 +900,7 @@ async function renderComparePanel() {
         ${renderCompareRunSummary(base, "Baseline")}
         ${renderCompareRunSummary(head, "Candidate")}
       </div>
+      ${renderCompareTestSummary(task, trials)}
       <section class="compare-diff">
         <div class="run-artifact-header">
           <p class="meta-label">Patch Diff</p>
@@ -817,6 +957,8 @@ function stepSnippet(message) {
 }
 
 function renderTrajectory(text) {
+  const error = renderArtifactError(text);
+  if (error) return error;
   if (!text.trim()) return `<div class="empty-state">No trajectory artifact found.</div>`;
   let trajectory;
   try {
@@ -969,7 +1111,7 @@ async function renderTabPanel() {
           <div class="split-pane-header">
             <p class="meta-label">Instruction</p>
           </div>
-          <div class="markdown-pane">${markdownLite(instructionText)}</div>
+          <div class="markdown-pane">${renderArtifactError(instructionText) || markdownLite(instructionText)}</div>
         </section>
         <section class="task-tests-column">
           <div class="split-pane-header">

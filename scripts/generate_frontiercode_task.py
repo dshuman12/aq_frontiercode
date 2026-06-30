@@ -89,6 +89,11 @@ SOURCE_CONTEXT_EXTENSIONS = (
 )
 INSTRUCTION_GENERATION_ATTEMPTS = 2
 PROGRESS_INTERVAL_SECONDS = 5.0
+PR_SCOPE_INSTRUCTION = (
+    "Treat this as a pull request whose changes will be merged into the "
+    "original repository; keep the diff focused, merge-ready, and free of "
+    "unrelated generated or build artifacts."
+)
 QA_STATUS_CSV_FIELDS = (
     "Task ID",
     "Repository",
@@ -1761,7 +1766,7 @@ def generate_instruction_markdown(
                     "instruction.md is "
                     f"{len(instruction.strip())} characters after final retry; accepting"
                 )
-            return instruction
+            return append_pr_scope_instruction(instruction)
         except RuntimeError as exc:
             validation_feedback = str(exc)
             if attempt >= INSTRUCTION_GENERATION_ATTEMPTS:
@@ -2133,6 +2138,13 @@ def clean_instruction_markdown(text: str) -> str:
     if marker in stripped and not stripped.startswith(marker):
         stripped = stripped[stripped.index(marker):].strip()
     return stripped.rstrip() + "\n"
+
+
+def append_pr_scope_instruction(text: str) -> str:
+    stripped = text.rstrip()
+    if PR_SCOPE_INSTRUCTION in stripped:
+        return stripped + "\n"
+    return f"{stripped}\n\n{PR_SCOPE_INSTRUCTION}\n"
 
 
 def validate_instruction_markdown(text: str, *, allow_over_max_total: bool = False) -> None:
